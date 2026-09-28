@@ -2,12 +2,11 @@ import { useState } from 'react'
 import { api } from '../api'
 import { audio } from '../audio'
 import { Board } from '../components/Board'
-import { Backdrop, CardView, Pips, ShipToken, TopBar } from '../components/ui'
+import { Backdrop, CardView, ShipToken, TopBar } from '../components/ui'
 import { fx } from '../fx'
-import { lookOfCard, SKILL_INFO, stageLabel } from '../game'
+import { lookOfCard, stageLabel, usesLine } from '../game'
 import { useGame } from '../state'
 import { posLabel, samePos, type MatchResponse, type Pos, type Stage } from '../types'
-import { skillOf } from './Formation'
 
 export function Sortie({
   stage,
@@ -96,7 +95,6 @@ export function Sortie({
         {fleet.map((s, i) => {
           const c = card(s.card)
           if (!c) return null
-          const sk = SKILL_INFO[skillOf(c.class)]
           return (
             <button key={s.uid} type="button" className={`fleet-card ${selected === i ? 'selected' : ''}`} onClick={() => select(i)}>
               <span className="fleet-no">{i + 1}</span>
@@ -106,12 +104,9 @@ export function Sortie({
                   {c.name} <small>Lv.{s.level}</small>
                 </b>
                 <span>
-                  耐久 <Pips value={s.stats.hp} max={s.stats.hp} kind="hp" />
+                  耐久 {s.stats.hp}・速力 {s.stats.speed}
                 </span>
-                <span>
-                  主砲 {s.stats.ammo} {sk.icon}
-                  {sk.name}×{s.stats.skill}
-                </span>
+                <span>{usesLine(s.stats, c.class)}</span>
               </span>
               <span className={`fleet-pos ${placements[i] ? 'done' : ''}`}>{placements[i] ? posLabel(placements[i]!) : '未配置'}</span>
             </button>

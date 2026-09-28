@@ -3,12 +3,12 @@ import type { Scene } from '../App'
 import { api } from '../api'
 import { audio } from '../audio'
 import { Board, CellOverlay } from '../components/Board'
-import { CutinLayer, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, type Cutin, type Float } from '../components/battle'
+import { CutinLayer, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, type Cutin, type Float, type InitiativeSide } from '../components/battle'
 import { Backdrop, ShipToken, SoundToggle } from '../components/ui'
 import { fx, RAINBOW } from '../fx'
-import { describe, footprint, historyLog, lookOfShip, SKILL_INFO, stageLabel, type Look, type LogLine } from '../game'
+import { CLASS_INFO, describe, footprint, historyLog, lookOfShip, SKILL_INFO, SPECIAL_INFO, stageLabel, TORPEDO_INFO, WEATHER_INFO, type Look, type LogLine } from '../game'
 import { useGame } from '../state'
-import { posLabel, samePos, type ActionType, type GameView, type MatchResponse, type Pos, type Result, type Reward, type Shot } from '../types'
+import { posLabel, samePos, type ActionType, type GameView, type MatchResponse, type Pos, type Result, type Reward, type Shot, type ShipView, type Special } from '../types'
 import { ResultOverlay } from './Result'
 
 type Marker = 'hit' | 'splash' | 'miss' | 'enemy-fire'
@@ -58,8 +58,12 @@ function patchMeta(g: GameView, r: Result): GameView {
     if (mine) player = player.map((s) => (s.id === r.shipId ? f(s) : s))
     else enemy = enemy.map((s) => (s.id === r.shipId ? f(s) : s))
   }
+  if (r.cancelled) return g
   if (r.type === 'attack') own((s) => ({ ...s, ammo: s.ammo - 1 }))
+  if (r.type === 'torpedo') own((s) => ({ ...s, torps: s.torps - 1 }))
   if (r.type === 'skill') own((s) => ({ ...s, skill: s.skill - 1 }))
+  // A torpedo wake gives the launcher away.
+  if (!mine && r.origin) own((s) => ({ ...s, pos: r.origin, spotted: true }))
   if (r.type === 'move') {
     if (mine) own((s) => ({ ...s, pos: r.target }))
     else
@@ -86,6 +90,22 @@ function patchMeta(g: GameView, r: Result): GameView {
     enemyGauge: mine ? g.enemyGauge : r.gauge,
     combo: mine ? r.combo : g.combo,
   }
+}
+
+// predictSpecial says which situational attack the aimed action would trigger,
+// mirroring the rules on the server (point-blank is a forecast: the ship may dodge or move).
+function predictSpecial(g: GameView, ship: ShipView | null, mode: ActionType | null, aim: Pos | null): Special | undefined {
+  if (!ship || !mode || !aim || !ship.pos) return undefined
+  const tracked = (p: Pos) => g.enemyShips.some((e) => e.hp > 0 && e.spotted && samePos(e.pos, p))
+  if (mode === 'attack' && (ship.class === 'battleship' || ship.class === 'cruiser') && samePos(g.lastGun, aim)) return 'spotting'
+  if (mode === 'skill' && ship.skillKind === 'airstrike' && tracked(aim)) return 'precision'
+  if (mode === 'torpedo' || (mode === 'skill' && ship.skillKind === 'spread')) {
+    const from = ship.pos
+    const cells = footprint(g.boardSize, mode, ship.skillKind, ship.class, from, aim)
+    const near = cells.find((c) => g.enemyShips.some((e) => e.hp > 0 && e.spotted && e.class !== 'submarine' && samePos(e.pos, c)))
+    if (near && Math.max(Math.abs(near.row - from.row), Math.abs(near.col - from.col)) <= 2) return 'pointblank'
+  }
+  return undefined
 }
 
 const SPEED_KEY = 'battleSpeed'
@@ -171,10 +191,12 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       ;(async () => {
         setBusy(true)
         audio.play('alarm')
+        const w = WEATHER_INFO[initial.game.weather ?? 'clear']
         if (resumed || initial.game.history.length > 0) {
           await show({ kind: 'intro', text: '敵艦隊 見ゆ！', sub: `${stageLabel(stage)} ${stage.name}` }, 1300)
         } else {
           await show({ kind: 'intro', text: '索敵開始！', sub: `${stageLabel(stage)} ${stage.name}` }, 1100)
+          if (initial.game.weather !== 'clear') await show({ kind: 'banner', text: `${w.icon} ${w.name}`, sub: w.desc, tone: 'blue' }, 1300)
           if (stage.boss) {
             audio.play('bigboom')
             fx.shake(16, 600)
@@ -198,13 +220,20 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
   const canUlt = game.gauge >= 100 && !finished
   const allCells = useMemo(() => Array.from({ length: game.boardSize ** 2 }, (_, i) => ({ row: Math.floor(i / game.boardSize), col: i % game.boardSize })), [game.boardSize])
   const targets: Pos[] =
-    mode === 'ultimate' ? allCells : ship && mode ? ((mode === 'attack' ? ship.attackTargets : mode === 'move' ? ship.moveTargets : ship.skillTargets) ?? []) : []
+    mode === 'ultimate'
+      ? allCells
+      : ship && mode
+        ? ((mode === 'attack' ? ship.attackTargets : mode === 'torpedo' ? ship.torpedoTargets : mode === 'move' ? ship.moveTargets : ship.skillTargets) ?? [])
+        : []
   const markers = lastRoundMarkers(game)
   const turn = game.turn + (finished ? 0 : 1)
   const turnsLeft = game.maxTurns ? game.maxTurns - game.turn : undefined
   const aim = hover && targets.some((t) => samePos(t, hover)) ? hover : target
   const actorPos = mode === 'ultimate' ? flagship?.pos : ship?.pos
-  const preview = aim && (mode === 'skill' || mode === 'ultimate') && actorPos ? footprint(game.boardSize, mode, ship?.skillKind, actorPos, aim) : []
+  const preview = aim && mode && mode !== 'move' && actorPos ? footprint(game.boardSize, mode, ship?.skillKind, ship?.class, actorPos, aim) : []
+  const special = predictSpecial(game, ship, mode, aim)
+  // The cell the fleet just shelled: big guns firing there again get spotting fire.
+  const spotCell = mode === 'attack' && (ship?.class === 'battleship' || ship?.class === 'cruiser') ? game.lastGun : undefined
 
   const selectShip = (id: number) => {
     if (busy || finished) return
@@ -290,16 +319,35 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
 
   const skyPoint = (to: { x: number; y: number }) => ({ x: to.x + rnd(-220, 220), y: -40 })
 
+  // Water columns thrown up by battleship shells that missed.
+  const columns = (r: Result) => {
+    for (const p of r.columns ?? []) {
+      const pt = cellPt(p)
+      fx.splash(pt.x, pt.y, 1.9)
+      fx.splash(pt.x + rnd(-10, 10), pt.y - 20, 1.3)
+    }
+    if (r.columns?.length) {
+      audio.play('splash')
+      float(r.columns[0], '水柱！', 'splash')
+    }
+  }
+
   const play = async (r: Result, after: GameView) => {
     if (!mounted.current) return
     const mine = r.side === 'player'
     const actorLook = (mine ? looks.player : looks.enemy)[r.shipId]
     const actor = (mine ? after.playerShips : after.enemyShips)[r.shipId]
     const c = mine ? card(actor?.key ?? '') : undefined
-    const line = describe(r, after, turn)
+    const line = describe(r, after)
     const layer = layerRef.current
-    const from = mine && actor ? cellPt(game.playerShips[r.shipId].pos ?? actor.pos!) : undefined
+    const from = mine && actor ? cellPt(game.playerShips[r.shipId].pos ?? actor.pos!) : r.origin ? cellPt(r.origin) : undefined
 
+    if (r.cancelled) {
+      audio.play('miss')
+      setLog((l) => [line, ...l])
+      await show({ kind: 'notice', side: r.side, text: line.text }, 900)
+      return
+    }
     if (r.type === 'move') {
       audio.play(r.hidden ? 'dive' : 'move')
       if (r.hidden && r.side === 'player' && from) fx.bubbles(from.x, from.y, 10)
@@ -310,18 +358,29 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
     }
 
     // Cut-in.
-    if (r.type === 'ultimate') {
+    const torpedo = r.type === 'torpedo' || r.skill === 'spread'
+    if (r.special) {
+      audio.play('charge')
+      fx.flash(mine ? '#fff6c0' : '#ff3050', 380, 0.7)
+      fx.shake(10, 300)
+      await show({ kind: 'special', special: r.special, look: actorLook, line: mine ? (c?.attack ?? '撃てっ！') : '……捉えた。', enemy: !mine }, 1500)
+    } else if (r.type === 'ultimate') {
       audio.play('charge')
       fx.flash(mine ? '#fff6c0' : '#ff3050', 500, 0.6)
       if (mine) await show({ kind: 'ultimate', looks: after.playerShips.filter((s) => s.hp > 0).map((s) => looks.player[s.id]) }, 1700)
       else await show({ kind: 'banner', text: '敵艦隊 全艦斉射！！', sub: '総員、衝撃に備えよ！', tone: 'red' }, 1300)
     } else if (mine) {
-      const title = r.type === 'skill' ? `${SKILL_INFO[r.skill!].icon} ${SKILL_INFO[r.skill!].name}！` : '砲撃開始！'
+      const title =
+        r.type === 'skill'
+          ? `${SKILL_INFO[r.skill!].icon} ${SKILL_INFO[r.skill!].name}！`
+          : r.type === 'torpedo'
+            ? `${TORPEDO_INFO.icon} 雷撃開始！`
+            : '砲撃開始！'
       audio.play('whoosh')
-      await show({ kind: 'attack', look: actorLook, line: c?.attack ?? '撃てっ！', title, skill: r.skill }, r.type === 'skill' ? 1000 : 650)
+      await show({ kind: 'attack', look: actorLook, line: c?.attack ?? '撃てっ！', title, skill: r.skill }, r.type === 'attack' ? 650 : 1000)
     } else {
       audio.play('alarm')
-      const title = r.type === 'skill' ? `敵の${SKILL_INFO[r.skill!].name}！` : '敵艦の砲撃！'
+      const title = r.type === 'skill' ? `敵の${SKILL_INFO[r.skill!].name}！` : r.type === 'torpedo' ? '敵の雷撃！' : '敵艦の砲撃！'
       await show({ kind: 'enemy', look: actorLook, title }, 850)
     }
     if (!mounted.current) return
@@ -330,7 +389,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
     const byCell = (p: Pos) => shots.find((s) => samePos(s.target, p))
 
     if (r.type === 'ultimate') {
-      const cells = footprint(game.boardSize, 'ultimate', undefined, { row: 0, col: 0 }, r.target!)
+      const cells = footprint(game.boardSize, 'ultimate', undefined, undefined, { row: 0, col: 0 }, r.target!)
       await Promise.all(
         cells.map(async (p, i) => {
           await wait(i * 70)
@@ -344,35 +403,31 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       )
       fx.flash('#fff', 400, 0.7)
       fx.shake(24, 600)
-    } else if (r.skill === 'barrage') {
-      await Promise.all(
-        shots.map(async (s, i) => {
-          await wait(i * 90)
-          const to = cellPt(s.target)
-          audio.play('cannon')
-          await flyShell(layer, from ?? skyPoint(to), to, ms(480), !mine)
-          await impact(s, mine)
-        }),
-      )
     } else if (r.skill === 'airstrike') {
       audio.play('airstrike')
       const to = cellPt(r.target!)
       await flyPlane(layer, to, ms(900))
       if (shots[0]) await impact(shots[0], mine)
-    } else if (r.skill === 'torpedo') {
+    } else if (torpedo) {
       audio.play('torpedo')
-      const path = r.path ?? []
-      const pts = [from ?? cellPt(path[0]), ...path.map(cellPt)]
-      await runTorpedo(layer, pts, ms(140), (i) => {
-        const p = pts[i]
-        fx.bubbles(p.x, p.y, 4)
-      })
-      if (shots[0]) await impact(shots[0], mine)
-      else {
-        const end = pts[pts.length - 1]
-        fx.splash(end.x, end.y, 0.5)
-        float(path[path.length - 1] ?? r.target!, 'MISS', 'miss')
-      }
+      if (!mine && r.origin) float(r.origin, '雷跡！', 'found')
+      await Promise.all(
+        (r.paths ?? []).map(async (path) => {
+          const pts = [from ?? cellPt(path[0]), ...path.map(cellPt)]
+          await runTorpedo(layer, pts, ms(120), (i) => {
+            const p = pts[i]
+            fx.bubbles(p.x, p.y, 3)
+          })
+          const end = path[path.length - 1]
+          const hit = end && byCell(end)
+          if (hit) await impact(hit, mine)
+          else if (end) {
+            const pt = cellPt(end)
+            fx.splash(pt.x, pt.y, 0.5)
+            float(end, 'MISS', 'miss')
+          }
+        }),
+      )
     } else if (r.skill === 'flare' || r.skill === 'sonar') {
       audio.play(r.skill)
       if (r.skill === 'flare') {
@@ -399,12 +454,19 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       if (!r.revealed?.length) float(r.target!, '反応なし', 'miss')
       await wait(700)
       if (mounted.current) setLit(null)
-    } else if (shots[0]) {
-      const to = cellPt(shots[0].target)
-      audio.play('cannon')
+    } else if (shots.length) {
+      // Main guns and the barrage: every shell flies from the ship.
       if (from) fx.sparkle(from.x, from.y, '#ffd36b', 6, 50)
-      await flyShell(layer, from ?? skyPoint(to), to, ms(520), !mine)
-      await impact(shots[0], mine)
+      await Promise.all(
+        shots.map(async (s, i) => {
+          await wait(i * 80)
+          const to = cellPt(s.target)
+          audio.play('cannon')
+          await flyShell(layer, from ?? skyPoint(to), to, ms(i === 0 ? 520 : 480), !mine)
+          await impact(s, mine)
+        }),
+      )
+      columns(r)
     }
     if (!mounted.current) return
     setLog((l) => [line, ...l])
@@ -436,6 +498,16 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
     }
   }
 
+  const initiative = (rs: Result[]) => {
+    const side = (r: Result): InitiativeSide => ({
+      look: (r.side === 'player' ? looks.player : looks.enemy)[r.shipId],
+      speed: r.speed,
+      late: r.late,
+      enemy: r.side === 'cpu',
+    })
+    return show({ kind: 'initiative', first: side(rs[0]), second: rs[1] && side(rs[1]) }, 900)
+  }
+
   const execute = async () => {
     if (!mode || !target || busy) return
     const shipId = mode === 'ultimate' ? flagship?.id : selected
@@ -447,8 +519,11 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       setSelected(null)
       setMode(null)
       setTarget(null)
-      await play(res.player, res.game)
-      if (res.cpu && mounted.current) await play(res.cpu, res.game)
+      if (res.results.length > 1) await initiative(res.results)
+      for (const r of res.results) {
+        if (!mounted.current) return
+        await play(r, res.game)
+      }
       if (!mounted.current) return
       setGame(res.game)
       if (res.game.status === 'finished') {
@@ -461,10 +536,12 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
           audio.play('victory')
           fx.confetti(220, RAINBOW)
           fx.rays(640, 330, '#fff2a8', 18, 2)
-          await show({ kind: 'banner', text: 'VICTORY', sub: res.game.endReason === 'judgment' ? '判定勝利' : '敵艦隊を撃滅！', tone: 'rainbow' }, 2200)
+          const sub = res.game.endReason === 'judgment' ? '判定勝利' : res.game.endReason === 'disarmed' ? '敵艦隊、撤退！' : '敵艦隊を撃滅！'
+          await show({ kind: 'banner', text: 'VICTORY', sub, tone: 'rainbow' }, 2200)
         } else {
           audio.play('defeat')
-          await show({ kind: 'banner', text: 'DEFEAT', sub: res.game.endReason === 'judgment' ? '判定敗北' : res.game.endReason === 'disarmed' ? '攻撃手段が尽きた…' : '艦隊全滅…', tone: 'red' }, 2000)
+          const sub = res.game.endReason === 'judgment' ? '判定敗北' : res.game.endReason === 'disarmed' ? '攻撃手段が尽き、戦略的撤退…' : '艦隊全滅…'
+          await show({ kind: 'banner', text: 'DEFEAT', sub, tone: 'red' }, 2000)
         }
         if (mounted.current) setShowResult(true)
       } else {
@@ -481,13 +558,14 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
     }
   }
 
-  // Keyboard: 1-4 ships, A/M/S/U modes, Enter fires, Esc cancels.
+  // Keyboard: 1-4 ships, A/T/M/S/U modes, Enter fires, Esc cancels.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (busy || finished) return
       const n = Number(e.key)
       if (n >= 1 && n <= game.playerShips.length) selectShip(n - 1)
-      else if (e.key === 'a' && ship) chooseMode('attack')
+      else if (e.key === 'a' && ship && ship.attackTargets?.length) chooseMode('attack')
+      else if (e.key === 't' && ship && ship.torpedoTargets?.length) chooseMode('torpedo')
       else if (e.key === 'm' && ship) chooseMode('move')
       else if (e.key === 's' && ship) chooseMode('skill')
       else if (e.key === 'u' && canUlt) chooseMode('ultimate')
@@ -543,6 +621,9 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
           <span className="stage-chip">
             {stageLabel(stage)} {stage.name}
           </span>
+          <span className={`weather-chip ${game.weather}`} title={WEATHER_INFO[game.weather ?? 'clear'].desc}>
+            {WEATHER_INFO[game.weather ?? 'clear'].icon} {WEATHER_INFO[game.weather ?? 'clear'].name}
+          </span>
           <button className={`chip-btn ${speed > 1 ? 'on' : ''}`} onClick={toggleSpeed} aria-label="演出速度">
             ▶▶ ×{speed}
           </button>
@@ -572,7 +653,9 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
                   : ship
                     ? mode === 'attack'
                       ? '目標はどこ？'
-                      : mode === 'move'
+                      : mode === 'torpedo'
+                        ? '魚雷の針路は？'
+                        : mode === 'move'
                         ? '針路を指示して。'
                         : mode === 'skill'
                           ? `${skill!.name}、いつでもいけるよ！`
@@ -609,6 +692,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
               return (
                 <>
                   {marker && !busy && <span className={`marker ${marker}`} />}
+                  {spotCell && samePos(spotCell, p) && <span className="spot-sign">観測</span>}
                   {enemy && <ShipToken look={looks.enemy[enemy.id]} no={enemy.id + 1} sunk={enemy.hp <= 0} spotted={enemy.spotted && !finished} />}
                   {own && <ShipToken look={looks.player[own.id]} no={own.id + 1} />}
                 </>
@@ -642,17 +726,36 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
             <>
               {ship ? (
                 <>
-                  <button
-                    className={`cmd-btn attack ${mode === 'attack' ? 'on' : ''}`}
-                    disabled={busy || ship.ammo <= 0 || !ship.attackTargets?.length}
-                    onClick={() => chooseMode('attack')}
-                  >
-                    <b>砲撃</b>
-                    <small>残弾 {ship.ammo}</small>
-                  </button>
+                  {ship.maxAmmo > 0 && (
+                    <button
+                      className={`cmd-btn attack ${mode === 'attack' ? 'on' : ''}`}
+                      disabled={busy || ship.ammo <= 0 || !ship.attackTargets?.length}
+                      onClick={() => chooseMode('attack')}
+                      title={CLASS_INFO[ship.class].role}
+                    >
+                      <b>砲撃</b>
+                      <small>
+                        射程{ship.gunRange} 残{ship.ammo}
+                      </small>
+                    </button>
+                  )}
+                  {ship.maxTorps > 0 && (
+                    <button
+                      className={`cmd-btn torp ${mode === 'torpedo' ? 'on' : ''}`}
+                      disabled={busy || ship.torps <= 0}
+                      onClick={() => chooseMode('torpedo')}
+                      title={TORPEDO_INFO.desc}
+                    >
+                      <b>
+                        {TORPEDO_INFO.icon}
+                        {TORPEDO_INFO.name}
+                      </b>
+                      <small>後攻 残{ship.torps}</small>
+                    </button>
+                  )}
                   <button className={`cmd-btn move ${mode === 'move' ? 'on' : ''}`} disabled={busy || !ship.moveTargets?.length} onClick={() => chooseMode('move')}>
                     <b>移動</b>
-                    <small>{ship.class === 'submarine' ? '潜航（秘匿）' : '縦横に航行'}</small>
+                    <small>{ship.pinned ? '水柱で足止め中' : ship.class === 'submarine' ? `潜航 ${ship.moveRange}マス` : `縦横 ${ship.moveRange}マス`}</small>
                   </button>
                   <button
                     className={`cmd-btn skill ${mode === 'skill' ? 'on' : ''}`}
@@ -678,8 +781,9 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
                   <small>3×3 一斉砲撃</small>
                 </button>
               )}
-              <button className={`cmd-btn go ${target ? 'ready' : ''}`} disabled={busy || !target} onClick={() => void execute()}>
-                <b>{target ? (mode === 'move' ? '航行！' : '撃て！') : '決定'}</b>
+              <button className={`cmd-btn go ${target ? 'ready' : ''} ${special ? 'special' : ''}`} disabled={busy || !target} onClick={() => void execute()}>
+                {special && <em className="special-hint">{SPECIAL_INFO[special].name}！</em>}
+                <b>{target ? (mode === 'move' ? '航行！' : mode === 'torpedo' ? '発射！' : '撃て！') : '決定'}</b>
                 <small>{target ? `${posLabel(target)} ${mode === 'move' ? 'へ移動' : 'を目標'}` : mode ? 'マスを選択' : '行動を選択'}</small>
               </button>
             </>
@@ -696,6 +800,14 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       {/* ---- enemy fleet & log ---- */}
       <aside className="fleet-col enemy">
         <GaugeBar value={game.enemyGauge} enemy />
+        <div className="aa-line" title="艦隊の対空合計。相手の航空攻撃の威力を下げる">
+          <span>
+            味方対空 <b>{game.aa}</b>
+          </span>
+          <span>
+            敵対空 <b>{game.enemyAa}</b>
+          </span>
+        </div>
         {game.enemyShips.map((s) => (
           <ShipPlate key={s.id} ship={s} look={looks.enemy[s.id]} hot={s.spotted && s.hp > 0} />
         ))}

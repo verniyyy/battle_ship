@@ -3,7 +3,7 @@ import { api } from '../api'
 import { audio } from '../audio'
 import { Backdrop, CardView, Counter, TopBar } from '../components/ui'
 import { fx } from '../fx'
-import { CLASS_INFO, lookOfCard, SKILL_INFO } from '../game'
+import { CLASS_INFO, lookOfCard, usesLine } from '../game'
 import { useGame } from '../state'
 import type { OwnedShip, ShipClass } from '../types'
 
@@ -21,23 +21,17 @@ export function sortShips(ships: OwnedShip[], sort: Sort, rarityOf: (s: OwnedShi
 }
 
 export function ShipStatLine({ s }: { s: OwnedShip }) {
-  const sk = SKILL_INFO[skillOf(s.stats.class)]
+  const st = s.stats
+  const weapon = st.air ? `航空 ${st.air}` : st.firepower ? `火力 ${st.firepower}` : `雷装 ${st.torpedo}`
   return (
     <span className="stat-line">
-      <span>耐久 {s.stats.hp}</span>
-      <span>主砲 {s.stats.ammo}</span>
-      <span>
-        {sk.icon}
-        {sk.name}×{s.stats.skill}
-      </span>
-      <span>会心 {s.stats.crit}%</span>
-      <span>回避 {s.stats.evasion}%</span>
+      <span>耐久 {st.hp}</span>
+      <span>{weapon}</span>
+      <span>速力 {st.speed}</span>
+      <span>{usesLine(st, st.class)}</span>
     </span>
   )
 }
-
-export const skillOf = (c: ShipClass) =>
-  (({ battleship: 'barrage', cruiser: 'flare', destroyer: 'sonar', submarine: 'torpedo', carrier: 'airstrike' }) as const)[c]
 
 export function Formation({ onBack }: { onBack: () => void }) {
   const { profile, card, setProfile, notify } = useGame()

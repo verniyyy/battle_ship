@@ -4,10 +4,9 @@ import { audio } from '../audio'
 import { ShipArt } from '../components/ShipArt'
 import { Backdrop, CardView, Modal, RarityBadge, Stars, TopBar } from '../components/ui'
 import { fx, RAINBOW } from '../fx'
-import { CLASS_INFO, lookOfCard, rarityName, SKILL_INFO } from '../game'
+import { CLASS_INFO, lookOfCard, rarityName, skillOf, SKILL_INFO } from '../game'
 import { useGame } from '../state'
 import type { Card, Gain } from '../types'
-import { skillOf } from './Formation'
 
 type Phase = 'idle' | 'rolling' | 'reveal' | 'spotlight' | 'summary'
 

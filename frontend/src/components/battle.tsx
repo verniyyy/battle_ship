@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { DAMAGE_LABEL, damageOf, SKILL_INFO, type Look } from '../game'
-import type { Pos, ShipView, SkillKind } from '../types'
+import { DAMAGE_LABEL, damageOf, SKILL_INFO, SPECIAL_INFO, TORPEDO_INFO, type Look } from '../game'
+import type { Pos, ShipView, SkillKind, Special } from '../types'
 import { ShipArt } from './ShipArt'
 import { Pips } from './ui'
 
@@ -36,7 +36,8 @@ export function ShipPlate({
         <span className="plate-name">
           {ship.name}
           {dmg !== 'none' && dmg !== 'sunk' && <em className={`dmg-tag ${dmg}`}>{DAMAGE_LABEL[dmg]}</em>}
-          {enemy && ship.spotted && ship.hp > 0 && <em className="spot-tag">発見</em>}
+          {enemy && ship.spotted && ship.hp > 0 && <em className="spot-tag">追跡</em>}
+          {ship.pinned && ship.hp > 0 && <em className="pin-tag">水柱</em>}
         </span>
         <span className={`hp-bar ${hpPct <= 34 ? 'low' : ''}`}>
           <i style={{ width: `${hpPct}%` }} />
@@ -45,9 +46,20 @@ export function ShipPlate({
           </b>
         </span>
         <span className="plate-meta">
-          <span className="ammo">
-            弾 <Pips value={ship.ammo} max={Math.min(ship.maxAmmo, 10)} kind="ammo" />
+          <span className="speed" title="速力：速い艦から行動する">
+            速<b>{ship.speed}</b>
           </span>
+          {ship.maxAmmo > 0 && (
+            <span className="ammo" title="主砲の残弾">
+              砲 <Pips value={ship.ammo} max={Math.min(ship.maxAmmo, 10)} kind="ammo" />
+            </span>
+          )}
+          {ship.maxTorps > 0 && (
+            <span className="torps" title="魚雷の残数">
+              {TORPEDO_INFO.icon}
+              <Pips value={ship.torps} max={ship.maxTorps} kind="ammo" />
+            </span>
+          )}
           {ship.maxSkill > 0 && (
             <span className="skill" title={SKILL_INFO[ship.skillKind].name}>
               {SKILL_INFO[ship.skillKind].icon}
@@ -83,6 +95,15 @@ export type Cutin =
   | { kind: 'notice'; side: 'player' | 'cpu'; text: string }
   | { kind: 'banner'; text: string; sub?: string; tone: 'gold' | 'red' | 'blue' | 'rainbow' }
   | { kind: 'turn'; turn: number; left?: number }
+  | { kind: 'special'; special: Special; look: Look; line: string; enemy?: boolean }
+  | { kind: 'initiative'; first: InitiativeSide; second?: InitiativeSide }
+
+export interface InitiativeSide {
+  look: Look
+  speed: number
+  late?: boolean
+  enemy: boolean
+}
 
 export function CutinLayer({ cutin, onSkip }: { cutin: Cutin; onSkip?: () => void }) {
   switch (cutin.kind) {
@@ -162,6 +183,48 @@ export function CutinLayer({ cutin, onSkip }: { cutin: Cutin; onSkip?: () => voi
           <div className="banner-text">
             {cutin.text}
             {cutin.sub && <small>{cutin.sub}</small>}
+          </div>
+        </div>
+      )
+    case 'special': {
+      const info = SPECIAL_INFO[cutin.special]
+      return (
+        <div className={`cutin special ${cutin.special} ${cutin.enemy ? 'enemy-side' : ''}`} onClick={onSkip} style={{ ['--accent' as string]: cutin.look.color }}>
+          <div className="special-flash" />
+          <div className="speedlines fast" />
+          <div className="special-rays" />
+          <div className="special-art">
+            <ShipArt look={cutin.look} showKanji={false} />
+          </div>
+          <div className="special-title">
+            <small>{info.en}</small>
+            <b>{info.name}</b>
+            <span className="cutin-caption">
+              {cutin.look.name}「{cutin.line}」
+            </span>
+          </div>
+        </div>
+      )
+    }
+    case 'initiative':
+      return (
+        <div className="cutin initiative" onClick={onSkip}>
+          <div className="init-band">
+            {[cutin.first, cutin.second].map(
+              (s, i) =>
+                s && (
+                  <div key={i} className={`init-side ${s.enemy ? 'enemy' : 'player'} ${i === 0 ? 'first' : 'second'}`}>
+                    <em>{i === 0 ? '先攻' : '後攻'}</em>
+                    <span className="init-art">
+                      <ShipArt look={s.look} showKanji={false} />
+                    </span>
+                    <span className="init-name">
+                      {s.look.name}
+                      <small>{s.late ? '雷撃（常に後攻）' : `速力 ${s.speed}`}</small>
+                    </span>
+                  </div>
+                ),
+            )}
           </div>
         </div>
       )

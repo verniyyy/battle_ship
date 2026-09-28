@@ -1,7 +1,9 @@
 export type Side = 'player' | 'cpu'
 export type ShipClass = 'battleship' | 'cruiser' | 'destroyer' | 'submarine' | 'carrier'
-export type SkillKind = 'barrage' | 'flare' | 'sonar' | 'torpedo' | 'airstrike'
-export type ActionType = 'attack' | 'move' | 'skill' | 'ultimate'
+export type SkillKind = 'barrage' | 'flare' | 'sonar' | 'spread' | 'airstrike'
+export type ActionType = 'attack' | 'torpedo' | 'move' | 'skill' | 'ultimate'
+export type Special = 'spotting' | 'precision' | 'pointblank'
+export type Weather = 'clear' | 'fog' | 'storm' | 'night'
 export type Direction = 'north' | 'south' | 'east' | 'west'
 export type EndReason = 'annihilated' | 'disarmed' | 'judgment'
 export type Rarity = 0 | 1 | 2 | 3 | 4
@@ -11,16 +13,27 @@ export interface Pos {
   col: number
 }
 
-export interface Spec {
+/** A ship's battle numbers. */
+export interface Stats {
+  hp: number
+  firepower: number
+  torpedo: number
+  air: number
+  aa: number
+  armor: number
+  speed: number
+  ammo: number
+  torps: number
+  skill: number
+  crit: number
+  evasion: number
+}
+
+export interface Spec extends Stats {
   key: string
   class: ShipClass
   name: string
   rarity: number
-  hp: number
-  ammo: number
-  skill: number
-  crit: number
-  evasion: number
   boss?: boolean
 }
 
@@ -35,15 +48,27 @@ export interface ShipView {
   maxHp: number
   ammo: number
   maxAmmo: number
+  torps: number
+  maxTorps: number
   skillKind: SkillKind
   skill: number
   maxSkill: number
+  firepower: number
+  torpedo: number
+  air: number
+  aa: number
+  armor: number
+  speed: number
   crit: number
   evasion: number
+  gunRange: number
+  moveRange: number
+  pinned?: boolean
   pos?: Pos
   spotted?: boolean
   spottedTurn?: number
   attackTargets?: Pos[]
+  torpedoTargets?: Pos[]
   moveTargets?: Pos[]
   skillTargets?: Pos[]
 }
@@ -69,9 +94,16 @@ export interface Result {
   type: ActionType
   shipId: number
   skill?: SkillKind
+  round: number
+  speed: number
+  late?: boolean
+  cancelled?: boolean
+  special?: Special
   target?: Pos
   shots?: Shot[]
-  path?: Pos[]
+  origin?: Pos
+  paths?: Pos[][]
+  columns?: Pos[]
   scanned?: Pos[]
   revealed?: Sighting[]
   direction?: Direction
@@ -85,6 +117,7 @@ export interface GameView {
   boardSize: number
   turn: number
   maxTurns: number
+  weather: Weather
   status: 'in_progress' | 'finished'
   winner?: Side
   endReason?: EndReason
@@ -92,6 +125,9 @@ export interface GameView {
   enemyGauge: number
   combo: number
   maxCombo: number
+  aa: number
+  enemyAa: number
+  lastGun?: Pos
   playerShips: ShipView[]
   enemyShips: ShipView[]
   history: Result[]
@@ -123,18 +159,13 @@ export interface Area {
   theme: string
 }
 
-export interface Card {
+export interface Card extends Stats {
   id: string
   class: ShipClass
   name: string
   title: string
   rarity: Rarity
   color: string
-  hp: number
-  ammo: number
-  skill: number
-  crit: number
-  evasion: number
   intro: string
   attack: string
   home: string[]
@@ -213,8 +244,8 @@ export interface MatchResponse {
 }
 
 export interface ActionResponse {
-  player: Result
-  cpu?: Result
+  /** The round's actions, player's and CPU's, in the order they resolved. */
+  results: Result[]
   game: GameView
   reward?: Reward
   profile?: Profile

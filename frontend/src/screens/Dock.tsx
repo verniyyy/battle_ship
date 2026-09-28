@@ -4,10 +4,10 @@ import { audio } from '../audio'
 import { ShipArt } from '../components/ShipArt'
 import { Backdrop, CardView, Counter, RarityBadge, Stars, TopBar } from '../components/ui'
 import { fx } from '../fx'
-import { CLASS_INFO, lookOfCard, SKILL_INFO } from '../game'
+import { CLASS_INFO, lookOfCard, skillOf, SKILL_INFO, statRows, usesLine } from '../game'
 import { useGame } from '../state'
 import type { Card, OwnedShip } from '../types'
-import { skillOf, sortShips } from './Formation'
+import { sortShips } from './Formation'
 
 type Tab = 'roster' | 'book'
 
@@ -108,8 +108,6 @@ export function Dock({ onBack }: { onBack: () => void }) {
   )
 }
 
-const STAT_MAX = { hp: 8, ammo: 12, skill: 6, crit: 60, evasion: 50 }
-
 function ShipDetail({ ship, card }: { ship: OwnedShip; card: Card }) {
   const { profile, setProfile, notify } = useGame()
   const [line, setLine] = useState(card.intro)
@@ -156,13 +154,7 @@ function ShipDetail({ ship, card }: { ship: OwnedShip; card: Card }) {
     }
   }
 
-  const stats: [string, number, number][] = [
-    ['耐久', ship.stats.hp, STAT_MAX.hp],
-    ['主砲', ship.stats.ammo, STAT_MAX.ammo],
-    [`${sk.name}`, ship.stats.skill, STAT_MAX.skill],
-    ['会心率', ship.stats.crit, STAT_MAX.crit],
-    ['回避率', ship.stats.evasion, STAT_MAX.evasion],
-  ]
+  const stats = statRows(ship.stats)
 
   return (
     <div className={`ship-detail r${card.rarity}`} key={ship.uid}>
@@ -197,7 +189,7 @@ function ShipDetail({ ship, card }: { ship: OwnedShip; card: Card }) {
         </span>
       </div>
       <ul className="detail-stats">
-        {stats.map(([k, v, m]) => (
+        {stats.map(([k, v, m, unit]) => (
           <li key={k}>
             <span>{k}</span>
             <span className="stat-track">
@@ -205,14 +197,18 @@ function ShipDetail({ ship, card }: { ship: OwnedShip; card: Card }) {
             </span>
             <b>
               {v}
-              {k.endsWith('率') ? '%' : ''}
+              {unit}
             </b>
           </li>
         ))}
+        <li className="uses">
+          <span>回数</span>
+          <b>{usesLine(ship.stats, card.class)}</b>
+        </li>
       </ul>
       <p className="detail-skill">
         {sk.icon} <b>{sk.name}</b> {sk.desc}
-        {card.class === 'submarine' && <em>潜航：移動が敵に知られず、水しぶきにも映らない</em>}
+        <em>{CLASS_INFO[card.class].role}</em>
       </p>
       <div className="detail-actions">
         <button ref={btnRef} className={`train-btn ${capped ? 'capped' : ''} ${afford ? '' : 'poor'}`} disabled={busy || capped} onClick={() => void train()}>
@@ -232,7 +228,7 @@ function ShipDetail({ ship, card }: { ship: OwnedShip; card: Card }) {
           {profile.secretary === ship.uid ? '秘書艦' : '秘書艦に任命'}
         </button>
       </div>
-      <p className="detail-hint">Lv10/30 で主砲+1、Lv15/40 で耐久+1、Lv25 でスキル+1。★2 耐久+1、★4 主砲+1、★5 スキル+1。</p>
+      <p className="detail-hint">レベルごとに耐久・火力・雷装・航空・対空が +0.6%。Lv10/30 で砲弾+1、Lv20 で魚雷+1、Lv25 でスキル+1。限界突破はレベル上限を上げ、★ごとに会心+1、★5 でスキル+1。</p>
     </div>
   )
 }

@@ -5,7 +5,7 @@ import { audio } from '../audio'
 import { ShipArt } from '../components/ShipArt'
 import { Backdrop, Badge, Modal, TopBar } from '../components/ui'
 import { fx } from '../fx'
-import { lookOfCard, SKILL_INFO, CLASS_INFO, TIPS } from '../game'
+import { lookOfCard, SKILL_INFO, SPECIAL_INFO, CLASS_INFO, TIPS, TORPEDO_INFO } from '../game'
 import { celebrateGrant, useGame } from '../state'
 import type { Catalog, GameSummary, Grant, Profile } from '../types'
 
@@ -349,13 +349,26 @@ function RulesDialog({ onClose }: { onClose: () => void }) {
     <Modal title="作戦要綱" onClose={onClose} wide>
       <ol className="rules">
         <li>
-          <b>配置</b>編成した艦隊を海域に配置します。敵艦隊も同じ海域のどこかに潜んでいます。
+          <b>配置</b>編成した艦隊を海域に配置します。敵艦隊も同じ海域のどこかに潜んでいます。海況（快晴・濃霧・時化・夜戦）は出撃ごとに変わります。
         </li>
         <li>
-          <b>行動</b>毎ターン 1 隻を選び、<em>砲撃</em>（周囲 8 マス）・<em>移動</em>（縦横に何マスでも）・<em>スキル</em>のいずれかを指示します。
+          <b>行動</b>毎ターン、両軍が同時に 1 隻ずつ行動を決め、<em>速力</em>の高い艦から実行されます（<em>雷撃</em>は必ず後攻）。先に沈められた艦の行動は失われます。
         </li>
         <li>
-          <b>報告</b>砲撃は「<em>命中</em>」「<em>水しぶき</em>（周囲に水上艦あり）」「外れ」で報告。命中した敵の位置はその後も追跡されます。
+          <b>指示</b>
+          <span className="rule-skill">
+            <em>砲撃</em>艦種ごとの射程内の 1 マス。戦艦の主砲は十字に着弾し、外れても<em>水柱</em>で周りの水上艦を次のターンまで足止めします。
+          </span>
+          <span className="rule-skill">
+            <em>{TORPEDO_INFO.name}</em>
+            {TORPEDO_INFO.desc}。潜水艦には当たりません。
+          </span>
+          <span className="rule-skill">
+            <em>移動</em>縦横に艦種ごとの距離まで（戦艦・空母 1、巡洋艦・潜水艦 2、駆逐艦 3）。方角と距離は敵に通知されます（潜水艦は秘匿）。
+          </span>
+        </li>
+        <li>
+          <b>報告</b>「<em>命中</em>」「<em>水しぶき</em>（周囲に水上艦あり）」「外れ」で報告。一度見つけた水上艦は移動しても追跡され続けます。
         </li>
         <li>
           <b>スキル</b>
@@ -366,10 +379,21 @@ function RulesDialog({ onClose }: { onClose: () => void }) {
           ))}
         </li>
         <li>
+          <b>損害</b>ダメージは火力・雷装・航空の ±15% で振れ、装甲で軽減。<em>会心</em>は 2 倍。空母の爆撃は相手艦隊の<em>対空</em>合計で弱まります。
+        </li>
+        <li>
+          <b>特殊攻撃</b>
+          {Object.values(SPECIAL_INFO).map((s) => (
+            <span key={s.name} className="rule-skill">
+              <em>{s.name}</em> {s.desc}
+            </span>
+          ))}
+        </li>
+        <li>
           <b>決戦</b>命中・撃沈・被弾で決戦ゲージが溜まり、満タンで<em>全艦斉射</em>（3×3 を砲撃）が使えます。連続命中のコンボでゲージ加速！
         </li>
         <li>
-          <b>勝敗</b>全艦撃沈、または攻撃手段が尽きた側の負け。ターン制限では残り耐久の割合で判定します。
+          <b>勝敗</b>全艦撃沈で決着。攻撃手段が尽きた側は<em>戦略的撤退</em>（敗北）。ターン制限では残り耐久の割合で判定します。
         </li>
       </ol>
     </Modal>

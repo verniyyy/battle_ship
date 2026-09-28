@@ -2269,3 +2269,29 @@ button.card:active {
   box-shadow: 0 3px 0 #7a4f06;
   animation: go-pulse 1.3s ease-in-out infinite;
 }
+
+/* Ship detail: the fuller stat sheet fits in two columns. */
+.detail-stats {
+  grid-template-columns: 1fr 1fr;
+  column-gap: 14px;
+}
+
+.detail-stats li {
+  grid-template-columns: 34px 1fr 42px;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.detail-stats li.uses {
+  grid-column: span 2;
+  grid-template-columns: 34px 1fr;
+}
+
+.detail-stats li.uses b {
+  text-align: left;
+}
+
+.detail-skill em {
+  display: block;
+  margin-top: 2px;
+}
