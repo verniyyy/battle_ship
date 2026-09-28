@@ -41,6 +41,8 @@ docker compose up --build
 
 全 22 艦のキャラ絵（全身・背景透過）を AI で生成できます。生成した絵は艦カード・母港の秘書艦・建造・カットイン・マップ上の駒に使われ、カードや駒では検出した顔の位置に合わせてバストアップに、秘書艦や建造では全身で表示します。
 
+絵はキャラクターデザインそのものに専念します。艤装（砲塔や機械）は崩れやすいので描かせず、艦種らしさは軍服・セーラー襟・錨の紋章などの衣装で表現し、武器は剣・槍・弓・傘など形の崩れにくいものを 1 人 1 つだけ持たせます。エフェクト（雷・炎・キラキラ）や背景（月・空）も描かせず、描かれてしまった候補は自動で落とします。
+
 GPU は [Google Colab](https://colab.research.google.com) の無料枠（T4）を使います。モデルは Illustrious 系の [WAI-illustrious v15](https://huggingface.co/John6666/wai-nsfw-illustrious-sdxl-v150-sdxl)（SDXL。ライセンスは FAIPL-1.0-SD で、生成画像の利用に制限はありません）。手元に必要なのは Go だけです。
 
 1. キットを作る（`tools/portraitgen` の Python パッケージと、`backend/cmd/portraits/characters.go` のキャラ設定から組み立てたプロンプト）
@@ -50,8 +52,8 @@ GPU は [Google Colab](https://colab.research.google.com) の無料枠（T4）�
    ```
 
 2. [`tools/portraitgen/colab.ipynb`](tools/portraitgen/colab.ipynb) を Colab で開き（ファイル → ノートブックをアップロード）、ランタイムを **T4 GPU** にして上から実行
-   - ③ 探索: カードごとに下描きを数枚描き、全身が枠からはみ出している・顔が小さすぎる／大きすぎる・複数人いる、といった候補は自動で不採用。残りを美観スコア順に表示
-   - ④ 仕上げ: 採用した下描きを 1.5 倍で描き直し、顔と手を拡大して描き直してから切り抜く。気に入った候補は `PICKS` で指定（省略時はスコア最上位）
+   - ③ 探索: カードごとに下描きを何枚も描いて自動で選別。全身が枠からはみ出す・顔の大きさが全身絵でない・複数人・エフェクトや背景や艤装が描かれている（[WD タガー](https://huggingface.co/SmilingWolf/wd-swinv2-tagger-v3)で検出）・背景が無地でない・キャラから離れた物体がある候補は不採用。残りを「美観スコア＋デザイン通りか（髪色・武器）−黒つぶれの強いコントラスト」の順に表示
+   - ④ 仕上げ: 採用した下描きを Real-ESRGAN で拡大して 1.5 倍で描き直し、キャラ全体をタイルに分けてさらに約 2 倍で描き直し（衣装・装飾・武器の細部）、顔と手を 1024px で描き直す。最後にエフェクトの混入を再検査し、背景から浮いた小さな破片を除いて切り抜く。気に入った候補は `PICKS` で指定（省略時はスコア最上位）
    - ⑤ `portraits.zip` をダウンロード
 3. 取り込む（`frontend/public/portraits/` に WebP を置き、顔の位置を含む `manifest.json` を更新）
 
@@ -59,9 +61,9 @@ GPU は [Google Colab](https://colab.research.google.com) の無料枠（T4）�
    cd backend && go run ./cmd/portraits import ~/Downloads/portraits.zip
    ```
 
-T4 では探索が 1 枚約 30 秒、仕上げが 1 枚約 90 秒です（全艦で合計 1 時間半ほど。`SAVE_TO_DRIVE` で中断しても再開可能）。一部の艦だけ作り直すときは `-only bb_guren,ca_soyo` でキットを作るか、ノートブックの `ONLY` を使います。取り込みは艦ごとに上書きされ、他の艦の絵はそのまま残ります。
+T4 では探索が 1 枚約 30 秒、仕上げが 1 枚約 3 分です（全艦で合計 2 時間ほど。`SAVE_TO_DRIVE` で中断しても再開可能）。一部の艦だけ作り直すときは `-only bb_guren,ca_soyo` でキットを作るか、ノートブックの `ONLY` を使います。取り込みは艦ごとに上書きされ、他の艦の絵はそのまま残ります。
 
-キャラの見た目を変えたいときは `characters.go` のキャラ設定（Danbooru タグ）を編集してキットを作り直してください。生成パイプラインのテストは CPU だけで動きます（`cd tools/portraitgen && uv run pytest`、極小のダミーモデルで SDXL の各工程を通します）。生成物は `.gitignore` 済みです。
+キャラの見た目を変えたいときは `characters.go` のキャラ設定（Danbooru タグ）を編集してキットを作り直してください。冒頭のコメントにある設計ルール（艤装・エフェクトなし、武器は 1 つ、配色は 2〜3 色）はテストでも検査しています。`Check` にはタガーの語彙にあるタグだけを書けます。生成パイプラインのテストは CPU だけで動きます（`cd tools/portraitgen && uv run pytest`、極小のダミーモデルで SDXL の各工程を、本物の Real-ESRGAN の重みで拡大を通します）。生成物は `.gitignore` 済みです。
 
 ## ゲームの流れ
 
