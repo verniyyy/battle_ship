@@ -18,6 +18,23 @@ export function ShipBadge({ cls, enemy, sunk }: { cls: ShipClass; enemy?: boolea
   return <span className={`ship-badge ${cls} ${enemy ? 'enemy' : ''} ${sunk ? 'sunk' : ''}`}>{KANJI[cls]}</span>
 }
 
+// Map piece for one ship. The class kanji alone can't tell two ships of the same
+// class apart, so the token shows the character's face (when the legacy pack is
+// present) plus the ship's fleet number, which matches the number on its plate.
+export function ShipToken({ cls, no, enemy, sunk }: { cls: ShipClass; no: number; enemy?: boolean; sunk?: boolean }) {
+  const { legacy } = useAssets()
+  const face = legacy && !enemy
+  return (
+    <span className={`ship-token ${cls} ${enemy ? 'enemy' : ''} ${sunk ? 'sunk' : ''}`}>
+      <span className="token-disc">
+        {face ? <img className="token-face" src={assets.portrait(cls)} alt="" draggable={false} /> : <span className="token-kanji">{KANJI[cls]}</span>}
+      </span>
+      <span className="token-no">{no}</span>
+      {face && <span className="token-class">{KANJI[cls]}</span>}
+    </span>
+  )
+}
+
 // Full-body character art, or a large emblem when the legacy pack is absent.
 export function Portrait({ cls, className = '' }: { cls: ShipClass; className?: string }) {
   const { legacy } = useAssets()

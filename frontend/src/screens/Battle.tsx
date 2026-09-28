@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { Board, CellOverlay } from '../components/Board'
 import { CutinLayer, Impact, ShipPlate, type Cutin, type ImpactKind } from '../components/battle'
-import { Backdrop, Portrait, ShipBadge, SoundToggle } from '../components/ui'
+import { Backdrop, Portrait, ShipToken, SoundToggle } from '../components/ui'
 import { describe, historyLog, report, type LogLine } from '../game'
 import { assets, sound, useAssets } from '../theme'
 import { posLabel, samePos, type ActionType, type GameResponse, type GameView, type Pos, type Result, type ShipView } from '../types'
@@ -288,8 +288,8 @@ export function Battle({
             return (
               <>
                 {marker && !busy && <span className={`marker ${marker}`} />}
-                {own && <ShipBadge cls={own.class} />}
-                {enemy && <ShipBadge cls={enemy.class} enemy sunk={enemy.hp <= 0} />}
+                {own && <ShipToken cls={own.class} no={own.id + 1} />}
+                {enemy && <ShipToken cls={enemy.class} no={enemy.id + 1} enemy sunk={enemy.hp <= 0} />}
               </>
             )
           }}

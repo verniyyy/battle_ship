@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { Board } from '../components/Board'
-import { Backdrop, BackButton, Banner, Pips, Portrait, ShipBadge } from '../components/ui'
+import { Backdrop, BackButton, Banner, Pips, Portrait, ShipBadge, ShipToken } from '../components/ui'
 import { sound } from '../theme'
 import { posLabel, samePos, type FleetInfo, type GameResponse, type Pos } from '../types'
 
@@ -134,7 +134,7 @@ export function Sortie({ onDeploy, onBack }: { onDeploy: (g: GameResponse) => vo
               cellClass={(p) => (shipAt(p) >= 0 ? `has-ship ${shipAt(p) === selected ? 'selected-ship' : ''}` : 'placeable')}
               renderCell={(p) => {
                 const i = shipAt(p)
-                return i >= 0 ? <ShipBadge cls={fleet.ships[i].class} /> : null
+                return i >= 0 ? <ShipToken cls={fleet.ships[i].class} no={i + 1} /> : null
               }}
             />
           </section>

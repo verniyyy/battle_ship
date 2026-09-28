@@ -27,6 +27,7 @@ export function ShipPlate({
       onClick={onClick}
       disabled={!onClick || dmg === 'sunk'}
     >
+      <span className="fleet-no">{ship.id + 1}</span>
       <span className="plate-banner">
         <Banner cls={ship.class} state={state} enemy={enemy} />
         {dmg !== 'none' && dmg !== 'sunk' && <span className={`dmg-tag ${dmg}`}>{DAMAGE_LABEL[dmg]}</span>}
@@ -120,7 +121,7 @@ export function CutinLayer({ cutin, onSkip }: { cutin: Cutin; onSkip?: () => voi
       )
     case 'attack':
       return (
-        <div className="cutin attack" onClick={onSkip}>
+        <div className={`cutin attack ${legacy ? 'has-portrait' : ''}`} onClick={onSkip}>
           <div className="cutin-band" style={ui ? { backgroundImage: `url(${assets.band('green')})` } : undefined} />
           {legacy && (
             <div className="cutin-portrait">
@@ -137,19 +138,23 @@ export function CutinLayer({ cutin, onSkip }: { cutin: Cutin; onSkip?: () => voi
       return (
         <div className="cutin enemy" onClick={onSkip}>
           <div className="cutin-diag" style={ui ? { backgroundImage: `url(${assets.band('red_diag')})` } : undefined} />
-          <div className="cutin-enemy-banner">
-            <Banner cls={cutin.cls} state="b" enemy />
-          </div>
-          <div className="cutin-label">
-            <FxLabel text="敵艦の砲撃！" tone="red" />
-            <span className="cutin-caption">敵{cutin.name}が発砲！</span>
+          {/* Tilted to the same angle as the band so the label and plate sit inside it. */}
+          <div className="cutin-rig">
+            <div className="cutin-label">
+              <FxLabel text="敵艦の砲撃！" tone="red" />
+              <span className="cutin-caption">敵{cutin.name}が発砲！</span>
+            </div>
+            <div className="cutin-enemy-banner">
+              <Banner cls={cutin.cls} state="b" enemy />
+            </div>
           </div>
         </div>
       )
     case 'toast':
+      // "notice", not "toast": the global .toast class is the error popup.
       return (
-        <div className={`cutin toast ${cutin.side}`}>
-          <div className="toast-band" style={ui ? { backgroundImage: `url(${assets.band(cutin.side === 'player' ? 'green' : 'red')})` } : undefined}>
+        <div className={`cutin notice ${cutin.side}`}>
+          <div className="notice-band" style={ui ? { backgroundImage: `url(${assets.band(cutin.side === 'player' ? 'green' : 'red')})` } : undefined}>
             <span>{cutin.text}</span>
           </div>
         </div>

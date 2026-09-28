@@ -1538,24 +1538,133 @@ p {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.cell > .ship-badge {
+/* Map token: a face (or class kanji) disc ringed in the class colour, with the
+   fleet number top-left and, over a face, the class kanji bottom-right. */
+.ship-token {
+  --c: #4fb3ff;
   position: relative;
   z-index: 2;
+  width: 72%;
+  aspect-ratio: 1;
   animation: pop-in 0.3s cubic-bezier(0.2, 1.6, 0.4, 1) both;
 }
 
+.ship-token.battleship {
+  --c: #e0a93a;
+  /* face centre as a fraction of the portrait, and portrait height per token */
+  --fx: 39%;
+  --fy: 16%;
+  --zoom: 4.4;
+}
+.ship-token.destroyer {
+  --c: #3fa6f0;
+  --fx: 51%;
+  --fy: 15%;
+  --zoom: 4.6;
+}
+.ship-token.submarine {
+  --c: #e25d8a;
+  --fx: 65%;
+  --fy: 29%;
+  --zoom: 5.8;
+}
+.ship-token.enemy {
+  --c: #7c2a2a;
+}
+
+.token-disc {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--c) 70%, #fff), var(--c) 55%, color-mix(in srgb, var(--c) 60%, #000));
+  border: 3px solid var(--c);
+  box-shadow:
+    0 0 0 1.5px rgba(255, 255, 255, 0.85),
+    0 3px 8px rgba(0, 0, 0, 0.6),
+    0 0 12px color-mix(in srgb, var(--c) 60%, transparent);
+}
+
+.ship-token:has(.token-face) .token-disc {
+  background: radial-gradient(circle at 50% 40%, #f4f8ff, #b9cde6);
+}
+
+.token-face {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: auto;
+  height: calc(var(--zoom) * 100%);
+  max-width: none;
+  transform: translate(calc(-1 * var(--fx)), calc(-1 * var(--fy)));
+  pointer-events: none;
+}
+
+.token-kanji {
+  font-family: var(--serif);
+  font-weight: 900;
+  font-size: 26px;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.token-no,
+.token-class {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+
+.token-no {
+  left: -8%;
+  top: -8%;
+  width: 36%;
+  aspect-ratio: 1;
+  font-size: 14px;
+  color: var(--navy-900);
+  background: var(--gold);
+  border: 1.5px solid #fff;
+}
+
+.ship-token.enemy .token-no {
+  color: #fff;
+  background: var(--red);
+}
+
+.token-class {
+  right: -8%;
+  bottom: -8%;
+  width: 34%;
+  aspect-ratio: 1;
+  font-family: var(--serif);
+  font-size: 12px;
+  color: #fff;
+  background: var(--c);
+  border: 1.5px solid #fff;
+}
+
+.ship-token.sunk {
+  filter: grayscale(1) brightness(0.6);
+}
+
+.cell.selected-ship > .ship-token .token-disc {
+  box-shadow:
+    0 0 0 3px var(--cyan),
+    0 0 18px var(--cyan);
+}
 .cell.placeable:hover::after {
   content: '';
   position: absolute;
   inset: 18%;
   border-radius: 50%;
   border: 2px dashed rgba(255, 255, 255, 0.5);
-}
-
-.cell.selected-ship > .ship-badge {
-  box-shadow:
-    0 0 0 3px var(--cyan),
-    0 0 18px var(--cyan);
 }
 
 .cell.target-attack,
@@ -1803,6 +1912,19 @@ p {
   box-shadow:
     0 0 0 1px var(--cyan),
     0 0 20px rgba(70, 224, 255, 0.5);
+}
+
+.plate .fleet-no {
+  left: -8px;
+  top: -8px;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+}
+
+.plate.enemy .fleet-no {
+  color: #fff;
+  background: var(--red);
 }
 
 .plate-banner {
@@ -2234,7 +2356,7 @@ p {
   overflow: hidden;
 }
 
-.cutin.toast,
+.cutin.notice,
 .cutin.turn {
   pointer-events: none;
 }
@@ -2311,76 +2433,157 @@ p {
   animation: fade-in 0.15s both;
 }
 
+/* Player attack: a horizontal band whose dark core spans 265-452px
+   (band_green.png is 1800x225 with the core at 20%-82% of its height). */
 .cutin-band {
   position: absolute;
   left: -60px;
   right: -60px;
-  top: 230px;
-  height: 260px;
-  background: linear-gradient(180deg, transparent, rgba(40, 220, 90, 0.4) 18%, rgba(0, 0, 0, 0.92) 20%, rgba(0, 0, 0, 0.92) 80%, rgba(40, 220, 90, 0.4) 82%, transparent);
+  top: 205px;
+  height: 300px;
+  background: linear-gradient(180deg, transparent, rgba(40, 220, 90, 0.4) 18%, rgba(0, 0, 0, 0.92) 20%, rgba(0, 0, 0, 0.92) 82%, rgba(40, 220, 90, 0.4) 84%, transparent);
   background-size: 100% 100%;
   animation: band-in 0.3s cubic-bezier(0.2, 1, 0.4, 1) both;
 }
 
+/* Portrait window cut into the band's core; each class centres its face in it. */
 .cutin-portrait {
+  --fx: 50%;
+  --fy: 15%;
+  --h: 820px;
   position: absolute;
   left: 60px;
-  top: 150px;
-  width: 360px;
-  height: 460px;
-  clip-path: polygon(0 18%, 100% 18%, 100% 82%, 0 82%);
+  top: 265px;
+  width: 520px;
+  height: 187px;
   overflow: hidden;
+  clip-path: polygon(56px 0, 100% 0, calc(100% - 56px) 100%, 0 100%);
+  background: linear-gradient(90deg, rgba(40, 220, 90, 0.28), rgba(40, 220, 90, 0.06));
   animation: portrait-in 0.9s cubic-bezier(0.1, 0.9, 0.3, 1) both;
 }
 
+.cutin-portrait:has(.battleship) {
+  --fx: 40%;
+  --fy: 16%;
+}
+.cutin-portrait:has(.destroyer) {
+  --fx: 51%;
+  --fy: 13%;
+}
+.cutin-portrait:has(.submarine) {
+  --fx: 63%;
+  --fy: 33%;
+  --h: 660px;
+}
+
 .cutin-portrait .portrait {
-  height: 900px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: auto;
+  height: var(--h);
+  max-width: none;
+  transform: translate(calc(-1 * var(--fx)), calc(-1 * var(--fy)));
 }
 
 .cutin.attack .cutin-label {
-  left: 360px;
+  top: 265px;
+  bottom: auto;
+  height: 187px;
+  gap: 2px;
   animation: slide-left 0.35s 0.1s cubic-bezier(0.2, 1.3, 0.4, 1) both;
 }
 
-.cutin-caption {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  text-shadow: 0 2px 4px #000;
+.cutin.attack.has-portrait .cutin-label {
+  left: 580px;
+  right: 40px;
 }
 
+.cutin.attack .fx-label {
+  max-height: 132px;
+}
+
+.cutin.attack .fx-label.text {
+  font-size: 68px;
+  line-height: 1.2;
+}
+
+.cutin-caption {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  white-space: nowrap;
+  text-shadow:
+    0 0 6px #000,
+    0 2px 4px #000;
+}
+
+/* Enemy fire: band_red_diag.png (1500x750) slopes down to the right at ~14.5deg;
+   placed unscaled so its core crosses the stage centre. */
 .cutin-diag {
   position: absolute;
-  left: -100px;
-  right: -100px;
-  top: 90px;
-  height: 540px;
-  background: linear-gradient(-17deg, transparent 30%, rgba(255, 50, 40, 0.5) 33%, rgba(20, 20, 20, 0.92) 35%, rgba(20, 20, 20, 0.92) 65%, rgba(255, 50, 40, 0.5) 67%, transparent 70%);
+  left: -110px;
+  top: 18px;
+  width: 1500px;
+  height: 750px;
+  background: linear-gradient(194.5deg, transparent 35%, rgba(255, 50, 40, 0.5) 36.5%, rgba(20, 20, 20, 0.92) 37.5%, rgba(20, 20, 20, 0.92) 56.5%, rgba(255, 50, 40, 0.5) 57.5%, transparent 59%);
   background-size: 100% 100%;
   animation: diag-in 0.35s cubic-bezier(0.2, 1, 0.4, 1) both;
 }
 
-.cutin-enemy-banner {
+.cutin-rig {
   position: absolute;
-  right: 150px;
-  top: 250px;
-  transform: rotate(-17deg) scale(1.8);
-  animation: enemy-banner-in 0.6s cubic-bezier(0.2, 1, 0.4, 1) both;
+  left: 50%;
+  top: 360px;
+  width: 1160px;
+  height: 190px;
+  padding: 0 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transform: translate(-50%, -50%) rotate(14.5deg);
 }
 
 .cutin.enemy .cutin-label {
-  right: 420px;
-  top: 120px;
+  position: static;
   animation: slide-right 0.35s 0.1s cubic-bezier(0.2, 1.3, 0.4, 1) both;
 }
 
-.toast-band {
+.cutin.enemy .fx-label.text {
+  font-size: 68px;
+  line-height: 1.2;
+}
+
+.cutin-enemy-banner {
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.7));
+  animation: enemy-banner-in 0.5s cubic-bezier(0.2, 1, 0.4, 1) both;
+}
+
+.cutin-enemy-banner .banner {
+  width: 432px;
+  height: 108px;
+}
+
+.cutin-enemy-banner .ship-badge {
+  font-size: 44px;
+}
+
+.cutin-enemy-banner .banner.fallback .ship-badge {
+  width: 86px;
+}
+
+/* Move notice: sized to its text, centred near the top of the stage. */
+.notice-band {
   position: absolute;
-  left: 50%;
+  left: 0;
+  right: 0;
   top: 92px;
-  width: 700px;
+  width: fit-content;
+  min-width: 700px;
+  max-width: 1160px;
   height: 88px;
-  margin-left: -350px;
+  margin-inline: auto;
+  padding: 0 120px;
   display: grid;
   place-items: center;
   background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.9) 12%, rgba(0, 0, 0, 0.9) 88%, transparent);
@@ -2388,17 +2591,21 @@ p {
   animation: toast-in 1.1s ease-in-out both;
 }
 
-.cutin.toast.player .toast-band:not([style]) {
+.cutin.notice.player .notice-band:not([style]) {
   border-block: 2px solid var(--green);
 }
-.cutin.toast.cpu .toast-band:not([style]) {
+.cutin.notice.cpu .notice-band:not([style]) {
   border-block: 2px solid var(--red);
 }
 
-.toast-band span {
+.notice-band span {
   font-size: 20px;
   font-weight: 900;
   letter-spacing: 0.1em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
   text-shadow: 0 2px 4px #000;
 }
 
@@ -2406,13 +2613,16 @@ p {
   position: absolute;
   left: 0;
   right: 0;
-  top: 300px;
+  top: 282px;
+  padding: 14px 0 18px;
   text-align: center;
   font-size: 64px;
   font-weight: 900;
   font-style: italic;
   letter-spacing: 0.1em;
+  text-indent: 0.1em;
   color: #fff;
+  background: linear-gradient(90deg, transparent 15%, rgba(4, 12, 26, 0.75) 35%, rgba(4, 12, 26, 0.75) 65%, transparent 85%);
   text-shadow:
     0 0 20px var(--cyan),
     0 4px 0 #0a1628;
@@ -2423,6 +2633,8 @@ p {
   display: block;
   font-size: 16px;
   letter-spacing: 0.8em;
+  /* balance the trailing letter-spacing so the line stays centred */
+  text-indent: 0.8em;
   color: var(--cyan);
 }
 
@@ -3011,7 +3223,7 @@ p {
 
 @keyframes diag-in {
   from {
-    transform: translate(100%, -30%);
+    transform: translate(100%, 25%);
   }
 }
 
@@ -3032,7 +3244,7 @@ p {
 @keyframes enemy-banner-in {
   from {
     opacity: 0;
-    transform: rotate(-17deg) scale(1.8) translate(200px, -60px);
+    transform: translateX(320px);
   }
 }
 
