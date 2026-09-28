@@ -96,14 +96,6 @@ export type Cutin =
   | { kind: 'banner'; text: string; sub?: string; tone: 'gold' | 'red' | 'blue' | 'rainbow' }
   | { kind: 'turn'; turn: number; left?: number }
   | { kind: 'special'; special: Special; look: Look; line: string; enemy?: boolean }
-  | { kind: 'initiative'; first: InitiativeSide; second?: InitiativeSide }
-
-export interface InitiativeSide {
-  look: Look
-  speed: number
-  late?: boolean
-  enemy: boolean
-}
 
 export function CutinLayer({ cutin, onSkip }: { cutin: Cutin; onSkip?: () => void }) {
   switch (cutin.kind) {
@@ -206,28 +198,6 @@ export function CutinLayer({ cutin, onSkip }: { cutin: Cutin; onSkip?: () => voi
         </div>
       )
     }
-    case 'initiative':
-      return (
-        <div className="cutin initiative" onClick={onSkip}>
-          <div className="init-band">
-            {[cutin.first, cutin.second].map(
-              (s, i) =>
-                s && (
-                  <div key={i} className={`init-side ${s.enemy ? 'enemy' : 'player'} ${i === 0 ? 'first' : 'second'}`}>
-                    <em>{i === 0 ? '先攻' : '後攻'}</em>
-                    <span className="init-art">
-                      <ShipArt look={s.look} showKanji={false} />
-                    </span>
-                    <span className="init-name">
-                      {s.look.name}
-                      <small>{s.late ? '雷撃（常に後攻）' : `速力 ${s.speed}`}</small>
-                    </span>
-                  </div>
-                ),
-            )}
-          </div>
-        </div>
-      )
     case 'turn':
       return (
         <div className="cutin turn" key={cutin.turn}>

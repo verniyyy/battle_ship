@@ -3,7 +3,7 @@ import type { Scene } from '../App'
 import { api } from '../api'
 import { audio } from '../audio'
 import { Board, CellOverlay } from '../components/Board'
-import { CutinLayer, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, type Cutin, type Float, type InitiativeSide } from '../components/battle'
+import { CutinLayer, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, type Cutin, type Float } from '../components/battle'
 import { Backdrop, ShipToken, SoundToggle } from '../components/ui'
 import { fx, RAINBOW } from '../fx'
 import { CLASS_INFO, describe, footprint, historyLog, lookOfShip, SKILL_INFO, SPECIAL_INFO, stageLabel, TORPEDO_INFO, WEATHER_INFO, type Look, type LogLine } from '../game'
@@ -498,16 +498,6 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
     }
   }
 
-  const initiative = (rs: Result[]) => {
-    const side = (r: Result): InitiativeSide => ({
-      look: (r.side === 'player' ? looks.player : looks.enemy)[r.shipId],
-      speed: r.speed,
-      late: r.late,
-      enemy: r.side === 'cpu',
-    })
-    return show({ kind: 'initiative', first: side(rs[0]), second: rs[1] && side(rs[1]) }, 900)
-  }
-
   const execute = async () => {
     if (!mode || !target || busy) return
     const shipId = mode === 'ultimate' ? flagship?.id : selected
@@ -519,7 +509,6 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       setSelected(null)
       setMode(null)
       setTarget(null)
-      if (res.results.length > 1) await initiative(res.results)
       for (const r of res.results) {
         if (!mounted.current) return
         await play(r, res.game)
