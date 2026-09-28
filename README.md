@@ -24,40 +24,44 @@ docker compose up --build
 
 データを消して最初からやり直す場合は `docker compose down -v`。
 
-効果音と BGM は Web Audio で合成しているので、素材なしでも音が鳴ります。艦カードのアートも SVG で生成しています。
+効果音と BGM は Web Audio で合成しているので、素材なしでも音が鳴ります。キャラ絵がない艦カードは SVG で描いた艦影を表示します。
 
 ### 旧バージョンの素材を使う（任意）
 
-旧バージョンの画像・BGM は git 履歴に残っており、次のスクリプトでローカルに復元できます。復元すると初期艦 3 隻の立ち絵、背景、録音済み BGM が使われます。
+旧バージョンの背景・BGM は git 履歴に残っており、次のスクリプトでローカルに復元できます。
 
 ```sh
 ./scripts/salvage-legacy-assets.sh                     # frontend/public/legacy/ に展開
 ./scripts/import-ui-assets.sh "/path/to/海戦ゲーム用"   # 母港背景などの UI 素材（ImageMagick 7 が必要）
 ```
 
-復元先はいずれも `.gitignore` 済みです。第三者の素材を含むため **コミットしないでください**。
+復元先はいずれも `.gitignore` 済みです。第三者の素材を含むため **コミットしないでください**。キャラ絵は旧素材を使わず、初期 3 隻も含めて全艦を下記の手順で生成します。
 
 ### キャラ絵を生成する（任意・無料）
 
-立ち絵のない艦カードに、AI で生成したキャラ絵を補充できます。生成した絵は艦カード・母港の秘書艦・カットイン・マップ上の駒に使われます（旧素材がある初期 3 隻はそちらを優先）。
+全 22 艦のキャラ絵（全身・背景透過）を AI で生成できます。生成した絵は艦カード・母港の秘書艦・建造・カットイン・マップ上の駒に使われ、カードや駒では検出した顔の位置に合わせてバストアップに、秘書艦や建造では全身で表示します。
 
-GPU は [Google Colab](https://colab.research.google.com) の無料枠（T4）を使い、Hugging Face のアニメ系 SDXL モデル（既定: [Animagine XL 4.0](https://huggingface.co/cagliostrolab/animagine-xl-4.0)）で生成します。手元に必要なのは Go だけです。
+GPU は [Google Colab](https://colab.research.google.com) の無料枠（T4）を使います。モデルは Illustrious 系の [WAI-illustrious v15](https://huggingface.co/John6666/wai-nsfw-illustrious-sdxl-v150-sdxl)（SDXL。ライセンスは FAIPL-1.0-SD で、生成画像の利用に制限はありません）。手元に必要なのは Go だけです。
 
-1. プロンプトを書き出す（カタログの艦種・レアリティ・カード色と、`backend/cmd/portraits/main.go` の `cardMotif` から Danbooru タグ形式で組み立て）
+1. キットを作る（`tools/portraitgen` の Python パッケージと、`backend/cmd/portraits/characters.go` のキャラ設定から組み立てたプロンプト）
 
    ```sh
-   cd backend && go run ./cmd/portraits prompts        # -> .cache/portraits/prompts.json
+   cd backend && go run ./cmd/portraits kit           # -> .cache/portraits/kit.zip
    ```
 
-2. [`scripts/portraits_colab.ipynb`](scripts/portraits_colab.ipynb) を Colab で開き（ファイル → ノートブックをアップロード）、ランタイムを **T4 GPU** にして上から実行。`prompts.json` をアップロードすると、カードごとに候補を数枚生成して並べて表示します
-3. 気に入った候補を `PICKS` で選んで最後のセルを実行すると、背景を切り抜いた（rembg `isnet-anime`）`portraits.zip` がダウンロードされる
-4. 取り込む（`frontend/public/portraits/` に展開し、フロントが自動検出する `manifest.json` を更新）
+2. [`tools/portraitgen/colab.ipynb`](tools/portraitgen/colab.ipynb) を Colab で開き（ファイル → ノートブックをアップロード）、ランタイムを **T4 GPU** にして上から実行
+   - ③ 探索: カードごとに下描きを数枚描き、全身が枠からはみ出している・顔が小さすぎる／大きすぎる・複数人いる、といった候補は自動で不採用。残りを美観スコア順に表示
+   - ④ 仕上げ: 採用した下描きを 1.5 倍で描き直し、顔と手を拡大して描き直してから切り抜く。気に入った候補は `PICKS` で指定（省略時はスコア最上位）
+   - ⑤ `portraits.zip` をダウンロード
+3. 取り込む（`frontend/public/portraits/` に WebP を置き、顔の位置を含む `manifest.json` を更新）
 
    ```sh
    cd backend && go run ./cmd/portraits import ~/Downloads/portraits.zip
    ```
 
-T4 では 1 枚およそ 40 秒です。気に入らないカードはノートブックの `ONLY` / `SEED_OFFSET` で引き直せます。モデルは `MODEL_ID` で他の SDXL 系（Illustrious 系など）に差し替え可能です。生成物は `.gitignore` 済みです。自作の絵を `frontend/public/portraits/<カード ID>.png`（背景透過）に置いた場合は、`go run ./cmd/portraits import`（zip なし）で manifest だけ更新できます。
+T4 では探索が 1 枚約 30 秒、仕上げが 1 枚約 90 秒です（全艦で合計 1 時間半ほど。`SAVE_TO_DRIVE` で中断しても再開可能）。一部の艦だけ作り直すときは `-only bb_guren,ca_soyo` でキットを作るか、ノートブックの `ONLY` を使います。取り込みは艦ごとに上書きされ、他の艦の絵はそのまま残ります。
+
+キャラの見た目を変えたいときは `characters.go` のキャラ設定（Danbooru タグ）を編集してキットを作り直してください。生成パイプラインのテストは CPU だけで動きます（`cd tools/portraitgen && uv run pytest`、極小のダミーモデルで SDXL の各工程を通します）。生成物は `.gitignore` 済みです。
 
 ## ゲームの流れ
 
