@@ -8,11 +8,15 @@ touching Colab's numpy/torch:
 - segmentation: skytnt/anime-seg (ISNet), the character mask for the cut-out
 - aesthetics: deepghs/anime_aesthetic, a danbooru-score classifier used to
   rank candidates
+- tagging: SmilingWolf/wd-swinv2-tagger-v3, which reads Danbooru tags off an
+  image; it tells whether effects, backgrounds or extra people slipped in and
+  whether the design (hair colour, weapon) came out as specified
 """
 
 from __future__ import annotations
 
 import ast
+import csv
 import json
 from dataclasses import dataclass
 from functools import cache
@@ -198,3 +202,31 @@ def _softmax_if_needed(v: np.ndarray) -> np.ndarray:
         return v
     e = np.exp(v - v.max())
     return e / e.sum()
+
+
+# ---- tagging ----
+
+_TAGGER_REPO = "SmilingWolf/wd-swinv2-tagger-v3"
+
+
+@cache
+def _tagger() -> tuple[ort.InferenceSession, list[str]]:
+    model = _session(hf_hub_download(_TAGGER_REPO, "model.onnx"))
+    with open(hf_hub_download(_TAGGER_REPO, "selected_tags.csv"), newline="") as f:
+        names = [row["name"] for row in csv.DictReader(f)]
+    return model, names
+
+
+def tags(image: Image.Image) -> dict[str, float]:
+    """Danbooru tag -> probability (underscored names, e.g. "bow_(weapon)")."""
+    model, names = _tagger()
+    inp = model.get_inputs()[0]
+    size = inp.shape[1]  # NHWC
+    rgba = image.convert("RGBA")
+    side = max(rgba.size)
+    # Same preprocessing as the reference code: pad to a white square, BGR, 0-255.
+    square = Image.new("RGBA", (side, side), "white")
+    square.alpha_composite(rgba, ((side - rgba.width) // 2, (side - rgba.height) // 2))
+    x = np.asarray(square.convert("RGB").resize((size, size), Image.BICUBIC), dtype=np.float32)[:, :, ::-1]
+    (probs,) = model.run(None, {inp.name: np.ascontiguousarray(x[None])})
+    return dict(zip(names, probs[0].astype(float)))

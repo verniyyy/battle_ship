@@ -1,14 +1,17 @@
 """SDXL passes: base render, hires refine and region detailing.
 
-Full-body art at SDXL's native ~1MP leaves the face around 100px tall, where
-eyes, mouths and fingers smear. The standard fix, done here, is:
+Full-body art at SDXL's native ~1MP leaves the face around 100px tall and a
+buckle or a sword guard a dozen pixels wide, where the model can only smear.
+Every pass after the first exists to give each part more pixels:
 
 1. render the composition at native resolution (cheap, so many seeds can be
    tried and filtered)
-2. "hires fix": upscale 1.5x and img2img at low strength so the model redraws
-   fine detail at the higher resolution without changing the composition
-3. "detailer": crop each face and hand, blow the crop up to 1024px, repaint
-   it at moderate strength and paste it back under a feathered mask
+2. hires: upscale 1.5x with Real-ESRGAN and img2img at low strength, so the
+   model redraws fine detail without changing the composition
+3. tiles: repaint the figure in overlapping squares blown up to 1024px, so
+   clothes, trim and the weapon are drawn at about 2x again
+4. detailers: the same for the face and each hand, with prompts written for
+   just what is in the crop
 """
 
 from __future__ import annotations
@@ -22,6 +25,8 @@ from dataclasses import dataclass
 # before CUDA is initialised, which importing this module precedes.
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
+import math
+
 import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFilter
@@ -31,6 +36,9 @@ from .detect import Box
 DEFAULT_MODEL = "John6666/wai-nsfw-illustrious-sdxl-v150-sdxl"
 # The stock SDXL VAE overflows in fp16 and decodes to black/NaN images.
 FP16_VAE = "madebyollin/sdxl-vae-fp16-fix"
+# Illustrious models burn in contrast and saturation above ~5.5; lower keeps
+# the soft, even rendering of official character art.
+CFG = 5.0
 
 
 @dataclass
@@ -50,7 +58,14 @@ class Embeds:
 
 
 class Generator:
-    def __init__(self, model_id: str = DEFAULT_MODEL, vae_id: str | None = FP16_VAE, device: str = "cuda", dtype: torch.dtype = torch.float16):
+    def __init__(
+        self,
+        model_id: str = DEFAULT_MODEL,
+        vae_id: str | None = FP16_VAE,
+        device: str = "cuda",
+        dtype: torch.dtype = torch.float16,
+        upscaler: bool = True,
+    ):
         from diffusers import (
             AutoencoderKL,
             EulerAncestralDiscreteScheduler,
@@ -78,6 +93,12 @@ class Generator:
         for name in ("unet", "vae", "text_encoder", "text_encoder_2"):
             getattr(self.txt2img, name).to(device=device, dtype=dtype)
         self.device = device
+        if upscaler:
+            from .upscale import Upscaler
+
+            self.upscaler = Upscaler(device, dtype)
+        else:
+            self.upscaler = None
         self._embeds: dict[tuple[str, str], Embeds] = {}
 
     def memory_report(self) -> str:
@@ -128,7 +149,7 @@ class Generator:
 
     # ---- passes ----
 
-    def render(self, embeds: Embeds, seed: int, width: int, height: int, steps: int = 28, cfg: float = 6.0) -> Image.Image:
+    def render(self, embeds: Embeds, seed: int, width: int, height: int, steps: int = 28, cfg: float = CFG) -> Image.Image:
         self._release()
         return self.txt2img(
             **embeds.kwargs(),
@@ -139,9 +160,13 @@ class Generator:
             generator=self._rng(seed),
         ).images[0]
 
-    def refine(self, image: Image.Image, embeds: Embeds, seed: int, scale: float = 1.5, strength: float = 0.4, steps: int = 28, cfg: float = 6.0) -> Image.Image:
+    def refine(self, image: Image.Image, embeds: Embeds, seed: int, scale: float = 1.5, strength: float = 0.35, steps: int = 28, cfg: float = CFG) -> Image.Image:
         w, h = _mult8(image.width * scale), _mult8(image.height * scale)
-        big = image.convert("RGB").resize((w, h), Image.LANCZOS)
+        self._release()
+        if self.upscaler:
+            big = self.upscaler(image, (w, h))
+        else:
+            big = image.convert("RGB").resize((w, h), Image.LANCZOS)
         self._release()
         return self.img2img(
             **embeds.kwargs(),
@@ -162,30 +187,56 @@ class Generator:
         context: float = 2.2,
         size: int = 1024,
         steps: int = 28,
-        cfg: float = 6.0,
+        cfg: float = CFG,
+        grow: float = 1.3,
     ) -> Image.Image:
-        """Repaint each box at size×size and paste it back."""
+        """Repaint each box at size×size under an elliptic mask and paste it back."""
         out = image.convert("RGB").copy()
         for i, box in enumerate(boxes):
             crop = square_around(box, context, out.size)
             region = out.crop(crop).resize((size, size), Image.LANCZOS)
             k = size / (crop[2] - crop[0])
             local = tuple((v - o) * k for v, o in zip(box, (crop[0], crop[1], crop[0], crop[1])))
-            mask = feathered_mask((size, size), local, grow=1.3, blur=size / 40)
-            self._release()
-            painted = self.inpaint(
-                **embeds.kwargs(),
-                image=region,
-                mask_image=mask,
-                strength=strength,
-                width=size,
-                height=size,
-                num_inference_steps=steps,
-                guidance_scale=cfg,
-                generator=self._rng(seed + 7919 * (i + 1)),
-            ).images[0]
-            back = crop[2] - crop[0]
-            out.paste(painted.resize((back, back), Image.LANCZOS), crop[:2], mask.resize((back, back), Image.LANCZOS))
+            mask = feathered_mask((size, size), local, grow=grow, blur=size / 40)
+            out = self._repaint(out, crop, region, mask, embeds, seed + 7919 * (i + 1), strength, size, steps, cfg)
+        return out
+
+    def tiles(
+        self,
+        image: Image.Image,
+        boxes: list[Box],
+        embeds: Embeds,
+        seed: int,
+        strength: float = 0.3,
+        size: int = 1024,
+        steps: int = 28,
+        cfg: float = CFG,
+        overlap: float = 0.25,
+    ) -> Image.Image:
+        """Repaint square tiles (from grid) at size×size, blending their overlaps."""
+        out = image.convert("RGB").copy()
+        mask = feathered_rect((size, size), inset=size * overlap / 4, blur=size * overlap / 6)
+        for i, crop in enumerate(boxes):
+            crop = tuple(int(v) for v in crop)
+            region = out.crop(crop).resize((size, size), Image.LANCZOS)
+            out = self._repaint(out, crop, region, mask, embeds, seed + 104729 * (i + 1), strength, size, steps, cfg)
+        return out
+
+    def _repaint(self, out, crop, region, mask, embeds, seed, strength, size, steps, cfg) -> Image.Image:
+        self._release()
+        painted = self.inpaint(
+            **embeds.kwargs(),
+            image=region,
+            mask_image=mask,
+            strength=strength,
+            width=size,
+            height=size,
+            num_inference_steps=steps,
+            guidance_scale=cfg,
+            generator=self._rng(seed),
+        ).images[0]
+        back = crop[2] - crop[0]
+        out.paste(painted.resize((back, back), Image.LANCZOS), crop[:2], mask.resize((back, back), Image.LANCZOS))
         return out
 
     def _release(self) -> None:
@@ -238,3 +289,28 @@ def feathered_mask(size: tuple[int, int], box: Box, grow: float = 1.3, blur: flo
     m = Image.new("L", size, 0)
     ImageDraw.Draw(m).ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=255)
     return m.filter(ImageFilter.GaussianBlur(blur))
+
+
+def feathered_rect(size: tuple[int, int], inset: float, blur: float) -> Image.Image:
+    """White rectangle inset from the edges, blurred, so tiles fade into their neighbours."""
+    m = Image.new("L", size, 0)
+    ImageDraw.Draw(m).rectangle((inset, inset, size[0] - inset, size[1] - inset), fill=255)
+    return m.filter(ImageFilter.GaussianBlur(blur))
+
+
+def grid(body: Box, size: tuple[int, int], tile: int, overlap: float = 0.25) -> list[tuple[int, int, int, int]]:
+    """Square tiles of side tile covering body, overlapping by overlap, inside the image."""
+    w, h = size
+    tile = min(tile, w, h)
+    step = tile * (1 - overlap)
+
+    def starts(lo: float, hi: float, limit: int) -> list[int]:
+        n = max(1, math.ceil((hi - lo - tile) / step) + 1)
+        if n == 1:
+            first = last = (lo + hi - tile) / 2
+        else:
+            first, last = lo, hi - tile
+        return [int(np.clip(round(v), 0, limit - tile)) for v in np.linspace(first, last, n)]
+
+    xs, ys = starts(body[0], body[2], w), starts(body[1], body[3], h)
+    return [(x, y, x + tile, y + tile) for y in ys for x in xs]

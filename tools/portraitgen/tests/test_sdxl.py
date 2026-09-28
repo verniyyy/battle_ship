@@ -16,13 +16,13 @@ TINY = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
 
 @pytest.fixture(scope="module")
 def gen():
-    return Generator(TINY, vae_id=None, device="cpu", dtype=torch.float32)
+    return Generator(TINY, vae_id=None, device="cpu", dtype=torch.float32, upscaler=False)
 
 
 def test_weights_stay_in_the_requested_dtype():
     # diffusers' from_pipe defaults to float32 and casts the shared modules
     # in place; in fp16 that doubled SDXL's VRAM and ran a T4 out of memory.
-    g = Generator(TINY, vae_id=None, device="cpu", dtype=torch.float16)
+    g = Generator(TINY, vae_id=None, device="cpu", dtype=torch.float16, upscaler=False)
     for pipe in (g.txt2img, g.img2img, g.inpaint):
         for name in ("unet", "vae", "text_encoder", "text_encoder_2"):
             assert getattr(pipe, name).dtype == torch.float16, name
@@ -49,6 +49,10 @@ def test_passes_keep_expected_sizes(gen):
     assert out.size == big.size
     # outside the detailed region the image is untouched
     assert out.getpixel((2, 140)) == big.getpixel((2, 140))
+    tiled = gen.tiles(big, [(0, 0, 64, 64), (32, 48, 96, 112)], e, seed=1, strength=0.5, size=64, steps=2)
+    assert tiled.size == big.size
+    assert tiled.getpixel((2, 140)) == big.getpixel((2, 140))
+    assert tiled.getpixel((64, 80)) != big.getpixel((64, 80))
 
 
 def test_render_is_deterministic_per_seed(gen):

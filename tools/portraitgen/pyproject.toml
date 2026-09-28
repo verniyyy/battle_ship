@@ -1,7 +1,7 @@
 [project]
 name = "portraitgen"
 version = "0.1.0"
-description = "Character portrait generator for battle_ship ship cards (SDXL + anime detectors)"
+description = "Character portrait generator for battle_ship ship cards (SDXL + anime detectors, tagger and upscaler)"
 requires-python = ">=3.10"
 # torch is not listed: Colab (and any CUDA box) ships its own build.
 # The minimums are the versions the pipeline is tested with; they make pip
@@ -14,6 +14,7 @@ dependencies = [
   "onnxruntime>=1.18",
   "numpy",
   "pillow>=10",
+  "scipy",
 ]
 
 [dependency-groups]

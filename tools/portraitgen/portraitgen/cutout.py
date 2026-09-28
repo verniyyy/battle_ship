@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from PIL import Image
+from scipy import ndimage
 
 from . import detect
 from .detect import Box
@@ -39,11 +40,29 @@ def decontaminate(rgb: np.ndarray, alpha: np.ndarray, bg: np.ndarray) -> np.ndar
     return out
 
 
+def drop_islands(alpha: np.ndarray, keep: float = 0.015) -> np.ndarray:
+    """Clear mask parts smaller than keep times the largest one.
+
+    Stray sparkles, specks of background texture and similar bits survive
+    segmentation as small islands apart from the figure; left in, they float
+    around the portrait on the game's UI.
+    """
+    labels, n = ndimage.label(alpha > 0.1)  # low threshold: an island takes its soft edge with it
+    if n <= 1:
+        return alpha
+    sizes = np.bincount(labels.ravel())
+    sizes[0] = 0
+    small = sizes < keep * sizes.max()
+    small[0] = False
+    return np.where(small[labels], 0, alpha)
+
+
 def cut_out(image: Image.Image) -> Image.Image:
     rgb = np.asarray(image.convert("RGB"), dtype=np.float32)
     alpha = detect.character_mask(image)
     # Drop the faint haze the segmenter leaves on busy backgrounds.
     alpha = np.where(alpha < 0.04, 0, alpha)
+    alpha = drop_islands(alpha)
     rgb = decontaminate(rgb, alpha, background_color(rgb, alpha))
     rgba = np.dstack([rgb, alpha * 255]).round().astype(np.uint8)
     return Image.fromarray(rgba, "RGBA")

@@ -1,9 +1,11 @@
 """The two-phase workflow the notebook drives.
 
 explore: render cheap native-resolution candidates per card, reject bad ones
-         automatically (qa.inspect) and rank the rest by aesthetic score.
+         automatically (qa.inspect: framing, effects, scenery, extra people)
+         and rank the rest (aesthetics, design adherence, tone).
 finish:  take the chosen candidate of each card through the expensive passes
-         (hires refine, face and hand detailing), cut it out and export it.
+         (hires refine, tile repaint of the figure, face and hand detailing),
+         check it is still clean, cut it out and export it.
 pack:    zip the finished portraits for `go run ./cmd/portraits import`.
 
 Everything is written under one work directory and skipped when already
@@ -16,18 +18,22 @@ import json
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw
 
 from . import cutout, detect, qa
+from .sdxl import CFG, grid
 
 # SDXL's native portrait bucket; tall enough for a full body with margin.
 WIDTH, HEIGHT = 832, 1216
 # Finished portraits are stored no taller than this.
 MAX_HEIGHT = 1600
+# Tile side for the figure repaint, in refined-image pixels; each tile is
+# drawn at 1024px, so 512 means twice the refined resolution.
+TILE = 512
 
 
 @dataclass
@@ -39,7 +45,9 @@ class Job:
     negative: str
     face_prompt: str
     hand_prompt: str
+    tile_prompt: str
     detail_negative: str
+    expect: list[str] = field(default_factory=list)  # tagger tags the design must show
 
     @classmethod
     def load(cls, path: str | Path) -> list[Job]:
@@ -57,7 +65,7 @@ def candidates(work: str | Path, card: str) -> list[tuple[int, dict]]:
     out = []
     for f in sorted(_cand_dir(work, card).glob("*.json")):
         out.append((int(f.stem), json.loads(f.read_text())))
-    return sorted(out, key=lambda c: (not c[1]["ok"], -c[1]["aesthetic"]))
+    return sorted(out, key=lambda c: (not c[1]["ok"], -c[1].get("score", c[1]["aesthetic"])))
 
 
 def best(work: str | Path, card: str) -> int | None:
@@ -65,7 +73,7 @@ def best(work: str | Path, card: str) -> int | None:
     return ok[0] if ok else None
 
 
-def explore(gen, jobs: list[Job], work: str | Path, want: int = 4, max_tries: int = 12, seed_offset: int = 0, steps: int = 28, cfg: float = 6.0, log=print) -> None:
+def explore(gen, jobs: list[Job], work: str | Path, want: int = 4, max_tries: int = 16, seed_offset: int = 0, steps: int = 28, cfg: float = CFG, log=print) -> None:
     """Render until each card has want accepted candidates (or max_tries renders).
 
     Inspection (CPU) of one render overlaps the next render (GPU); the count
@@ -75,11 +83,14 @@ def explore(gen, jobs: list[Job], work: str | Path, want: int = 4, max_tries: in
     work = Path(work)
 
     def check(job: Job, seed: int, img: Image.Image, took: float) -> None:
-        report = qa.inspect(img)
+        report = qa.inspect(img, job.expect)
         d = _cand_dir(work, job.id)
         img.save(d / f"{seed}.png")
         (d / f"{seed}.json").write_text(json.dumps(report.to_json()))
-        verdict = f"ok  aesthetic {report.aesthetic:.2f}" if report.ok else "NG  " + ", ".join(report.issues)
+        if report.ok:
+            verdict = f"ok  score {report.score:.2f} (aesthetic {report.aesthetic:.2f})" + "".join(f"; {n}" for n in report.notes)
+        else:
+            verdict = "NG  " + ", ".join(report.issues)
         log(f"{job.id} seed {seed}: {verdict}  (render {took:.0f}s)")
 
     with ThreadPoolExecutor(1) as pool:
@@ -110,11 +121,12 @@ def finish(
     work: str | Path,
     picks: dict[str, int] | None = None,
     redo: bool = False,
-    refine_strength: float = 0.4,
+    refine_strength: float = 0.35,
+    tile_strength: float = 0.3,
     face_strength: float = 0.4,
     hand_strength: float = 0.35,
     steps: int = 28,
-    cfg: float = 6.0,
+    cfg: float = CFG,
     log=print,
 ) -> None:
     work = Path(work)
@@ -134,6 +146,12 @@ def finish(
         emb = gen.embed(job.prompt, job.negative)
         img = gen.refine(base, emb, seed, strength=refine_strength, steps=steps, cfg=cfg)
 
+        mask = detect.character_mask(img)
+        body = qa.mask_box(mask)
+        if body and tile_strength > 0:
+            tiles = [t for t in grid(body, img.size, TILE) if mask[t[1] : t[3], t[0] : t[2]].mean() > 0.1]
+            img = gen.tiles(img, tiles, gen.embed(job.tile_prompt, job.detail_negative), seed, strength=tile_strength, steps=steps, cfg=cfg)
+
         faces = detect.faces(img)
         if faces:
             main = max(faces, key=lambda d: d.w * d.h)
@@ -143,6 +161,10 @@ def finish(
             img = gen.detail(img, hands, gen.embed(job.hand_prompt, job.detail_negative), seed, strength=hand_strength, context=2.6, steps=steps, cfg=cfg)
         img.save(out / f"{job.id}.full.png")
 
+        # The later passes can paint effects back in; say so rather than ship them.
+        issues = qa.cleanliness_issues(img, detect.character_mask(img), detect.tags(img))
+        if issues:
+            log(f"{job.id}: warning after finishing: {', '.join(issues)}; try another candidate or lower strengths")
         export(job.id, img, seed, out, log)
         log(f"{job.id}: finished seed {seed} ({time.time() - t:.0f}s)")
 
@@ -206,9 +228,10 @@ def candidate_sheet(work: str | Path, card: str, thumb: int = 300) -> Image.Imag
         if not r["ok"]:
             im = Image.blend(im, Image.new("RGB", im.size, (60, 0, 0)), 0.55)
         sheet.paste(im, (i * tw, 44))
-        head = f"{seed}  {r['aesthetic']:.2f}" if r["ok"] else f"{seed}  NG"
+        head = f"{seed}  {r.get('score', r['aesthetic']):.2f}" if r["ok"] else f"{seed}  NG"
         d.text((i * tw + 6, 4), head, fill=(255, 255, 255) if r["ok"] else (255, 120, 120))
-        d.text((i * tw + 6, 22), "" if r["ok"] else r["issues"][0][:34], fill=(255, 160, 160))
+        sub = (r.get("notes") or [""])[0] if r["ok"] else r["issues"][0]
+        d.text((i * tw + 6, 22), sub[:34], fill=(255, 220, 140) if r["ok"] else (255, 160, 160))
     return sheet
 
 
