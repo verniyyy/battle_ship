@@ -284,6 +284,11 @@
   overflow: hidden;
 }
 
+.plate-art .ship-art {
+  --face-h: 0.32;
+  --face-top: 0.14;
+}
+
 .plate-no {
   position: absolute;
   left: 2px;
@@ -1601,6 +1606,10 @@
   border-radius: 10px;
   overflow: hidden;
   border: 2px solid var(--gold);
+}
+
+.mvp-art .ship-art {
+  --face-h: 0.24;
 }
 
 .mvp-tag {

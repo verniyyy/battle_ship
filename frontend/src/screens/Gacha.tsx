@@ -158,7 +158,7 @@ export function Gacha({ onBack }: { onBack: () => void }) {
           <section className="banner-art">
             {feat && (
               <div className="banner-feature" key={feat.id}>
-                <ShipArt look={lookOfCard(feat)} showKanji={false} />
+                <ShipArt look={lookOfCard(feat)} showKanji={false} frame="full" />
                 <div className="banner-copy">
                   <RarityBadge r={feat.rarity} />
                   <b>{feat.name}</b>
@@ -282,7 +282,7 @@ function Spotlight({ gain, card, onNext }: { gain: Gain; card: Card; onNext: () 
     <div className={`spotlight r${card.rarity}`} onClick={onNext}>
       <div className="spot-rays" />
       <div className="spot-art">
-        <ShipArt look={lookOfCard(card)} showKanji={false} />
+        <ShipArt look={lookOfCard(card)} showKanji={false} frame="full" />
       </div>
       <div className="spot-info">
         <span className={`spot-rarity r${card.rarity}`}>{rarityName(card.rarity)}</span>

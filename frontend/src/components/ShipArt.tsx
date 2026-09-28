@@ -1,10 +1,33 @@
-// Procedural card art: a ship silhouette on a themed seascape, so every card
-// has art without an asset pack. Cards with a character portrait (legacy
-// starters or generated ones, see theme.portraitOf) show it instead.
-import { useId, type ReactNode } from 'react'
+// Card art: a themed seascape with, in front of it, the card's generated
+// character portrait (see theme.portraitOf) or, failing that, a procedural
+// ship silhouette, so every card has art without an asset pack.
+import { useId, type CSSProperties, type ReactNode } from 'react'
 import { CLASS_INFO, type Look } from '../game'
-import { portraitOf, useAssets } from '../theme'
+import { portraitOf, useAssets, type Portrait } from '../theme'
 import type { ShipClass } from '../types'
+
+// How a portrait sits in its box:
+//  bust - zoomed on the face, which is placed by --face-h (face height as a
+//         fraction of the box) and --face-top; the look of cards and cut-ins
+//  full - the whole figure, feet on the bottom edge; for large showcases
+export type Frame = 'bust' | 'full'
+
+// The <img> of a portrait. Its box must be a size container (.ship-art and
+// .token-disc are): bust framing is computed from the face box in cq units.
+export function PortraitImg({ portrait, frame, className = '' }: { portrait: Portrait; frame: Frame; className?: string }) {
+  const mode = frame === 'bust' && portrait.face ? 'bust' : 'full'
+  let style: CSSProperties | undefined
+  if (mode === 'bust' && portrait.face) {
+    const [x0, y0, x1, y1] = portrait.face
+    style = {
+      ['--ar' as string]: portrait.w / portrait.h,
+      ['--fh' as string]: y1 - y0,
+      ['--fx' as string]: (x0 + x1) / 2,
+      ['--fy' as string]: y0,
+    }
+  }
+  return <img className={`portrait-img ${mode} ${className}`} src={portrait.src} alt="" draggable={false} decoding="async" style={style} />
+}
 
 interface Hull {
   len: number
@@ -125,7 +148,7 @@ function palette(look: Look) {
   return { sky1: look.color, sky2: '#07101f', sea1: '#0e3a66', sea2: '#040b18', orb: look.color }
 }
 
-export function ShipArt({ look, className = '', showKanji = true }: { look: Look; className?: string; showKanji?: boolean }) {
+export function ShipArt({ look, className = '', showKanji = true, frame = 'bust' }: { look: Look; className?: string; showKanji?: boolean; frame?: Frame }) {
   const id = useId().replace(/:/g, '')
   const portrait = portraitOf(look, useAssets())
   const hull = HULLS[look.cls]
@@ -135,7 +158,7 @@ export function ShipArt({ look, className = '', showKanji = true }: { look: Look
   const x0 = 100 - (hull.len * k) / 2
 
   return (
-    <div className={`ship-art r${look.rarity} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${className}`}>
+    <div className={`ship-art r${look.rarity} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${portrait ? 'has-portrait' : ''} ${className}`}>
       <svg viewBox="0 0 200 280" preserveAspectRatio="xMidYMid slice" aria-hidden>
         <defs>
           <linearGradient id={`sky${id}`} x1="0" y1="0" x2="0" y2="1">
@@ -186,7 +209,7 @@ export function ShipArt({ look, className = '', showKanji = true }: { look: Look
         <path className="art-wave" d="M-20,214 Q0,208 20,214 T60,214 T100,214 T140,214 T180,214 T220,214 T260,214" stroke="#9fe0ff" strokeOpacity="0.45" strokeWidth="1.5" fill="none" />
         <path className="art-wave slow" d="M-20,232 Q0,226 20,232 T60,232 T100,232 T140,232 T180,232 T220,232 T260,232" stroke="#9fe0ff" strokeOpacity="0.2" strokeWidth="1.2" fill="none" />
       </svg>
-      {portrait && <img className={`art-portrait ${portrait.face}`} src={portrait.src} alt="" draggable={false} />}
+      {portrait && <PortraitImg portrait={portrait} frame={frame} className="art-portrait" />}
     </div>
   )
 }

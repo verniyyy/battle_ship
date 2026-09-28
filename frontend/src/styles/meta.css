@@ -185,6 +185,10 @@
   inset: 0;
   overflow: hidden;
   background: #07101f;
+  /* portrait framing reads the box size (cq units) */
+  container-type: size;
+  --face-h: 0.19;
+  --face-top: 0.15;
 }
 
 .ship-art svg {
@@ -233,14 +237,40 @@
   font-weight: 900;
 }
 
-.art-portrait {
+/* Portraits are full-body cut-outs with a known face box (--fx, --fy, --fh
+   as fractions of the image, --ar its aspect). A bust scales the image so the
+   face is --face-h of the box tall, centred, with its top at --face-top. */
+.portrait-img {
   position: absolute;
-  left: 50%;
-  top: 6%;
-  height: 120%;
-  transform: translateX(-50%);
+  max-width: none;
   pointer-events: none;
-  filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.6));
+}
+
+.portrait-img.bust {
+  --ih: calc(var(--face-h) / var(--fh) * 100cqh);
+  height: var(--ih);
+  width: calc(var(--ih) * var(--ar));
+  left: calc(50cqw - var(--fx) * var(--ih) * var(--ar));
+  top: calc(var(--face-top) * 100cqh - var(--fy) * var(--ih));
+}
+
+.portrait-img.full {
+  left: 0;
+  top: 3%;
+  width: 100%;
+  height: 97%;
+  object-fit: contain;
+  object-position: 50% 100%;
+}
+
+.art-portrait {
+  filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.55));
+}
+
+/* small cards show little more than the face */
+.card-xs .ship-art {
+  --face-h: 0.3;
+  --face-top: 0.12;
 }
 
 .ship-art.enemy .art-light {

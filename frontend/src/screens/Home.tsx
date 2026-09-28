@@ -94,7 +94,7 @@ export function Home({ go, onResume }: { go: (s: Scene) => void; onResume?: () =
       {sec && secCard && (
         <>
           <button className="secretary" onClick={poke} aria-label="秘書艦に話しかける" ref={artRef}>
-            <ShipArt look={lookOfCard(secCard)} className="secretary-art" key={secCard.id} showKanji={false} />
+            <ShipArt look={lookOfCard(secCard)} className="secretary-art" key={secCard.id} showKanji={false} frame="full" />
             <span className="secretary-plate">
               <small>{CLASS_INFO[secCard.class].name}</small>
               <b>{secCard.name}</b>

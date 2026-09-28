@@ -4,7 +4,7 @@ import { CLASS_INFO, KANJI, rarityName, type Look } from '../game'
 import { anchors, useGame } from '../state'
 import { backdropUrl, portraitOf, useAssets, type Backdrop as BackdropName } from '../theme'
 import type { ShipClass } from '../types'
-import { ShipArt } from './ShipArt'
+import { PortraitImg, ShipArt } from './ShipArt'
 
 export function Backdrop({ scene, dim = 0.35 }: { scene: BackdropName; dim?: number }) {
   const packs = useAssets()
@@ -29,11 +29,11 @@ export function ShipToken({ look, no, sunk, spotted }: { look: Look; no: number;
   const portrait = portraitOf(look, useAssets())
   return (
     <span
-      className={`ship-token ${look.cls} ${portrait?.face ?? ''} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${sunk ? 'sunk' : ''} ${spotted ? 'spotted' : ''}`}
+      className={`ship-token ${look.cls} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${sunk ? 'sunk' : ''} ${spotted ? 'spotted' : ''}`}
       style={{ ['--c' as string]: look.enemy ? undefined : look.color }}
     >
       <span className="token-disc">
-        {portrait ? <img className="token-face" src={portrait.src} alt="" draggable={false} /> : <span className="token-kanji">{look.enemy && look.boss ? '王' : KANJI[look.cls]}</span>}
+        {portrait ? <PortraitImg portrait={portrait} frame="bust" className="token-face" /> : <span className="token-kanji">{look.enemy && look.boss ? '王' : KANJI[look.cls]}</span>}
       </span>
       <span className="token-no">{no}</span>
       {portrait && <span className="token-class">{KANJI[look.cls]}</span>}

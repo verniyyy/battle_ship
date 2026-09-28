@@ -768,31 +768,15 @@ p {
 
 .ship-token.battleship {
   --c: #e0a93a;
-  /* face centre as a fraction of the portrait, and portrait height per token */
-  --fx: 39%;
-  --fy: 16%;
-  --zoom: 4.4;
 }
 .ship-token.destroyer {
   --c: #3fa6f0;
-  --fx: 51%;
-  --fy: 15%;
-  --zoom: 4.6;
 }
 .ship-token.submarine {
   --c: #e25d8a;
-  --fx: 65%;
-  --fy: 29%;
-  --zoom: 5.8;
 }
 .ship-token.enemy {
   --c: #7c2a2a;
-}
-/* generated portraits (scripts/portraits_colab.ipynb) are full-body and centred */
-.ship-token.gen {
-  --fx: 50%;
-  --fy: 25%;
-  --zoom: 5;
 }
 
 .token-disc {
@@ -814,15 +798,11 @@ p {
   background: radial-gradient(circle at 50% 40%, #f4f8ff, #b9cde6);
 }
 
-.token-face {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: auto;
-  height: calc(var(--zoom) * 100%);
-  max-width: none;
-  transform: translate(calc(-1 * var(--fx)), calc(-1 * var(--fy)));
-  pointer-events: none;
+/* the face fills the disc (see .portrait-img.bust) */
+.token-disc:has(.token-face) {
+  container-type: size;
+  --face-h: 0.6;
+  --face-top: 0.18;
 }
 
 .token-kanji {

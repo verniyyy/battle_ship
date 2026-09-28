@@ -175,7 +175,7 @@ function ShipDetail({ ship, card }: { ship: OwnedShip; card: Card }) {
           audio.play('heart')
         }}
       >
-        <ShipArt look={lookOfCard(card)} />
+        <ShipArt look={lookOfCard(card)} frame="full" />
         <p className="detail-line">「{line}」</p>
       </div>
       <div className="detail-head">
