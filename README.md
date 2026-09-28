@@ -1,16 +1,16 @@
-# battle_ship
+# 蒼海戦記 BATTLE SHIP
 
-海戦ゲーム（潜水艦ゲーム）をモチーフにしたブラウザゲームです。5×5 の海域に自艦隊 3 隻を配置し、CPU の艦隊を索敵・撃沈します。
+見えない敵艦隊を索敵して撃沈する海戦ゲームに、艦の収集・育成・キャンペーンを組み合わせたブラウザゲームです。
 
 ## 構成
 
 | ディレクトリ | 内容 |
 | --- | --- |
-| `backend/` | Go (標準 `net/http` + `pgx`)。ゲームロジック・CPU 思考・REST API |
+| `backend/` | Go (標準 `net/http` + `pgx`)。`game`: 戦闘ルールと CPU 思考、`meta`: 艦カード・ガチャ・海域・報酬・任務、`api`: REST API |
 | `frontend/` | React + TypeScript + Vite。本番は nginx で配信し `/api` を backend へプロキシ |
 | `docker-compose.yml` | PostgreSQL / backend / frontend |
 
-ゲーム状態は PostgreSQL の `games` テーブルに JSONB で保存されます（サーバーはステートレス）。マイグレーションは backend 起動時に自動適用されます。
+プレイヤーはブラウザが生成した UUID（`X-Player-Id` ヘッダ）で識別し、プロフィールと対局を PostgreSQL に JSONB で保存します（サーバーはステートレス）。決着の一手と報酬の支払いは同じトランザクションで確定します。マイグレーションは backend 起動時に自動適用されます。
 
 ## 起動
 
@@ -19,57 +19,67 @@ docker compose up --build
 ```
 
 - アプリ: http://localhost:8080
-- API: http://localhost:8081 （例: `curl localhost:8081/api/stats`）
+- API: http://localhost:8081 （例: `curl localhost:8081/api/catalog`）
 - PostgreSQL: `localhost:5432`（user / password / db はすべて `battleship`）
 
 データを消して最初からやり直す場合は `docker compose down -v`。
 
+効果音と BGM は Web Audio で合成しているので、素材なしでも音が鳴ります。艦カードのアートも SVG で生成しています。
+
 ### 旧バージョンの素材を使う（任意）
 
-旧バージョンで使っていた画像・BGM・SE は git 履歴に残っており、次のスクリプトでローカルに復元できます。
+旧バージョンの画像・BGM は git 履歴に残っており、次のスクリプトでローカルに復元できます。復元すると初期艦 3 隻の立ち絵、背景、録音済み BGM が使われます。
 
 ```sh
-./scripts/salvage-legacy-assets.sh   # frontend/public/legacy/ に展開
-docker compose up --build
+./scripts/salvage-legacy-assets.sh                     # frontend/public/legacy/ に展開
+./scripts/import-ui-assets.sh "/path/to/海戦ゲーム用"   # 母港背景などの UI 素材（ImageMagick 7 が必要）
 ```
 
-さらに母港背景・戦闘カットイン・メッセージ帯などの UI 素材を手元のフォルダから取り込めます（ImageMagick 7 の `magick` が必要。NixOS なら `nix shell nixpkgs#imagemagick`）。
+復元先はいずれも `.gitignore` 済みです。第三者の素材を含むため **コミットしないでください**。
 
-```sh
-./scripts/import-ui-assets.sh "/path/to/海戦ゲーム用"   # frontend/public/legacy/ui/ に展開
-```
+## ゲームの流れ
 
-復元先・取り込み先はいずれも `.gitignore` 済みです。第三者の素材を含むため **コミットしないでください**。素材が無い場合は、それぞれ CSS で描いた代替表示で動作します。
+1. **母港** — 秘書艦、ログインボーナス（7 日周期）、通知バッジ、連勝数と艦隊戦力
+2. **出撃** — 4 海域 × 4 ステージのキャンペーン。各ステージに ★3 つ（勝利／規定ターン内／損失なし）。4-4 を突破すると無限海域（5 層ごとに旗艦）が解放
+3. **出撃準備** — 編成した艦隊を海域に配置
+4. **戦闘** — 下記ルール。カットインはタップでスキップ、演出速度 ×1〜×3、「撤退」しても母港から再開可能
+5. **戦果報告** — 評価 S〜E、★、報酬の内訳（評価・連勝・コンボ・会心ボーナス）、提督と艦の経験値、ドロップ、3 つから 1 つ選ぶ宝箱
+6. **建造** — 1 回 💎100 / 10 連 💎1000（SR 以上 1 枠確定、初回無料）。60 回以内に SSR 以上確定。同じ艦は限界突破
+7. **艦隊 / 編成 / 任務** — 資金で強化、図鑑、デイリー任務と勲功（実績）
 
-## 画面構成
+## 戦闘ルール
 
-画面は 1280×720 の固定ステージを、ウィンドウに合わせて拡大縮小して表示します。
+- 両軍は同じ N×N（5〜7）の海域に潜む。毎ターン 1 隻を選び、次のいずれかを行う
+  - **砲撃**: 周囲 8 マスのどこか（主砲 1 消費）
+  - **移動**: 縦横に何マスでも。艦・方角・距離が相手に通知される（潜水艦は潜航して秘匿）
+  - **スキル**（回数制）: 戦艦「一斉射」十字 5 マス／巡洋艦「照明弾」3×3 の水上艦を発見／駆逐艦「ソナー」縦横一列の全艦を発見／潜水艦「魚雷」直進して 2 ダメージ／空母「航空攻撃」全域の 1 マス
+  - **全艦斉射**: 決戦ゲージ満タンで 3×3 を砲撃
+- 着弾は「命中（会心・回避あり）」「水しぶき（周囲に水上艦）」「外れ」で通知。命中・発見した敵は以後の移動も追跡される
+- 命中を続けるとコンボでゲージが加速。被弾でもゲージが溜まる
+- 全艦撃沈、または攻撃手段が尽きた側の負け。ターン制限では残り耐久の割合で判定（同率は防衛側の CPU 勝ち）
 
-1. **タイトル** — タップで開始（ブラウザの音声再生もここで許可されます）
-2. **母港** — 秘書艦（タップで台詞）、戦績・作戦要綱・秘書艦変更、出撃／再開
-3. **出撃準備** — 艦を選んで海域に配置（おまかせ配置あり）
-4. **戦闘** — 艦を選び「砲撃／移動」→ マスを選んで決定（同じマスをもう一度タップでも決定）。カットイン演出はタップでスキップ、右上で 2 倍速、「撤退」で母港へ戻っても対局は再開できます
-5. **戦果報告** — S〜E の戦闘評価と MVP
-
-## ルール
-
-- 各艦は毎ターン「攻撃」（周囲 8 マスのいずれかを砲撃・主砲 1 消費）か「移動」（縦横に任意マス）のどちらかを行う
-- 砲撃結果は「命中」「水しぶき（着弾点の周囲 8 マスに敵艦あり）」「外れ」で通知される
-- 移動は「艦・方角・距離」が相手に通知される
-- 全艦が撃沈または弾切れになった側の負け
-
-艦のステータスは `backend/internal/game/game.go` の `Fleet` で調整できます。
+艦カード・敵・海域・報酬の数値は `backend/internal/meta/catalog.go` で調整できます。
 
 ## API
 
+`/api/catalog` 以外はすべて `X-Player-Id: <UUID>` ヘッダが必要です。
+
 | メソッド | パス | 説明 |
 | --- | --- | --- |
-| GET | `/api/fleet` | 盤面サイズと艦のステータス |
-| POST | `/api/games` | 新規対局 `{"placements":[{"row":0,"col":0}, ...]}`（添字 = 艦 ID） |
-| GET | `/api/games/{id}` | 対局状態（対局中は敵艦の位置を隠す） |
-| POST | `/api/games/{id}/actions` | 行動 `{"type":"attack"\|"move","shipId":0,"target":{"row":1,"col":1}}`。CPU の応手も返る |
+| GET | `/api/catalog` | 艦カード・敵・海域・ガチャ・任務などの静的データ |
+| GET | `/api/profile` | プロフィール（初回アクセスで作成） |
+| POST | `/api/profile/login` | ログインボーナス受取 |
+| POST | `/api/profile/fleet` | 編成 `{"uids":["s1","s2"]}` |
+| POST | `/api/profile/secretary` | 秘書艦 `{"uid":"s1"}` |
+| POST | `/api/ships/{uid}/train` | 資金で 1 レベル強化 |
+| POST | `/api/gacha` | 建造 `{"count":1\|10}` |
+| POST | `/api/missions/{id}/claim` | デイリー任務の報酬受取 |
+| POST | `/api/achievements/{id}/claim` | 勲功の報酬受取 |
+| POST | `/api/games` | 出撃 `{"stageId":"1-1","placements":[{"row":0,"col":0}, ...]}`（添字 = 編成順） |
+| GET | `/api/games/{id}` | 対局状態（敵艦の位置は索敵済みのものだけ） |
+| POST | `/api/games/{id}/actions` | 行動 `{"type":"attack"\|"move"\|"skill"\|"ultimate","shipId":0,"target":{"row":1,"col":1}}`。CPU の応手、決着時は報酬も返る |
+| POST | `/api/games/{id}/chest` | 宝箱を開ける `{"index":0}` |
 | GET | `/api/games?limit=20` | 終了した対局の一覧 |
-| GET | `/api/stats` | 勝敗集計 |
 
 ## ローカル開発
 
@@ -81,8 +91,10 @@ docker compose up -d db
 cd backend
 DATABASE_URL='postgres://battleship:battleship@localhost:5432/battleship?sslmode=disable' go run ./cmd/server
 go test ./...
+# ストアの結合テストは使い捨ての DB を指定したときだけ動く
+TEST_DATABASE_URL='postgres://...' go test ./internal/store
 
-# frontend (/api は localhost:8080 の backend にプロキシ)
+# frontend (/api は localhost:8080 の backend にプロキシ。API_URL で変更可)
 cd frontend
 npm install
 npm run dev
