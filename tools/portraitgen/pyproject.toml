@@ -1,0 +1,33 @@
+[project]
+name = "portraitgen"
+version = "0.1.0"
+description = "Character portrait generator for battle_ship ship cards (SDXL + anime detectors)"
+requires-python = ">=3.10"
+# torch is not listed: Colab (and any CUDA box) ships its own build.
+dependencies = [
+  "diffusers>=0.32",
+  "transformers>=4.44",
+  "accelerate>=0.33",
+  "huggingface_hub>=0.24",
+  "onnxruntime>=1.18",
+  "numpy",
+  "pillow>=10",
+]
+
+[dependency-groups]
+dev = ["torch", "pytest"]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

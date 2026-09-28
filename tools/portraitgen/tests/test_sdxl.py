@@ -1,0 +1,50 @@
+"""Exercise every SDXL pass on a tiny random-weight pipeline on the CPU.
+
+The images are noise; this checks that the passes are wired correctly
+(long-prompt embeddings, sizes, pasting) without a GPU or the real model.
+Downloads ~10MB on the first run.
+"""
+
+import pytest
+import torch
+from PIL import Image
+
+from portraitgen.sdxl import Generator
+
+TINY = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+
+
+@pytest.fixture(scope="module")
+def gen():
+    return Generator(TINY, vae_id=None, device="cpu", dtype=torch.float32)
+
+
+LONG = ", ".join(["1girl", "solo", "full body"] + [f"very detailed ornament number {i}" for i in range(40)])
+
+
+def test_long_prompt_is_chunked_and_padded(gen):
+    e = gen.embed(LONG, "lowres, bad anatomy")
+    assert e.prompt.shape == e.negative.shape
+    assert e.prompt.shape[1] % 77 == 0 and e.prompt.shape[1] > 77
+    assert e.pooled.shape == e.negative_pooled.shape
+    assert gen.embed(LONG, "lowres, bad anatomy") is e  # cached
+
+
+def test_passes_keep_expected_sizes(gen):
+    e = gen.embed(LONG, "lowres")
+    base = gen.render(e, seed=1, width=64, height=96, steps=2)
+    assert base.size == (64, 96)
+    big = gen.refine(base, e, seed=1, scale=1.5, strength=0.5, steps=2)
+    assert big.size == (96, 144)
+    out = gen.detail(big, [(30, 20, 60, 50)], e, seed=1, strength=0.5, size=64, steps=2)
+    assert out.size == big.size
+    # outside the detailed region the image is untouched
+    assert out.getpixel((2, 140)) == big.getpixel((2, 140))
+
+
+def test_render_is_deterministic_per_seed(gen):
+    e = gen.embed("1girl", "lowres")
+    a = gen.render(e, seed=5, width=64, height=64, steps=2)
+    b = gen.render(e, seed=5, width=64, height=64, steps=2)
+    assert a.tobytes() == b.tobytes()
+    assert isinstance(a, Image.Image)
