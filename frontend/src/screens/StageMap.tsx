@@ -131,7 +131,7 @@ export function StageMap({ area: initialArea, go }: { area?: number; go: (s: Sce
                   disabled={!open}
                   onClick={(e) => pick(s, e.currentTarget)}
                 >
-                  <span className="node-core">{open ? (s.boss ? '👑' : s.id) : '🔒'}</span>
+                  <span className="node-core">{open ? (s.boss ? <BossMark /> : s.id) : '🔒'}</span>
                   <span className="node-name">{open ? s.name : '未解放'}</span>
                   <span className="node-stars">
                     {[1, 2, 4].map((bit) => (
@@ -156,6 +156,21 @@ export function StageMap({ area: initialArea, go }: { area?: number; go: (s: Sce
         )}
       </aside>
     </div>
+  )
+}
+
+// BossMark is the horned skull that marks a flagship's lair on the chart.
+function BossMark() {
+  return (
+    <svg className="boss-mark" viewBox="0 0 64 64" aria-label="BOSS">
+      <path className="horn" d="M18 27C8 21 5 11 9 2c3 9 8 14 16 17z" />
+      <path className="horn" d="M46 27c10-6 13-16 9-25-3 9-8 14-16 17z" />
+      <path className="skull" d="M32 12c-13 0-20 9-20 19 0 7 3 11 7 13v7c0 2 2 4 4 4h18c2 0 4-2 4-4v-7c4-2 7-6 7-13 0-10-7-19-20-19z" />
+      <path className="socket" d="M18 30l11 3-2 7c-5 0-9-4-9-10zM46 30l-11 3 2 7c5 0 9-4 9-10zM32 40l-2.5 5h5z" />
+      <circle className="eye" cx="24" cy="35" r="2.3" />
+      <circle className="eye" cx="40" cy="35" r="2.3" />
+      <path className="teeth" d="M27 49v6M32 49v6M37 49v6" />
+    </svg>
   )
 }
 

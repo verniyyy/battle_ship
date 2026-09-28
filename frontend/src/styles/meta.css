@@ -1233,6 +1233,52 @@ button.card:active {
   animation: boss-throb 1.4s ease-in-out infinite;
 }
 
+.boss-mark {
+  width: 70px;
+  height: 70px;
+  overflow: visible;
+  filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.6));
+}
+
+.boss-mark .horn {
+  fill: #d8c7a8;
+  stroke: #2a0006;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.boss-mark .skull {
+  fill: #f4ecdc;
+  stroke: #2a0006;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.boss-mark .socket {
+  fill: #2a0006;
+}
+
+.boss-mark .eye {
+  fill: #ff3b3b;
+  filter: drop-shadow(0 0 3px #ff2020);
+  animation: boss-eye 1.4s ease-in-out infinite;
+}
+
+.boss-mark .teeth {
+  stroke: #2a0006;
+  stroke-width: 2;
+}
+
+@keyframes boss-eye {
+  50% {
+    fill: #ffd0a0;
+  }
+}
+
+.node.locked .boss-mark .eye {
+  animation: none;
+}
+
 .node.on .node-core {
   outline: 3px solid var(--cyan);
   outline-offset: 5px;
