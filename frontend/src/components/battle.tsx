@@ -1,172 +1,271 @@
-import { useEffect, useState } from 'react'
-import { DAMAGE_LABEL, damageOf } from '../game'
-import { assets, useAssets } from '../theme'
-import { posLabel, type Pos, type ShipClass, type ShipView } from '../types'
-import { CellOverlay } from './Board'
-import { Banner, FxLabel, Pips, Portrait } from './ui'
+import type { ReactNode } from 'react'
+import { DAMAGE_LABEL, damageOf, SKILL_INFO, type Look } from '../game'
+import type { Pos, ShipView, SkillKind } from '../types'
+import { ShipArt } from './ShipArt'
+import { Pips } from './ui'
 
 export function ShipPlate({
   ship,
-  enemy,
+  look,
   selected,
+  hot,
   onClick,
 }: {
   ship: ShipView
-  enemy?: boolean
+  look: Look
   selected?: boolean
+  hot?: boolean
   onClick?: () => void
 }) {
-  const { legacy } = useAssets()
   const dmg = damageOf(ship)
-  const state = dmg === 'sunk' ? 'd' : dmg === 'none' ? 'b' : 'c'
-  const hpPct = (ship.hp / ship.maxHp) * 100
+  const hpPct = (Math.max(ship.hp, 0) / ship.maxHp) * 100
+  const enemy = !!look.enemy
   return (
     <button
       type="button"
-      className={`plate ${enemy ? 'enemy' : 'player'} dmg-${dmg} ${selected ? 'selected' : ''}`}
+      className={`plate ${enemy ? 'enemy' : 'player'} dmg-${dmg} ${selected ? 'selected' : ''} ${hot ? 'hot' : ''} ${ship.boss ? 'boss' : ''} r${look.rarity}`}
       onClick={onClick}
       disabled={!onClick || dmg === 'sunk'}
+      data-plate={`${enemy ? 'e' : 'p'}${ship.id}`}
     >
-      <span className="fleet-no">{ship.id + 1}</span>
-      <span className="plate-banner">
-        <Banner cls={ship.class} state={state} enemy={enemy} />
-        {dmg !== 'none' && dmg !== 'sunk' && <span className={`dmg-tag ${dmg}`}>{DAMAGE_LABEL[dmg]}</span>}
+      <span className="plate-art">
+        <ShipArt look={look} showKanji={false} />
+        <span className="plate-no">{ship.id + 1}</span>
       </span>
       <span className="plate-body">
         <span className="plate-name">
-          {enemy ? '敵' : ''}
           {ship.name}
-          {!enemy && ship.pos && dmg !== 'sunk' && <small>{posLabel(ship.pos)}</small>}
+          {dmg !== 'none' && dmg !== 'sunk' && <em className={`dmg-tag ${dmg}`}>{DAMAGE_LABEL[dmg]}</em>}
+          {enemy && ship.spotted && ship.hp > 0 && <em className="spot-tag">発見</em>}
         </span>
-        <span className="hp-bar">
+        <span className={`hp-bar ${hpPct <= 34 ? 'low' : ''}`}>
           <i style={{ width: `${hpPct}%` }} />
           <b>
-            {ship.hp}/{ship.maxHp}
+            {Math.max(ship.hp, 0)}/{ship.maxHp}
           </b>
         </span>
-        <span className="plate-ammo">
-          主砲 <Pips value={ship.ammo} max={ship.maxAmmo} kind="ammo" />
+        <span className="plate-meta">
+          <span className="ammo">
+            弾 <Pips value={ship.ammo} max={Math.min(ship.maxAmmo, 10)} kind="ammo" />
+          </span>
+          {ship.maxSkill > 0 && (
+            <span className="skill" title={SKILL_INFO[ship.skillKind].name}>
+              {SKILL_INFO[ship.skillKind].icon}
+              <Pips value={ship.skill} max={ship.maxSkill} kind="skill" />
+            </span>
+          )}
         </span>
       </span>
-      {dmg === 'sunk' &&
-        (legacy ? <img className="sunk-stamp" src={assets.sunk} alt="撃沈" /> : <span className="sunk-stamp text">撃沈</span>)}
+      {dmg === 'sunk' && <span className="sunk-stamp text">{enemy ? '撃沈' : '轟沈'}</span>}
     </button>
   )
 }
 
-export type ImpactKind = 'hit' | 'sunk' | 'splash' | 'miss'
-
-const IMPACT_TEXT: Record<ImpactKind, string> = { hit: '命中！', sunk: '撃沈！', splash: '水しぶき', miss: 'MISS' }
-const FRAMES = 20 // explosion.png is a 5x4 sheet of 96px frames
-
-// Shell impact drawn over a board cell: explosion or water column plus a popup word.
-export function Impact({ at, kind, enemyFire }: { at: Pos; kind: ImpactKind; enemyFire?: boolean }) {
-  const { legacy, ui } = useAssets()
-  const [frame, setFrame] = useState(0)
-  const boom = kind === 'hit' || kind === 'sunk'
-
-  useEffect(() => {
-    if (!legacy || !boom) return
-    const t = setInterval(() => setFrame((f) => (f + 1 < FRAMES ? f + 1 : f)), 40)
-    return () => clearInterval(t)
-  }, [legacy, boom])
-
+export function GaugeBar({ value, enemy }: { value: number; enemy?: boolean }) {
+  const full = value >= 100
   return (
-    <CellOverlay at={at} className={`impact ${kind} ${enemyFire ? 'enemy-fire' : ''}`}>
-      {boom ? (
-        <>
-          {ui && <img className="impact-burst" src={assets.fx('burst')} alt="" />}
-          {legacy ? (
-            <div
-              className="impact-sprite"
-              style={{
-                backgroundImage: `url(${assets.explosion})`,
-                backgroundPosition: `${-(frame % 5) * 96}px ${-Math.floor(frame / 5) * 96}px`,
-              }}
-            />
-          ) : (
-            <div className="impact-boom" />
-          )}
-        </>
-      ) : ui ? (
-        <img className="impact-column" src={assets.fx('column')} alt="" />
-      ) : (
-        <div className="impact-splash" />
-      )}
-      <span className="impact-text">{IMPACT_TEXT[kind]}</span>
-    </CellOverlay>
+    <div className={`gauge ${enemy ? 'enemy' : ''} ${full ? 'full' : ''}`}>
+      <span className="gauge-label">{enemy ? '敵決戦' : '決戦ゲージ'}</span>
+      <span className="gauge-track">
+        <i style={{ width: `${Math.min(value, 100)}%` }} />
+        {!enemy && [25, 50, 75].map((m) => <span key={m} className="gauge-tick" style={{ left: `${m}%` }} />)}
+      </span>
+      <b className="gauge-num">{full ? 'MAX' : `${value}%`}</b>
+    </div>
   )
 }
 
 export type Cutin =
-  | { kind: 'intro'; step: 'search' | 'found' | 'sighted' }
-  | { kind: 'attack'; cls: ShipClass; name: string }
-  | { kind: 'enemy'; cls: ShipClass; name: string }
-  | { kind: 'toast'; side: 'player' | 'cpu'; text: string }
-  | { kind: 'turn'; turn: number }
+  | { kind: 'intro'; text: string; sub?: string; boss?: boolean }
+  | { kind: 'attack'; look: Look; line: string; title: string; skill?: SkillKind }
+  | { kind: 'enemy'; look: Look; title: string }
+  | { kind: 'ultimate'; looks: Look[] }
+  | { kind: 'notice'; side: 'player' | 'cpu'; text: string }
+  | { kind: 'banner'; text: string; sub?: string; tone: 'gold' | 'red' | 'blue' | 'rainbow' }
+  | { kind: 'turn'; turn: number; left?: number }
 
 export function CutinLayer({ cutin, onSkip }: { cutin: Cutin; onSkip?: () => void }) {
-  const { legacy, ui } = useAssets()
   switch (cutin.kind) {
     case 'intro':
       return (
-        <div className="cutin intro" onClick={onSkip} key={cutin.step}>
-          <div className="cutin-strip" style={ui ? { backgroundImage: `url(${assets.strip})` } : undefined} />
+        <div className={`cutin intro ${cutin.boss ? 'boss' : ''}`} onClick={onSkip}>
+          <div className="cutin-strip" />
           <div className="cutin-label">
-            {cutin.step === 'search' && <FxLabel fx="search" text="索敵開始！" />}
-            {cutin.step === 'found' && <FxLabel fx="found" text="敵艦隊発見！" />}
-            {cutin.step === 'sighted' && <FxLabel fx="sighted" text="敵艦隊 見ゆ！" />}
+            <span className="fx-label text green">{cutin.text}</span>
+            {cutin.sub && <span className="cutin-caption">{cutin.sub}</span>}
           </div>
         </div>
       )
     case 'attack':
       return (
-        <div className={`cutin attack ${legacy ? 'has-portrait' : ''}`} onClick={onSkip}>
-          <div className="cutin-band" style={ui ? { backgroundImage: `url(${assets.band('green')})` } : undefined} />
-          {legacy && (
-            <div className="cutin-portrait">
-              <Portrait cls={cutin.cls} />
-            </div>
-          )}
+        <div className={`cutin attack ${cutin.skill ? 'skill' : ''}`} onClick={onSkip} style={{ ['--accent' as string]: cutin.look.color }}>
+          <div className="speedlines" />
+          <div className="cutin-band" />
+          <div className="cutin-art">
+            <ShipArt look={cutin.look} showKanji={false} />
+          </div>
           <div className="cutin-label">
-            <FxLabel fx="observe" text="砲撃開始！" tone="white" />
-            <span className="cutin-caption">{cutin.name}、撃ちます！</span>
+            <span className="fx-label text white">{cutin.title}</span>
+            <span className="cutin-caption">
+              {cutin.look.name}「{cutin.line}」
+            </span>
           </div>
         </div>
       )
     case 'enemy':
       return (
         <div className="cutin enemy" onClick={onSkip}>
-          <div className="cutin-diag" style={ui ? { backgroundImage: `url(${assets.band('red_diag')})` } : undefined} />
-          {/* Tilted to the same angle as the band so the label and plate sit inside it. */}
+          <div className="alert-stripes top" />
+          <div className="alert-stripes bottom" />
+          <div className="cutin-diag" />
           <div className="cutin-rig">
             <div className="cutin-label">
-              <FxLabel text="敵艦の砲撃！" tone="red" />
-              <span className="cutin-caption">敵{cutin.name}が発砲！</span>
+              <span className="fx-label text red">{cutin.title}</span>
+              <span className="cutin-caption">{cutin.look.name}</span>
             </div>
-            <div className="cutin-enemy-banner">
-              <Banner cls={cutin.cls} state="b" enemy />
+            <div className="cutin-enemy-art">
+              <ShipArt look={cutin.look} showKanji={false} />
             </div>
           </div>
         </div>
       )
-    case 'toast':
-      // "notice", not "toast": the global .toast class is the error popup.
+    case 'ultimate':
+      return (
+        <div className="cutin ultimate" onClick={onSkip}>
+          <div className="letterbox top" />
+          <div className="letterbox bottom" />
+          <div className="speedlines fast" />
+          <div className="ult-cards">
+            {cutin.looks.map((l, i) => (
+              <div key={i} className="ult-card" style={{ animationDelay: `${i * 0.09}s`, ['--accent' as string]: l.color }}>
+                <ShipArt look={l} showKanji={false} />
+              </div>
+            ))}
+          </div>
+          <div className="ult-title">
+            <small>ALL FLEET BARRAGE</small>
+            全艦斉射
+          </div>
+        </div>
+      )
+    case 'notice':
       return (
         <div className={`cutin notice ${cutin.side}`}>
-          <div className="notice-band" style={ui ? { backgroundImage: `url(${assets.band(cutin.side === 'player' ? 'green' : 'red')})` } : undefined}>
+          <div className="notice-band">
             <span>{cutin.text}</span>
+          </div>
+        </div>
+      )
+    case 'banner':
+      return (
+        <div className={`cutin banner ${cutin.tone}`} onClick={onSkip}>
+          <div className="banner-text">
+            {cutin.text}
+            {cutin.sub && <small>{cutin.sub}</small>}
           </div>
         </div>
       )
     case 'turn':
       return (
         <div className="cutin turn" key={cutin.turn}>
-          <div className="turn-flash">
+          <div className={`turn-flash ${cutin.left !== undefined && cutin.left <= 3 ? 'urgent' : ''}`}>
             <small>YOUR TURN</small>
             TURN {cutin.turn}
+            {cutin.left !== undefined && cutin.left <= 3 && <em>残り {cutin.left} ターン！</em>}
           </div>
         </div>
       )
   }
+}
+
+export interface Float {
+  id: number
+  at: Pos
+  text: string
+  kind: 'dmg' | 'crit' | 'evade' | 'miss' | 'splash' | 'sunk' | 'hurt' | 'found' | 'combo'
+}
+
+export function FloatText({ f, children }: { f: Float; children?: ReactNode }) {
+  return <span className={`float-text ${f.kind}`}>{children ?? f.text}</span>
+}
+
+// ---------------- projectiles ----------------
+
+type Pt = { x: number; y: number }
+
+function spawn(layer: HTMLElement, cls: string): HTMLDivElement {
+  const el = document.createElement('div')
+  el.className = cls
+  layer.appendChild(el)
+  return el
+}
+
+/** A shell flying on an arc; resolves on impact. */
+export function flyShell(layer: HTMLElement | null, from: Pt, to: Pt, ms: number, enemy = false): Promise<void> {
+  if (!layer || ms <= 0) return Promise.resolve()
+  const el = spawn(layer, `shell ${enemy ? 'enemy' : ''}`)
+  const n = 16
+  const lift = Math.max(80, Math.hypot(to.x - from.x, to.y - from.y) * 0.5)
+  const frames: Keyframe[] = []
+  for (let i = 0; i <= n; i++) {
+    const t = i / n
+    const x = from.x + (to.x - from.x) * t
+    const y = from.y + (to.y - from.y) * t - Math.sin(t * Math.PI) * lift
+    const s = 1 + Math.sin(t * Math.PI) * 0.6
+    frames.push({ transform: `translate(${x}px, ${y}px) scale(${s})` })
+  }
+  return el
+    .animate(frames, { duration: ms, easing: 'cubic-bezier(.35,.1,.6,1)' })
+    .finished.catch(() => undefined)
+    .then(() => el.remove())
+}
+
+/** A torpedo running straight along cells; calls onCell as it passes each. */
+export async function runTorpedo(layer: HTMLElement | null, pts: Pt[], msPerCell: number, onCell: (i: number) => void) {
+  if (!layer || !pts.length) return
+  const el = spawn(layer, 'torpedo')
+  const angle = pts.length > 1 ? (Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x) * 180) / Math.PI : 0
+  for (let i = 0; i < pts.length; i++) {
+    const a = i === 0 ? pts[0] : pts[i - 1]
+    const b = pts[i]
+    await el
+      .animate(
+        [{ transform: `translate(${a.x}px, ${a.y}px) rotate(${angle}deg)` }, { transform: `translate(${b.x}px, ${b.y}px) rotate(${angle}deg)` }],
+        { duration: i === 0 ? msPerCell * 0.5 : msPerCell, fill: 'forwards' },
+      )
+      .finished.catch(() => undefined)
+    onCell(i)
+  }
+  el.remove()
+}
+
+/** A plane crossing the stage over the target; resolves when the bomb lands. */
+export function flyPlane(layer: HTMLElement | null, to: Pt, ms: number): Promise<void> {
+  if (!layer || ms <= 0) return Promise.resolve()
+  const plane = spawn(layer, 'plane')
+  plane.textContent = '✈'
+  const y = to.y - 150
+  plane
+    .animate([{ transform: `translate(-80px, ${y + 60}px)` }, { transform: `translate(1360px, ${y - 60}px)` }], { duration: ms * 1.6, easing: 'linear' })
+    .finished.catch(() => undefined)
+    .then(() => plane.remove())
+  const dropAt = (to.x + 80) / 1440
+  return new Promise((r) =>
+    setTimeout(
+      () => {
+        const bomb = spawn(layer, 'shell bomb')
+        bomb
+          .animate([{ transform: `translate(${to.x}px, ${y}px) scale(.6)` }, { transform: `translate(${to.x}px, ${to.y}px) scale(1.1)` }], {
+            duration: ms * 0.35,
+            easing: 'ease-in',
+          })
+          .finished.catch(() => undefined)
+          .then(() => {
+            bomb.remove()
+            r()
+          })
+      },
+      ms * 1.6 * dropAt,
+    ),
+  )
 }

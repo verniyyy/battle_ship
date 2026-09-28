@@ -1,13 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
+import { audio } from './audio'
 import { Stage } from './components/Stage'
+import { Toasts } from './components/ui'
 import { Battle } from './screens/Battle'
+import { Dock } from './screens/Dock'
+import { Formation } from './screens/Formation'
+import { Gacha } from './screens/Gacha'
 import { Home } from './screens/Home'
+import { Missions } from './screens/Missions'
 import { Sortie } from './screens/Sortie'
+import { StageMap } from './screens/StageMap'
 import { Title } from './screens/Title'
-import type { GameResponse } from './types'
+import { useGame } from './state'
+import type { MatchResponse, Stage as StageT } from './types'
 
-type Scene = { name: 'title' } | { name: 'home' } | { name: 'sortie' } | { name: 'battle'; game: GameResponse; resumed?: boolean }
+export type Scene =
+  | { name: 'title' }
+  | { name: 'home' }
+  | { name: 'map'; area?: number }
+  | { name: 'formation' }
+  | { name: 'sortie'; stage: StageT }
+  | { name: 'battle'; match: MatchResponse; resumed?: boolean }
+  | { name: 'gacha' }
+  | { name: 'dock' }
+  | { name: 'missions' }
 
 const SAVE_KEY = 'currentGameId'
 
@@ -28,18 +45,20 @@ function loadGameId() {
   }
 }
 
-const CURTAIN_MS = 420
+const CURTAIN_MS = 380
 
 export function App() {
   const [scene, setScene] = useState<Scene>({ name: 'title' })
   const [curtain, setCurtain] = useState<'idle' | 'closing' | 'opening'>('idle')
-  const [resumable, setResumable] = useState<GameResponse | null>(null)
+  const [resumable, setResumable] = useState<MatchResponse | null>(null)
   const timers = useRef<number[]>([])
+  const { refresh } = useGame()
 
   // Every scene change goes through a closing/opening shutter.
   const go = useCallback((next: Scene) => {
     timers.current.forEach(clearTimeout)
     setCurtain('closing')
+    audio.play('whoosh')
     timers.current = [
       window.setTimeout(() => {
         setScene(next)
@@ -50,46 +69,58 @@ export function App() {
   }, [])
 
   useEffect(() => {
+    const track = scene.name === 'title' ? null : scene.name === 'battle' ? (scene.match.stage.boss ? 'boss' : 'battle') : scene.name === 'gacha' ? 'gacha' : 'home'
+    if (track) audio.music(track)
+  }, [scene])
+
+  useEffect(() => {
     if (scene.name !== 'home') return
+    void refresh()
     const id = loadGameId()
     if (!id) return
     api
       .getGame(id)
-      .then((g) => {
-        if (g.game.status === 'in_progress') setResumable(g)
+      .then((m) => {
+        if (m.game.status === 'in_progress') setResumable(m)
         else saveGameId(null)
       })
       .catch(() => saveGameId(null))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene.name])
 
-  const startBattle = (game: GameResponse, resumed = false) => {
-    saveGameId(game.id)
+  const startBattle = (match: MatchResponse, resumed = false) => {
+    saveGameId(match.id)
     setResumable(null)
-    go({ name: 'battle', game, resumed })
+    go({ name: 'battle', match, resumed })
   }
 
   return (
     <Stage>
       {scene.name === 'title' && <Title onStart={() => go({ name: 'home' })} />}
-      {scene.name === 'home' && (
-        <Home onSortie={() => go({ name: 'sortie' })} onResume={resumable ? () => startBattle(resumable, true) : undefined} />
+      {scene.name === 'home' && <Home go={go} onResume={resumable ? () => startBattle(resumable, true) : undefined} />}
+      {scene.name === 'map' && <StageMap area={scene.area} go={go} />}
+      {scene.name === 'formation' && <Formation onBack={() => go({ name: 'home' })} />}
+      {scene.name === 'sortie' && (
+        <Sortie stage={scene.stage} onDeploy={(m) => startBattle(m)} onBack={() => go({ name: 'map', area: scene.stage.area })} onFormation={() => go({ name: 'formation' })} />
       )}
-      {scene.name === 'sortie' && <Sortie onDeploy={(g) => startBattle(g)} onBack={() => go({ name: 'home' })} />}
       {scene.name === 'battle' && (
         <Battle
-          key={scene.game.id}
-          initial={scene.game}
+          key={scene.match.id}
+          initial={scene.match}
           resumed={scene.resumed}
           onFinished={() => saveGameId(null)}
-          onRetry={() => go({ name: 'sortie' })}
-          onHome={() => go({ name: 'home' })}
+          go={go}
         />
       )}
+      {scene.name === 'gacha' && <Gacha onBack={() => go({ name: 'home' })} />}
+      {scene.name === 'dock' && <Dock onBack={() => go({ name: 'home' })} />}
+      {scene.name === 'missions' && <Missions onBack={() => go({ name: 'home' })} />}
       <div className={`curtain ${curtain}`} aria-hidden>
         <div className="curtain-half top" />
         <div className="curtain-half bottom" />
         <div className="curtain-emblem">⚓</div>
       </div>
+      <Toasts />
     </Stage>
   )
 }

@@ -1,30 +1,40 @@
 import type { ReactNode } from 'react'
-import type { Pos } from '../types'
+import { COLS, type Pos } from '../types'
 
 // Sea chart grid. Row/column 1 hold the axis labels, so cell (r, c) sits at
 // grid-row r+2 / grid-column c+2. Overlays are positioned with CellOverlay.
+// `span` is the pixel width the playing area should fill; cells scale to fit.
 export function Board({
   size,
+  span = 400,
   cellClass,
   renderCell,
   onCellClick,
+  onCellHover,
   overlay,
   className = '',
 }: {
   size: number
+  span?: number
   cellClass?: (p: Pos) => string
   renderCell?: (p: Pos) => ReactNode
   onCellClick?: (p: Pos) => void
+  onCellHover?: (p: Pos | null) => void
   overlay?: ReactNode
   className?: string
 }) {
   const idx = Array.from({ length: size }, (_, i) => i)
+  const cell = Math.floor(span / size)
   return (
-    <div className={`board ${className}`} style={{ ['--size' as string]: size }}>
+    <div
+      className={`board ${className}`}
+      style={{ ['--size' as string]: size, ['--cell' as string]: `${cell}px` }}
+      onMouseLeave={() => onCellHover?.(null)}
+    >
       <span className="corner" />
       {idx.map((c) => (
         <span key={`c${c}`} className="axis">
-          {'ABCDE'[c]}
+          {COLS[c]}
         </span>
       ))}
       {idx.map((r) => [
@@ -39,7 +49,9 @@ export function Board({
               type="button"
               className={`cell ${cellClass?.(p) ?? ''}`}
               onClick={onCellClick ? () => onCellClick(p) : undefined}
-              aria-label={`${'ABCDE'[c]}${r + 1}`}
+              onMouseEnter={onCellHover ? () => onCellHover(p) : undefined}
+              aria-label={`${COLS[c]}${r + 1}`}
+              data-cell={`${r}-${c}`}
             >
               {renderCell?.(p)}
             </button>

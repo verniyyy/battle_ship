@@ -1,7 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { KANJI } from '../game'
-import { assets, backdropUrl, sound, useAssets, type Backdrop as BackdropName, type Fx } from '../theme'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { audio } from '../audio'
+import { CLASS_INFO, KANJI, rarityName, type Look } from '../game'
+import { anchors, useGame } from '../state'
+import { assets, backdropUrl, PORTRAIT_CARDS, useAssets, type Backdrop as BackdropName } from '../theme'
 import type { ShipClass } from '../types'
+import { ShipArt } from './ShipArt'
 
 export function Backdrop({ scene, dim = 0.35 }: { scene: BackdropName; dim?: number }) {
   const packs = useAssets()
@@ -10,7 +13,9 @@ export function Backdrop({ scene, dim = 0.35 }: { scene: BackdropName; dim?: num
     <div
       className={`backdrop backdrop-${scene} ${url ? 'has-image' : ''}`}
       style={{ backgroundImage: url ? `url(${url})` : undefined, ['--dim' as string]: dim }}
-    />
+    >
+      {!url && <div className="sea-anim" />}
+    </div>
   )
 }
 
@@ -18,59 +23,88 @@ export function ShipBadge({ cls, enemy, sunk }: { cls: ShipClass; enemy?: boolea
   return <span className={`ship-badge ${cls} ${enemy ? 'enemy' : ''} ${sunk ? 'sunk' : ''}`}>{KANJI[cls]}</span>
 }
 
-// Map piece for one ship. The class kanji alone can't tell two ships of the same
-// class apart, so the token shows the character's face (when the legacy pack is
-// present) plus the ship's fleet number, which matches the number on its plate.
-export function ShipToken({ cls, no, enemy, sunk }: { cls: ShipClass; no: number; enemy?: boolean; sunk?: boolean }) {
+// Map piece for one ship: the character's face for the portrait starters,
+// otherwise the class kanji, ringed in the card colour, with its fleet number.
+export function ShipToken({ look, no, sunk, spotted }: { look: Look; no: number; sunk?: boolean; spotted?: boolean }) {
   const { legacy } = useAssets()
-  const face = legacy && !enemy
+  const faceCls = legacy && look.cardId ? PORTRAIT_CARDS[look.cardId] : undefined
   return (
-    <span className={`ship-token ${cls} ${enemy ? 'enemy' : ''} ${sunk ? 'sunk' : ''}`}>
+    <span
+      className={`ship-token ${faceCls ?? look.cls} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${sunk ? 'sunk' : ''} ${spotted ? 'spotted' : ''}`}
+      style={{ ['--c' as string]: look.enemy ? undefined : look.color }}
+    >
       <span className="token-disc">
-        {face ? <img className="token-face" src={assets.portrait(cls)} alt="" draggable={false} /> : <span className="token-kanji">{KANJI[cls]}</span>}
+        {faceCls ? <img className="token-face" src={assets.portrait(faceCls)} alt="" draggable={false} /> : <span className="token-kanji">{look.enemy && look.boss ? '王' : KANJI[look.cls]}</span>}
       </span>
       <span className="token-no">{no}</span>
-      {face && <span className="token-class">{KANJI[cls]}</span>}
+      {faceCls && <span className="token-class">{KANJI[look.cls]}</span>}
     </span>
   )
 }
 
-// Full-body character art, or a large emblem when the legacy pack is absent.
-export function Portrait({ cls, className = '' }: { cls: ShipClass; className?: string }) {
-  const { legacy } = useAssets()
-  if (legacy) return <img className={`portrait ${cls} ${className}`} src={assets.portrait(cls)} alt="" draggable={false} />
+export function Stars({ n, max = 5, className = '' }: { n: number; max?: number; className?: string }) {
   return (
-    <div className={`portrait fallback ${cls} ${className}`}>
-      <span>{KANJI[cls]}</span>
-    </div>
+    <span className={`stars ${className}`} aria-label={`★${n}`}>
+      {Array.from({ length: max }, (_, i) => (
+        <i key={i} className={i < n ? 'on' : ''}>
+          ★
+        </i>
+      ))}
+    </span>
   )
 }
 
-// Banner strip for a ship (the 240x60 plates), with a drawn fallback.
-export function Banner({ cls, state, enemy }: { cls: ShipClass; state: 'b' | 'c' | 'd'; enemy?: boolean }) {
-  const { legacy } = useAssets()
-  if (legacy && enemy) {
-    // There is only one enemy plate image (labelled 駆逐), so stamp the real class over its emblem.
-    return (
-      <span className={`banner enemy-plate ${state === 'd' ? 'sunk' : ''}`}>
-        <img src={assets.enemyBanner(state !== 'b')} alt="" draggable={false} />
-        <ShipBadge cls={cls} enemy sunk={state === 'd'} />
+export function RarityBadge({ r }: { r: number }) {
+  return <span className={`rarity-badge r${r}`}>{rarityName(r)}</span>
+}
+
+// A collectible card: art, rarity frame, name, level and limit-break stars.
+export function CardView({
+  look,
+  level,
+  stars,
+  size = 'md',
+  fresh,
+  className = '',
+  onClick,
+  children,
+}: {
+  look: Look
+  level?: number
+  stars?: number
+  size?: 'xs' | 'sm' | 'md' | 'lg'
+  fresh?: boolean
+  className?: string
+  onClick?: (e: MouseEvent<HTMLElement>) => void
+  children?: ReactNode
+}) {
+  const Tag = onClick ? 'button' : 'div'
+  return (
+    <Tag className={`card card-${size} r${look.rarity} ${className}`} onClick={onClick} type={onClick ? 'button' : undefined}>
+      <ShipArt look={look} />
+      <span className="card-shine" />
+      <span className="card-top">
+        <RarityBadge r={look.rarity} />
+        <span className="card-class" style={{ background: CLASS_INFO[look.cls].color }}>
+          {KANJI[look.cls]}
+        </span>
       </span>
-    )
-  }
-  if (legacy) {
-    return <img className={`banner ${state === 'd' ? 'sunk' : ''}`} src={assets.banner(cls, state)} alt="" draggable={false} />
-  }
-  return (
-    <span className={`banner fallback ${cls} ${enemy ? 'enemy' : ''} ${state === 'd' ? 'sunk' : ''}`}>
-      <ShipBadge cls={cls} enemy={enemy} sunk={state === 'd'} />
-    </span>
+      <span className="card-name">{look.name}</span>
+      {(level !== undefined || stars !== undefined) && (
+        <span className="card-foot">
+          {level !== undefined && <span className="card-lv">Lv.{level}</span>}
+          {stars !== undefined && stars > 0 && <Stars n={stars} />}
+        </span>
+      )}
+      {fresh && <span className="card-new">NEW</span>}
+      {children}
+    </Tag>
   )
 }
 
-export function Pips({ value, max, kind }: { value: number; max: number; kind: 'hp' | 'ammo' }) {
+export function Pips({ value, max, kind }: { value: number; max: number; kind: 'hp' | 'ammo' | 'skill' }) {
   return (
-    <span className={`pips ${kind}`} aria-label={`${kind === 'hp' ? '耐久' : '残弾'} ${value}/${max}`}>
+    <span className={`pips ${kind}`} aria-label={`${value}/${max}`}>
       {Array.from({ length: max }, (_, i) => (
         <i key={i} className={i < value ? 'on' : ''} />
       ))}
@@ -78,14 +112,100 @@ export function Pips({ value, max, kind }: { value: number; max: number; kind: '
   )
 }
 
-// Cut-in label: the imported sprite when available, styled text otherwise.
-export function FxLabel({ fx, text, tone = 'green' }: { fx?: Fx; text: string; tone?: 'green' | 'red' | 'white' }) {
-  const { ui } = useAssets()
-  if (ui && fx) return <img className="fx-label" src={assets.fx(fx)} alt={text} draggable={false} />
-  return <span className={`fx-label text ${tone}`}>{text}</span>
+/** A number that rolls to its new value. */
+export function Counter({ value, ms = 700, tick = false, className = '' }: { value: number; ms?: number; tick?: boolean; className?: string }) {
+  const [shown, setShown] = useState(value)
+  const from = useRef(value)
+  const [bump, setBump] = useState(0)
+  useEffect(() => {
+    const start = performance.now()
+    const a = from.current
+    if (a === value) return
+    let raf = 0
+    let lastTick = 0
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / ms)
+      const e = 1 - Math.pow(1 - t, 3)
+      const v = Math.round(a + (value - a) * e)
+      setShown(v)
+      if (tick && now - lastTick > 60 && t < 1) {
+        audio.play('tick', { pitch: t * 10 })
+        lastTick = now
+      }
+      if (t < 1) raf = requestAnimationFrame(step)
+      else from.current = value
+    }
+    raf = requestAnimationFrame(step)
+    if (value > a) setBump((b) => b + 1)
+    return () => {
+      cancelAnimationFrame(raf)
+      from.current = value
+    }
+  }, [value, ms, tick])
+  return (
+    <span className={`counter ${className}`} key={bump}>
+      {shown.toLocaleString()}
+    </span>
+  )
 }
 
-export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+/** The persistent header: admiral level, currencies and optional navigation. */
+export function TopBar({ title, en, onBack, right }: { title?: string; en?: string; onBack?: () => void; right?: ReactNode }) {
+  const { profile } = useGame()
+  if (!profile) return null
+  const pct = Math.min(100, (profile.exp / profile.nextExp) * 100)
+  return (
+    <header className="topbar">
+      {onBack ? (
+        <button
+          className="back-btn"
+          onClick={() => {
+            audio.play('back')
+            onBack()
+          }}
+        >
+          <span className="chev">◀</span>
+          戻る
+        </button>
+      ) : (
+        <div className="admiral" ref={(el) => void (anchors.level = el)}>
+          <div className="admiral-lv" style={{ ['--p' as string]: `${pct}%` }}>
+            <small>Lv</small>
+            <b>{profile.level}</b>
+          </div>
+          <div className="admiral-info">
+            <span className="admiral-name">{profile.name}</span>
+            <span className="exp-bar">
+              <i style={{ width: `${pct}%` }} />
+            </span>
+          </div>
+        </div>
+      )}
+      {title ? (
+        <div className="topbar-title">
+          {en && <span className="head-en">{en}</span>}
+          <h1>{title}</h1>
+        </div>
+      ) : (
+        <span />
+      )}
+      <div className="wallet">
+        {right}
+        <span className="wallet-pill coins" ref={(el) => void (anchors.coins = el)}>
+          <b className="coin-ico" />
+          <Counter value={profile.coins} />
+        </span>
+        <span className="wallet-pill gems" ref={(el) => void (anchors.gems = el)}>
+          <b className="gem-ico" />
+          <Counter value={profile.gems} />
+        </span>
+        <SoundToggle />
+      </div>
+    </header>
+  )
+}
+
+export function Modal({ title, onClose, children, wide, className = '' }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean; className?: string }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -93,10 +213,17 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   }, [onClose])
   return (
     <div className="modal-scrim" onClick={onClose}>
-      <div className={`modal ${wide ? 'wide' : ''}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
+      <div className={`modal ${wide ? 'wide' : ''} ${className}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
         <header className="modal-head">
           <h2>{title}</h2>
-          <button className="icon-btn close" onClick={onClose} aria-label="閉じる">
+          <button
+            className="icon-btn close"
+            onClick={() => {
+              audio.play('back')
+              onClose()
+            }}
+            aria-label="閉じる"
+          >
             ✕
           </button>
         </header>
@@ -106,35 +233,31 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   )
 }
 
-export function BackButton({ label, onClick }: { label: string; onClick: () => void }) {
+export function SoundToggle() {
+  const [muted, setMuted] = useState(audio.muted)
+  useEffect(() => audio.onMute(setMuted), [])
   return (
-    <button
-      className="back-btn"
-      onClick={() => {
-        sound.se('click', 0.3)
-        onClick()
-      }}
-    >
-      <span className="chev">◀</span>
-      {label}
+    <button className="icon-btn sound" aria-label={muted ? 'サウンドをオンにする' : 'サウンドをオフにする'} onClick={() => audio.setMuted(!muted)}>
+      {muted ? '🔇' : '🔊'}
     </button>
   )
 }
 
-export function SoundToggle() {
-  const { legacy } = useAssets()
-  const [muted, setMuted] = useState(sound.muted)
-  if (!legacy) return null
+/** Red notification dot with an optional count. */
+export function Badge({ n, text }: { n?: number | boolean; text?: string }) {
+  if (!n && !text) return null
+  return <span className={`badge ${text ? 'text' : ''}`}>{text ?? (typeof n === 'number' && n > 1 ? n : '!')}</span>
+}
+
+export function Toasts() {
+  const { toasts } = useGame()
   return (
-    <button
-      className="icon-btn sound"
-      aria-label={muted ? 'サウンドをオンにする' : 'サウンドをオフにする'}
-      onClick={() => {
-        sound.setMuted(!muted)
-        setMuted(!muted)
-      }}
-    >
-      {muted ? '🔇' : '🔊'}
-    </button>
+    <div className="toasts">
+      {toasts.map((t) => (
+        <div key={t.id} className={`toast-pop ${t.tone}`}>
+          {t.text}
+        </div>
+      ))}
+    </div>
   )
 }

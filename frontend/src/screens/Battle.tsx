@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Scene } from '../App'
 import { api } from '../api'
+import { audio } from '../audio'
 import { Board, CellOverlay } from '../components/Board'
-import { CutinLayer, Impact, ShipPlate, type Cutin, type ImpactKind } from '../components/battle'
-import { Backdrop, Portrait, ShipToken, SoundToggle } from '../components/ui'
-import { describe, historyLog, report, type LogLine } from '../game'
-import { assets, sound, useAssets } from '../theme'
-import { posLabel, samePos, type ActionType, type GameResponse, type GameView, type Pos, type Result, type ShipView } from '../types'
+import { CutinLayer, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, type Cutin, type Float } from '../components/battle'
+import { Backdrop, ShipToken, SoundToggle } from '../components/ui'
+import { fx, RAINBOW } from '../fx'
+import { describe, footprint, historyLog, lookOfShip, SKILL_INFO, stageLabel, type Look, type LogLine } from '../game'
+import { useGame } from '../state'
+import { posLabel, samePos, type ActionType, type GameView, type MatchResponse, type Pos, type Result, type Reward, type Shot } from '../types'
 import { ResultOverlay } from './Result'
 
 type Marker = 'hit' | 'splash' | 'miss' | 'enemy-fire'
@@ -17,57 +20,121 @@ function lastRoundMarkers(game: GameView): Map<string, Marker> {
   let start = h.length - 1
   while (start > 0 && h[start].side !== 'player') start--
   for (const r of h.slice(Math.max(start, 0))) {
-    if (r.type !== 'attack' || !r.target) continue
-    const k = `${r.target.row},${r.target.col}`
-    if (r.side === 'cpu') m.set(k, 'enemy-fire')
-    else m.set(k, r.hitShipId !== undefined ? 'hit' : r.splash ? 'splash' : 'miss')
+    for (const s of r.shots ?? []) {
+      const k = `${s.target.row},${s.target.col}`
+      if (r.side === 'cpu') m.set(k, 'enemy-fire')
+      else m.set(k, (s.damage ?? 0) > 0 ? 'hit' : s.splash ? 'splash' : 'miss')
+    }
   }
   return m
+}
+
+// ---- intermediate views while an action plays out ----
+
+function patchShot(g: GameView, shot: Shot, mine: boolean): GameView {
+  if (shot.hitShipId === undefined || !shot.damage) return g
+  const key = mine ? 'enemyShips' : 'playerShips'
+  return { ...g, [key]: g[key].map((s) => (s.id === shot.hitShipId ? { ...s, hp: Math.max(0, s.hp - shot.damage!) } : s)) }
+}
+
+function shift(p: Pos, dir: Result['direction'], n: number): Pos {
+  switch (dir) {
+    case 'north':
+      return { row: p.row - n, col: p.col }
+    case 'south':
+      return { row: p.row + n, col: p.col }
+    case 'east':
+      return { row: p.row, col: p.col + n }
+    default:
+      return { row: p.row, col: p.col - n }
+  }
+}
+
+function patchMeta(g: GameView, r: Result): GameView {
+  const mine = r.side === 'player'
+  let player = g.playerShips
+  let enemy = g.enemyShips
+  const own = (f: (s: GameView['playerShips'][number]) => GameView['playerShips'][number]) => {
+    if (mine) player = player.map((s) => (s.id === r.shipId ? f(s) : s))
+    else enemy = enemy.map((s) => (s.id === r.shipId ? f(s) : s))
+  }
+  if (r.type === 'attack') own((s) => ({ ...s, ammo: s.ammo - 1 }))
+  if (r.type === 'skill') own((s) => ({ ...s, skill: s.skill - 1 }))
+  if (r.type === 'move') {
+    if (mine) own((s) => ({ ...s, pos: r.target }))
+    else
+      own((s) =>
+        r.hidden ? { ...s, pos: undefined, spotted: false } : s.pos && s.spotted ? { ...s, pos: shift(s.pos, r.direction, r.distance ?? 0) } : s,
+      )
+  }
+  if (mine && r.revealed?.length) {
+    enemy = enemy.map((s) => {
+      const seen = r.revealed!.find((v) => v.shipId === s.id)
+      return seen ? { ...s, pos: seen.pos, spotted: true } : s
+    })
+  }
+  if (mine) {
+    for (const sh of r.shots ?? []) {
+      if (sh.hitShipId !== undefined && !sh.sunk) enemy = enemy.map((s) => (s.id === sh.hitShipId ? { ...s, pos: sh.target, spotted: true } : s))
+    }
+  }
+  return {
+    ...g,
+    playerShips: player,
+    enemyShips: enemy,
+    gauge: mine ? r.gauge : g.gauge,
+    enemyGauge: mine ? g.enemyGauge : r.gauge,
+    combo: mine ? r.combo : g.combo,
+  }
 }
 
 const SPEED_KEY = 'battleSpeed'
 function loadSpeed() {
   try {
-    return localStorage.getItem(SPEED_KEY) === '2' ? 2 : 1
+    const v = Number(localStorage.getItem(SPEED_KEY))
+    return v === 2 || v === 3 ? v : 1
   } catch {
     return 1
   }
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const rnd = (a: number, b: number) => a + Math.random() * (b - a)
 
-export function Battle({
-  initial,
-  resumed,
-  onFinished,
-  onRetry,
-  onHome,
-}: {
-  initial: GameResponse
-  resumed?: boolean
-  onFinished: () => void
-  onRetry: () => void
-  onHome: () => void
-}) {
-  const { ui } = useAssets()
+export function Battle({ initial, resumed, onFinished, go }: { initial: MatchResponse; resumed?: boolean; onFinished: () => void; go: (s: Scene) => void }) {
+  const { catalog, card, setProfile } = useGame()
   const gameId = initial.id
+  const stage = initial.stage
   const [game, setGame] = useState(initial.game)
+  const [reward, setReward] = useState<Reward | undefined>(initial.reward)
   const [selected, setSelected] = useState<number | null>(null)
   const [mode, setMode] = useState<ActionType | null>(null)
   const [target, setTarget] = useState<Pos | null>(null)
+  const [hover, setHover] = useState<Pos | null>(null)
   const [busy, setBusy] = useState(false)
   const [cutin, setCutin] = useState<Cutin | null>(null)
-  const [impact, setImpact] = useState<{ at: Pos; kind: ImpactKind; enemyFire: boolean; key: number } | null>(null)
-  const [shake, setShake] = useState(0)
-  const [flash, setFlash] = useState(0)
+  const [floats, setFloats] = useState<Float[]>([])
+  const [lit, setLit] = useState<{ cells: Pos[]; kind: 'flare' | 'sonar' } | null>(null)
   const [log, setLog] = useState<LogLine[]>(() => historyLog(initial.game))
-  const [error, setError] = useState<string | null>(null)
   const [showResult, setShowResult] = useState(initial.game.status === 'finished')
   const [speed, setSpeed] = useState(loadSpeed)
+  const [combo, setCombo] = useState<{ n: number; key: number } | null>(null)
   const mounted = useRef(true)
   const speedRef = useRef(speed)
   const skip = useRef<(() => void) | null>(null)
+  const boardRef = useRef<HTMLDivElement>(null)
+  const layerRef = useRef<HTMLDivElement>(null)
+  const floatSeq = useRef(0)
   speedRef.current = speed
+
+  const looks = useMemo(
+    () => ({
+      player: game.playerShips.map((s) => lookOfShip(catalog, s, false)),
+      enemy: game.enemyShips.map((s) => lookOfShip(catalog, s, true)),
+    }),
+    // Looks depend on identity, not on HP, so the initial fleets are enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [catalog],
+  )
 
   // wait sleeps for a (speed-adjusted) duration; a tap on the cut-in ends it early.
   const wait = (ms: number) =>
@@ -80,27 +147,41 @@ export function Battle({
       }
       skip.current = done
     })
+  const ms = (n: number) => n / speedRef.current
 
-  const show = async (c: Cutin, ms: number) => {
+  const show = async (c: Cutin, dur: number) => {
     if (!mounted.current) return
     setCutin(c)
-    await wait(ms)
+    await wait(dur)
     if (mounted.current) setCutin(null)
+  }
+
+  const cellEl = (p: Pos) => boardRef.current?.querySelector(`[data-cell="${p.row}-${p.col}"]`)
+  const cellPt = (p: Pos) => fx.center(cellEl(p))
+
+  const float = (at: Pos, text: string, kind: Float['kind']) => {
+    const id = ++floatSeq.current
+    setFloats((f) => [...f, { id, at, text, kind }])
+    window.setTimeout(() => mounted.current && setFloats((f) => f.filter((x) => x.id !== id)), 1400)
   }
 
   useEffect(() => {
     mounted.current = true
-    sound.playBgm('battle')
-    const finishedAlready = initial.game.status === 'finished'
-    if (!finishedAlready) {
+    if (initial.game.status !== 'finished') {
       ;(async () => {
         setBusy(true)
-        sound.se('launch')
+        audio.play('alarm')
         if (resumed || initial.game.history.length > 0) {
-          await show({ kind: 'intro', step: 'sighted' }, 1400)
+          await show({ kind: 'intro', text: '敵艦隊 見ゆ！', sub: `${stageLabel(stage)} ${stage.name}` }, 1300)
         } else {
-          await show({ kind: 'intro', step: 'search' }, 1100)
-          await show({ kind: 'intro', step: 'found' }, 1400)
+          await show({ kind: 'intro', text: '索敵開始！', sub: `${stageLabel(stage)} ${stage.name}` }, 1100)
+          if (stage.boss) {
+            audio.play('bigboom')
+            fx.shake(16, 600)
+            await show({ kind: 'banner', text: '⚠ 敵旗艦 出現 ⚠', sub: game.enemyShips.find((s) => s.boss)?.name, tone: 'red' }, 1600)
+          } else {
+            await show({ kind: 'intro', text: '敵艦隊発見！', sub: `敵 ${game.enemyShips.length} 隻 ／ ${stage.size}×${stage.size} 海域` }, 1200)
+          }
         }
         if (mounted.current) setBusy(false)
       })()
@@ -108,38 +189,51 @@ export function Battle({
     return () => {
       mounted.current = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const finished = game.status === 'finished'
   const ship = selected !== null ? game.playerShips[selected] : null
-  const targets = ship && mode ? ((mode === 'attack' ? ship.attackTargets : ship.moveTargets) ?? []) : []
+  const flagship = game.playerShips.find((s) => s.hp > 0)
+  const canUlt = game.gauge >= 100 && !finished
+  const allCells = useMemo(() => Array.from({ length: game.boardSize ** 2 }, (_, i) => ({ row: Math.floor(i / game.boardSize), col: i % game.boardSize })), [game.boardSize])
+  const targets: Pos[] =
+    mode === 'ultimate' ? allCells : ship && mode ? ((mode === 'attack' ? ship.attackTargets : mode === 'move' ? ship.moveTargets : ship.skillTargets) ?? []) : []
   const markers = lastRoundMarkers(game)
   const turn = game.turn + (finished ? 0 : 1)
-  const lead = ship ?? game.playerShips.find((s) => s.hp > 0) ?? game.playerShips[0]
+  const turnsLeft = game.maxTurns ? game.maxTurns - game.turn : undefined
+  const aim = hover && targets.some((t) => samePos(t, hover)) ? hover : target
+  const actorPos = mode === 'ultimate' ? flagship?.pos : ship?.pos
+  const preview = aim && (mode === 'skill' || mode === 'ultimate') && actorPos ? footprint(game.boardSize, mode, ship?.skillKind, actorPos, aim) : []
 
   const selectShip = (id: number) => {
     if (busy || finished) return
-    sound.se('click', 0.3)
-    if (game.playerShips[id].class === 'destroyer') sound.voice()
+    const s = game.playerShips[id]
+    if (!s || s.hp <= 0) return
+    audio.play('select')
     setSelected(id)
     setMode(null)
     setTarget(null)
+    const el = document.querySelector(`[data-plate="p${id}"]`)
+    const c = fx.center(el)
+    fx.sparkle(c.x, c.y, looks.player[id].color, 8, 60)
   }
 
   const chooseMode = (m: ActionType) => {
-    sound.se('click', 0.3)
+    audio.play('tap')
     setMode(m)
     setTarget(null)
+    if (m === 'skill' && ship?.skillKind === 'sonar' && ship.pos) setTarget(ship.pos)
   }
 
   const onCell = (p: Pos) => {
     if (busy || finished) return
     if (targets.some((t) => samePos(t, p))) {
       if (samePos(target, p)) {
-        execute()
+        void execute()
         return
       }
-      sound.se('click', 0.2)
+      audio.play('tap')
       setTarget(p)
       return
     }
@@ -147,63 +241,269 @@ export function Battle({
     if (own) selectShip(own.id)
   }
 
-  const kindOf = (r: Result): ImpactKind => (r.hitShipId !== undefined ? (r.sunk ? 'sunk' : 'hit') : r.splash ? 'splash' : 'miss')
+  // ---------------- choreography ----------------
 
-  // play animates one side's action: cut-in, then the impact on the board.
-  const play = async (r: Result, view: GameView, actor: ShipView) => {
+  const impact = async (shot: Shot, mine: boolean) => {
+    if (!mounted.current) return
+    const pt = cellPt(shot.target)
+    const victims = mine ? game.enemyShips : game.playerShips
+    if ((shot.damage ?? 0) > 0) {
+      const big = shot.sunk ? 1.9 : shot.crit ? 1.4 : 1
+      fx.explosion(pt.x, pt.y, big, mine ? '#ffb347' : '#ff5a4e')
+      audio.play(shot.sunk ? 'bigboom' : 'boom')
+      if (shot.crit) {
+        audio.play('crit')
+        float(shot.target, `CRITICAL -${shot.damage}`, 'crit')
+        fx.flash('#fff', 220, 0.55)
+        await fx.hitstop(130)
+      } else float(shot.target, `-${shot.damage}`, mine ? 'dmg' : 'hurt')
+      fx.shake(shot.sunk ? 20 : shot.crit ? 14 : 9)
+      fx.punch(shot.crit || shot.sunk ? 1.035 : 1.015)
+      if (!mine) {
+        fx.flash('#ff2a2a', 320, 0.35)
+        audio.buzz(90)
+      } else audio.buzz(30)
+      setGame((g) => patchShot(g, shot, mine))
+      if (shot.sunk) {
+        await fx.hitstop(160)
+        fx.explosion(pt.x + rnd(-20, 20), pt.y + rnd(-20, 20), 1.2)
+        float(shot.target, mine ? '撃沈！' : '轟沈…', 'sunk')
+      }
+    } else if (shot.evaded) {
+      fx.splash(pt.x, pt.y, 0.7)
+      audio.play('evade')
+      float(shot.target, 'EVADE', 'evade')
+      if (mine) {
+        const v = victims[shot.hitShipId!]
+        if (v) float(shot.target, '敵影発見', 'found')
+      }
+    } else if (shot.splash) {
+      fx.splash(pt.x, pt.y, 1.2)
+      audio.play('splash')
+      float(shot.target, mine ? '水しぶき！' : '至近弾', 'splash')
+    } else {
+      fx.splash(pt.x, pt.y, 0.55)
+      audio.play('miss')
+      float(shot.target, 'MISS', 'miss')
+    }
+  }
+
+  const skyPoint = (to: { x: number; y: number }) => ({ x: to.x + rnd(-220, 220), y: -40 })
+
+  const play = async (r: Result, after: GameView) => {
+    if (!mounted.current) return
     const mine = r.side === 'player'
-    const line = describe(r, view, turn)
+    const actorLook = (mine ? looks.player : looks.enemy)[r.shipId]
+    const actor = (mine ? after.playerShips : after.enemyShips)[r.shipId]
+    const c = mine ? card(actor?.key ?? '') : undefined
+    const line = describe(r, after, turn)
+    const layer = layerRef.current
+    const from = mine && actor ? cellPt(game.playerShips[r.shipId].pos ?? actor.pos!) : undefined
+
     if (r.type === 'move') {
-      sound.se('move', 0.4)
+      audio.play(r.hidden ? 'dive' : 'move')
+      if (r.hidden && r.side === 'player' && from) fx.bubbles(from.x, from.y, 10)
       setLog((l) => [line, ...l])
-      await show({ kind: 'toast', side: r.side, text: line.text }, 1100)
+      setGame((g) => patchMeta(g, r))
+      await show({ kind: 'notice', side: r.side, text: line.text }, mine ? 700 : 1100)
       return
     }
-    sound.se('launch', 0.5)
-    await show(mine ? { kind: 'attack', cls: actor.class, name: actor.name } : { kind: 'enemy', cls: actor.class, name: actor.name }, mine ? 1100 : 900)
+
+    // Cut-in.
+    if (r.type === 'ultimate') {
+      audio.play('charge')
+      fx.flash(mine ? '#fff6c0' : '#ff3050', 500, 0.6)
+      if (mine) await show({ kind: 'ultimate', looks: after.playerShips.filter((s) => s.hp > 0).map((s) => looks.player[s.id]) }, 1700)
+      else await show({ kind: 'banner', text: '敵艦隊 全艦斉射！！', sub: '総員、衝撃に備えよ！', tone: 'red' }, 1300)
+    } else if (mine) {
+      const title = r.type === 'skill' ? `${SKILL_INFO[r.skill!].icon} ${SKILL_INFO[r.skill!].name}！` : '砲撃開始！'
+      audio.play('whoosh')
+      await show({ kind: 'attack', look: actorLook, line: c?.attack ?? '撃てっ！', title, skill: r.skill }, r.type === 'skill' ? 1000 : 650)
+    } else {
+      audio.play('alarm')
+      const title = r.type === 'skill' ? `敵の${SKILL_INFO[r.skill!].name}！` : '敵艦の砲撃！'
+      await show({ kind: 'enemy', look: actorLook, title }, 850)
+    }
     if (!mounted.current) return
-    const kind = kindOf(r)
-    const hit = kind === 'hit' || kind === 'sunk'
-    setImpact({ at: r.target!, kind, enemyFire: !mine, key: Math.random() })
-    sound.se(hit ? (kind === 'sunk' ? 'explosion3' : 'explosion1') : 'explosion2', hit ? 0.6 : 0.3)
-    if (hit) setShake((s) => s + 1)
-    if (hit && !mine) setFlash((f) => f + 1)
+
+    const shots = r.shots ?? []
+    const byCell = (p: Pos) => shots.find((s) => samePos(s.target, p))
+
+    if (r.type === 'ultimate') {
+      const cells = footprint(game.boardSize, 'ultimate', undefined, { row: 0, col: 0 }, r.target!)
+      await Promise.all(
+        cells.map(async (p, i) => {
+          await wait(i * 70)
+          const to = cellPt(p)
+          audio.play('cannon')
+          await flyShell(layer, skyPoint(to), to, ms(420), !mine)
+          const s = byCell(p)
+          if (s) await impact(s, mine)
+          else fx.explosion(to.x, to.y, 0.6)
+        }),
+      )
+      fx.flash('#fff', 400, 0.7)
+      fx.shake(24, 600)
+    } else if (r.skill === 'barrage') {
+      await Promise.all(
+        shots.map(async (s, i) => {
+          await wait(i * 90)
+          const to = cellPt(s.target)
+          audio.play('cannon')
+          await flyShell(layer, from ?? skyPoint(to), to, ms(480), !mine)
+          await impact(s, mine)
+        }),
+      )
+    } else if (r.skill === 'airstrike') {
+      audio.play('airstrike')
+      const to = cellPt(r.target!)
+      await flyPlane(layer, to, ms(900))
+      if (shots[0]) await impact(shots[0], mine)
+    } else if (r.skill === 'torpedo') {
+      audio.play('torpedo')
+      const path = r.path ?? []
+      const pts = [from ?? cellPt(path[0]), ...path.map(cellPt)]
+      await runTorpedo(layer, pts, ms(140), (i) => {
+        const p = pts[i]
+        fx.bubbles(p.x, p.y, 4)
+      })
+      if (shots[0]) await impact(shots[0], mine)
+      else {
+        const end = pts[pts.length - 1]
+        fx.splash(end.x, end.y, 0.5)
+        float(path[path.length - 1] ?? r.target!, 'MISS', 'miss')
+      }
+    } else if (r.skill === 'flare' || r.skill === 'sonar') {
+      audio.play(r.skill)
+      if (r.skill === 'flare') {
+        const to = cellPt(r.target!)
+        await flyShell(layer, from ?? skyPoint(to), to, ms(500), !mine)
+        fx.rays(to.x, to.y, '#fff6c0', 12, 1)
+        fx.flash('#fff6c0', 300, 0.35)
+      } else if (from) {
+        fx.ring(from.x, from.y, '#7ff', 520, 1.2)
+        fx.ring(from.x, from.y, '#7ff', 360, 1)
+      }
+      setLit({ cells: r.scanned ?? [], kind: r.skill })
+      await wait(700)
+      for (const v of r.revealed ?? []) {
+        if (mine) {
+          float(v.pos, '発見！', 'found')
+          const p = cellPt(v.pos)
+          fx.sparkle(p.x, p.y, '#ff6b6b', 14, 90)
+          audio.play('reveal')
+        } else {
+          float(v.pos, '発見された！', 'hurt')
+        }
+      }
+      if (!r.revealed?.length) float(r.target!, '反応なし', 'miss')
+      await wait(700)
+      if (mounted.current) setLit(null)
+    } else if (shots[0]) {
+      const to = cellPt(shots[0].target)
+      audio.play('cannon')
+      if (from) fx.sparkle(from.x, from.y, '#ffd36b', 6, 50)
+      await flyShell(layer, from ?? skyPoint(to), to, ms(520), !mine)
+      await impact(shots[0], mine)
+    }
+    if (!mounted.current) return
     setLog((l) => [line, ...l])
-    await wait(kind === 'sunk' ? 1500 : 1100)
-    if (mounted.current) setImpact(null)
+    setGame((g) => patchMeta(g, r))
+
+    // Payoff beats.
+    const hits = shots.filter((s) => (s.damage ?? 0) > 0).length
+    if (mine && r.combo >= 2 && (hits || r.revealed?.length)) {
+      setCombo({ n: r.combo, key: Date.now() })
+      audio.play('combo', { pitch: r.combo })
+    }
+    const sunk = shots.filter((s) => s.sunk)
+    if (sunk.length) {
+      const names = sunk.map((s) => (mine ? after.enemyShips : after.playerShips)[s.hitShipId!]?.name).join('・')
+      await wait(350)
+      if (mine) {
+        fx.confetti(40, ['#ffd24a', '#fff', '#ff9a3c'])
+        await show({ kind: 'banner', text: '撃沈！！', sub: names, tone: 'gold' }, 1000)
+        const left = after.enemyShips.filter((s) => s.hp > 0).length
+        if (left === 1 && after.status !== 'finished') await show({ kind: 'banner', text: '敵艦 残り1隻！', sub: '一気に畳みかけろ！', tone: 'blue' }, 900)
+      } else {
+        await show({ kind: 'banner', text: '轟沈…', sub: names, tone: 'red' }, 1000)
+      }
+    }
+    if (mine && r.gauge >= 100 && game.gauge < 100 && r.type !== 'ultimate') {
+      audio.play('rare')
+      fx.sparkle(640, 60, '#fff6b0', 30, 200)
+      await show({ kind: 'banner', text: '決戦ゲージ MAX！', sub: '全艦斉射が使用可能！', tone: 'rainbow' }, 1000)
+    }
   }
 
   const execute = async () => {
-    if (selected === null || !mode || !target || busy) return
+    if (!mode || !target || busy) return
+    const shipId = mode === 'ultimate' ? flagship?.id : selected
+    if (shipId === undefined || shipId === null) return
     setBusy(true)
-    setError(null)
+    setHover(null)
     try {
-      const res = await api.act(gameId, mode, selected, target)
+      const res = await api.act(gameId, mode, shipId, target)
       setSelected(null)
       setMode(null)
       setTarget(null)
-      await play(res.player, res.game, res.game.playerShips[res.player.shipId])
+      await play(res.player, res.game)
+      if (res.cpu && mounted.current) await play(res.cpu, res.game)
       if (!mounted.current) return
       setGame(res.game)
-      if (res.cpu) await play(res.cpu, res.game, res.game.enemyShips[res.cpu.shipId])
-      if (!mounted.current) return
       if (res.game.status === 'finished') {
         onFinished()
-        sound.stopBgm()
-        await sleep(500)
+        if (res.profile) setProfile(res.profile)
+        setReward(res.reward)
+        const win = res.game.winner === 'player'
+        await wait(400)
+        if (win) {
+          audio.play('victory')
+          fx.confetti(220, RAINBOW)
+          fx.rays(640, 330, '#fff2a8', 18, 2)
+          await show({ kind: 'banner', text: 'VICTORY', sub: res.game.endReason === 'judgment' ? '判定勝利' : '敵艦隊を撃滅！', tone: 'rainbow' }, 2200)
+        } else {
+          audio.play('defeat')
+          await show({ kind: 'banner', text: 'DEFEAT', sub: res.game.endReason === 'judgment' ? '判定敗北' : res.game.endReason === 'disarmed' ? '攻撃手段が尽きた…' : '艦隊全滅…', tone: 'red' }, 2000)
+        }
         if (mounted.current) setShowResult(true)
       } else {
-        await show({ kind: 'turn', turn: res.game.turn + 1 }, 800)
+        const left = res.game.maxTurns ? res.game.maxTurns - res.game.turn : undefined
+        if (left !== undefined && left <= 3) audio.play('alarm')
+        await show({ kind: 'turn', turn: res.game.turn + 1, left }, 750)
       }
     } catch (e) {
-      setError((e as Error).message)
+      audio.play('error')
+      setCutin({ kind: 'notice', side: 'cpu', text: (e as Error).message })
+      window.setTimeout(() => mounted.current && setCutin(null), 1500)
     } finally {
       if (mounted.current) setBusy(false)
     }
   }
 
+  // Keyboard: 1-4 ships, A/M/S/U modes, Enter fires, Esc cancels.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (busy || finished) return
+      const n = Number(e.key)
+      if (n >= 1 && n <= game.playerShips.length) selectShip(n - 1)
+      else if (e.key === 'a' && ship) chooseMode('attack')
+      else if (e.key === 'm' && ship) chooseMode('move')
+      else if (e.key === 's' && ship) chooseMode('skill')
+      else if (e.key === 'u' && canUlt) chooseMode('ultimate')
+      else if (e.key === 'Enter') void execute()
+      else if (e.key === 'Escape') {
+        setMode(null)
+        setTarget(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   const toggleSpeed = () => {
-    const s = speed === 1 ? 2 : 1
+    const s = speed === 3 ? 1 : speed + 1
+    audio.play('tap')
     setSpeed(s)
     try {
       localStorage.setItem(SPEED_KEY, String(s))
@@ -212,29 +512,43 @@ export function Battle({
     }
   }
 
-  const reticle = ui ? { ['--reticle' as string]: `url(${assets.fx('reticle')})` } : undefined
+  const span = game.boardSize >= 7 ? 440 : game.boardSize === 6 ? 432 : 410
   const lastLine = log[0]
+  const inPreview = (p: Pos) => preview.some((q) => samePos(q, p))
+  const litCell = (p: Pos) => lit?.cells.some((q) => samePos(q, p))
+  const lead = ship ?? flagship
+  const leadLook: Look | undefined = lead ? looks.player[lead.id] : undefined
+  const skill = ship ? SKILL_INFO[ship.skillKind] : null
 
   return (
-    <div className={`screen battle-screen ${shake % 2 ? 'shake-a' : shake ? 'shake-b' : ''}`}>
+    <div className={`screen battle-screen ${stage.boss ? 'boss-stage' : ''}`}>
       <Backdrop scene="battle" dim={0.5} />
-      {flash > 0 && <div className="damage-flash" key={flash} />}
 
       {/* ---- header ---- */}
       <header className="battle-hud">
-        <span className="side-tag player">自艦隊</span>
-        <div className="turn-plate">
+        <div className={`turn-plate ${turnsLeft !== undefined && turnsLeft <= 3 && !finished ? 'urgent' : ''}`}>
           <small>TURN</small>
           <b>{turn}</b>
+          {game.maxTurns > 0 && <span>/{game.maxTurns}</span>}
         </div>
-        <span className="side-tag enemy">敵艦隊</span>
+        <div className="hud-center">
+          <GaugeBar value={game.gauge} />
+          {game.combo >= 1 && !finished && (
+            <span className={`combo-chip c${Math.min(game.combo, 5)}`} key={game.combo}>
+              COMBO ×{game.combo}
+            </span>
+          )}
+        </div>
         <div className="hud-tools">
-          <button className={`chip-btn ${speed === 2 ? 'on' : ''}`} onClick={toggleSpeed} aria-pressed={speed === 2}>
+          <span className="stage-chip">
+            {stageLabel(stage)} {stage.name}
+          </span>
+          <button className={`chip-btn ${speed > 1 ? 'on' : ''}`} onClick={toggleSpeed} aria-label="演出速度">
             ▶▶ ×{speed}
           </button>
           <SoundToggle />
           {!finished && (
-            <button className="chip-btn" onClick={onHome} title="対局は保存され、母港から再開できます">
+            <button className="chip-btn" onClick={() => go({ name: 'home' })} title="対局は保存され、母港から再開できます">
               撤退
             </button>
           )}
@@ -244,71 +558,73 @@ export function Battle({
       {/* ---- player fleet ---- */}
       <aside className="fleet-col player">
         {game.playerShips.map((s) => (
-          <ShipPlate key={s.id} ship={s} selected={selected === s.id} onClick={finished ? undefined : () => selectShip(s.id)} />
+          <ShipPlate key={s.id} ship={s} look={looks.player[s.id]} selected={selected === s.id} onClick={finished ? undefined : () => selectShip(s.id)} />
         ))}
-        <div className="flagship">
-          <div className="flagship-art" key={lead.class}>
-            <Portrait cls={lead.class} />
-          </div>
-          <p className="flagship-line">
+        {leadLook && lead && (
+          <div className="flagship-line">
+            <b>{leadLook.name}</b>
             {finished
-              ? '戦闘終了。'
+              ? '戦闘終了。お疲れさま！'
               : busy
                 ? '交戦中……'
-                : ship
-                  ? mode === 'attack'
-                    ? '目標はどこ？'
-                    : mode === 'move'
-                      ? '針路を指示して。'
-                      : '指示をちょうだい。'
-                  : '行動する艦を選んで。'}
-          </p>
-        </div>
+                : mode === 'ultimate'
+                  ? '全艦、斉射用意！目標を！'
+                  : ship
+                    ? mode === 'attack'
+                      ? '目標はどこ？'
+                      : mode === 'move'
+                        ? '針路を指示して。'
+                        : mode === 'skill'
+                          ? `${skill!.name}、いつでもいけるよ！`
+                          : '指示をちょうだい。'
+                    : '行動する艦を選んで。'}
+          </div>
+        )}
       </aside>
 
       {/* ---- board ---- */}
-      <main className="battle-center" style={reticle}>
-        <Board
-          size={game.boardSize}
-          onCellClick={onCell}
-          className={`battle-board ${mode ? `mode-${mode}` : ''}`}
-          cellClass={(p) => {
-            const cls: string[] = []
-            if (targets.some((t) => samePos(t, p))) cls.push(`target-${mode}`)
-            if (samePos(target, p)) cls.push('chosen')
-            const own = game.playerShips.find((s) => s.hp > 0 && samePos(s.pos, p))
-            if (own) cls.push('has-ship')
-            if (own && own.id === selected) cls.push('selected-ship')
-            return cls.join(' ')
-          }}
-          renderCell={(p) => {
-            const own = game.playerShips.find((s) => s.hp > 0 && samePos(s.pos, p))
-            const enemy = finished ? game.enemyShips.find((s) => samePos(s.pos, p)) : undefined
-            const marker = markers.get(`${p.row},${p.col}`)
-            return (
+      <main className="battle-center">
+        <div ref={boardRef} className={`board-wrap ${mode === 'ultimate' ? 'ult-aim' : ''}`}>
+          <Board
+            size={game.boardSize}
+            span={span}
+            onCellClick={onCell}
+            onCellHover={setHover}
+            className={`battle-board ${mode ? `mode-${mode}` : ''}`}
+            cellClass={(p) => {
+              const cls: string[] = []
+              if (targets.some((t) => samePos(t, p))) cls.push(`target-${mode === 'ultimate' ? 'skill' : mode}`)
+              if (inPreview(p)) cls.push('aoe')
+              if (samePos(target, p)) cls.push('chosen')
+              if (litCell(p)) cls.push(`lit-${lit!.kind}`)
+              const own = game.playerShips.find((s) => s.hp > 0 && samePos(s.pos, p))
+              if (own) cls.push('has-ship')
+              if (own && own.id === selected) cls.push('selected-ship')
+              return cls.join(' ')
+            }}
+            renderCell={(p) => {
+              const own = game.playerShips.find((s) => s.hp > 0 && samePos(s.pos, p))
+              const enemy = game.enemyShips.find((s) => s.pos && samePos(s.pos, p) && (finished || s.spotted || s.hp <= 0))
+              const marker = markers.get(`${p.row},${p.col}`)
+              return (
+                <>
+                  {marker && !busy && <span className={`marker ${marker}`} />}
+                  {enemy && <ShipToken look={looks.enemy[enemy.id]} no={enemy.id + 1} sunk={enemy.hp <= 0} spotted={enemy.spotted && !finished} />}
+                  {own && <ShipToken look={looks.player[own.id]} no={own.id + 1} />}
+                </>
+              )
+            }}
+            overlay={
               <>
-                {marker && !busy && <span className={`marker ${marker}`} />}
-                {own && <ShipToken cls={own.class} no={own.id + 1} />}
-                {enemy && <ShipToken cls={enemy.class} no={enemy.id + 1} enemy sunk={enemy.hp <= 0} />}
+                {floats.map((f) => (
+                  <CellOverlay key={f.id} at={f.at} className="float-host">
+                    <FloatText f={f} />
+                  </CellOverlay>
+                ))}
               </>
-            )
-          }}
-          overlay={
-            <>
-              {ship?.pos && ui && (
-                <CellOverlay at={ship.pos} className="under">
-                  <img className="select-ring" src={assets.fx('ring')} alt="" />
-                </CellOverlay>
-              )}
-              {target && mode === 'attack' && ui && (
-                <CellOverlay at={target}>
-                  <img className="lock-reticle" src={assets.fx('reticle')} alt="" />
-                </CellOverlay>
-              )}
-              {impact && <Impact key={impact.key} at={impact.at} kind={impact.kind} enemyFire={impact.enemyFire} />}
-            </>
-          }
-        />
+            }
+          />
+        </div>
 
         <div className="command-dock">
           {finished ? (
@@ -317,45 +633,71 @@ export function Battle({
                 <button className="pill-btn" onClick={() => setShowResult(true)}>
                   戦果報告
                 </button>
-                <button className="pill-btn ghost" onClick={onHome}>
+                <button className="pill-btn ghost" onClick={() => go({ name: 'home' })}>
                   母港へ
                 </button>
               </>
             )
-          ) : ship ? (
+          ) : (
             <>
-              <button
-                className={`cmd-btn attack ${mode === 'attack' ? 'on' : ''}`}
-                disabled={busy || ship.ammo <= 0 || !ship.attackTargets?.length}
-                onClick={() => chooseMode('attack')}
-              >
-                <b>砲撃</b>
-                <small>残弾 {ship.ammo}</small>
-              </button>
-              <button
-                className={`cmd-btn move ${mode === 'move' ? 'on' : ''}`}
-                disabled={busy || !ship.moveTargets?.length}
-                onClick={() => chooseMode('move')}
-              >
-                <b>移動</b>
-                <small>縦横に航行</small>
-              </button>
-              <button className={`cmd-btn go ${target ? 'ready' : ''}`} disabled={busy || !target} onClick={execute}>
-                <b>{target ? (mode === 'attack' ? '撃て！' : '航行！') : '決定'}</b>
-                <small>{target ? `${posLabel(target)} ${mode === 'attack' ? 'を砲撃' : 'へ移動'}` : mode ? 'マスを選択' : '行動を選択'}</small>
+              {ship ? (
+                <>
+                  <button
+                    className={`cmd-btn attack ${mode === 'attack' ? 'on' : ''}`}
+                    disabled={busy || ship.ammo <= 0 || !ship.attackTargets?.length}
+                    onClick={() => chooseMode('attack')}
+                  >
+                    <b>砲撃</b>
+                    <small>残弾 {ship.ammo}</small>
+                  </button>
+                  <button className={`cmd-btn move ${mode === 'move' ? 'on' : ''}`} disabled={busy || !ship.moveTargets?.length} onClick={() => chooseMode('move')}>
+                    <b>移動</b>
+                    <small>{ship.class === 'submarine' ? '潜航（秘匿）' : '縦横に航行'}</small>
+                  </button>
+                  <button
+                    className={`cmd-btn skill ${mode === 'skill' ? 'on' : ''}`}
+                    disabled={busy || ship.skill <= 0 || !ship.skillTargets?.length}
+                    onClick={() => chooseMode('skill')}
+                    title={skill!.desc}
+                  >
+                    <b>
+                      {skill!.icon}
+                      {skill!.name}
+                    </b>
+                    <small>
+                      {skill!.short} 残{ship.skill}
+                    </small>
+                  </button>
+                </>
+              ) : (
+                <p className="dock-hint">{busy ? '交戦中……' : '◀ 艦を選択（1〜4キー）'}</p>
+              )}
+              {canUlt && (
+                <button className={`cmd-btn ultimate ${mode === 'ultimate' ? 'on' : ''}`} disabled={busy} onClick={() => chooseMode('ultimate')}>
+                  <b>全艦斉射</b>
+                  <small>3×3 一斉砲撃</small>
+                </button>
+              )}
+              <button className={`cmd-btn go ${target ? 'ready' : ''}`} disabled={busy || !target} onClick={() => void execute()}>
+                <b>{target ? (mode === 'move' ? '航行！' : '撃て！') : '決定'}</b>
+                <small>{target ? `${posLabel(target)} ${mode === 'move' ? 'へ移動' : 'を目標'}` : mode ? 'マスを選択' : '行動を選択'}</small>
               </button>
             </>
-          ) : (
-            <p className="dock-hint">{busy ? '交戦中……' : '▲ 左の艦隊、または海域上の自艦をタップ'}</p>
           )}
         </div>
-        {error && <p className="toast error">{error}</p>}
+        {combo && (
+          <div className={`combo-burst c${Math.min(combo.n, 5)}`} key={combo.key} onAnimationEnd={() => setCombo(null)}>
+            <b>{combo.n}</b>
+            <span>COMBO!</span>
+          </div>
+        )}
       </main>
 
       {/* ---- enemy fleet & log ---- */}
       <aside className="fleet-col enemy">
+        <GaugeBar value={game.enemyGauge} enemy />
         {game.enemyShips.map((s) => (
-          <ShipPlate key={s.id} ship={s} enemy />
+          <ShipPlate key={s.id} ship={s} look={looks.enemy[s.id]} hot={s.spotted && s.hp > 0} />
         ))}
         <section className="battle-log">
           <h3>戦闘記録</h3>
@@ -371,10 +713,12 @@ export function Battle({
         </section>
       </aside>
 
+      <div className="projectiles" ref={layerRef} />
+
       {cutin && <CutinLayer cutin={cutin} onSkip={() => skip.current?.()} />}
 
-      {showResult && (
-        <ResultOverlay game={game} report={report(game)} onBoard={() => setShowResult(false)} onHome={onHome} onRetry={onRetry} />
+      {showResult && reward && (
+        <ResultOverlay gameId={gameId} game={game} stage={stage} reward={reward} onReward={setReward} onBoard={() => setShowResult(false)} go={go} />
       )}
     </div>
   )

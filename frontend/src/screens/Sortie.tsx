@@ -1,33 +1,39 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../api'
+import { audio } from '../audio'
 import { Board } from '../components/Board'
-import { Backdrop, BackButton, Banner, Pips, Portrait, ShipBadge, ShipToken } from '../components/ui'
-import { sound } from '../theme'
-import { posLabel, samePos, type FleetInfo, type GameResponse, type Pos } from '../types'
+import { Backdrop, CardView, Pips, ShipToken, TopBar } from '../components/ui'
+import { fx } from '../fx'
+import { lookOfCard, SKILL_INFO, stageLabel } from '../game'
+import { useGame } from '../state'
+import { posLabel, samePos, type MatchResponse, type Pos, type Stage } from '../types'
+import { skillOf } from './Formation'
 
-export function Sortie({ onDeploy, onBack }: { onDeploy: (g: GameResponse) => void; onBack: () => void }) {
-  const [fleet, setFleet] = useState<FleetInfo | null>(null)
-  const [placements, setPlacements] = useState<(Pos | null)[]>([])
+export function Sortie({
+  stage,
+  onDeploy,
+  onBack,
+  onFormation,
+}: {
+  stage: Stage
+  onDeploy: (m: MatchResponse) => void
+  onBack: () => void
+  onFormation: () => void
+}) {
+  const { profile, card, notify } = useGame()
+  const n = profile?.fleet.length ?? 0
+  const [placements, setPlacements] = useState<(Pos | null)[]>(() => Array(n).fill(null))
   const [selected, setSelected] = useState(0)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  if (!profile) return null
 
-  useEffect(() => {
-    sound.playBgm('title')
-    api
-      .fleet()
-      .then((f) => {
-        setFleet(f)
-        setPlacements(f.ships.map(() => null))
-      })
-      .catch((e) => setError(e.message))
-  }, [])
-
+  const fleet = profile.fleet.map((uid) => profile.ships.find((s) => s.uid === uid)!)
   const shipAt = (p: Pos) => placements.findIndex((q) => samePos(q, p))
+  const size = stage.size
 
   const select = (i: number) => {
     setSelected(i)
-    sound.se('click', 0.3)
+    audio.play('tap')
   }
 
   const onCell = (p: Pos) => {
@@ -36,7 +42,10 @@ export function Sortie({ onDeploy, onBack }: { onDeploy: (g: GameResponse) => vo
       select(occupant)
       return
     }
-    sound.se('move', 0.3)
+    audio.play('move')
+    const el = document.querySelector(`[data-cell="${p.row}-${p.col}"]`)
+    const c = fx.center(el)
+    fx.ring(c.x, c.y, '#9fe8ff', 50, 0.4)
     const next = placements.map((q, i) => (i === selected ? p : q))
     setPlacements(next)
     const unplaced = next.findIndex((q) => q === null)
@@ -44,119 +53,114 @@ export function Sortie({ onDeploy, onBack }: { onDeploy: (g: GameResponse) => vo
   }
 
   const randomize = () => {
-    if (!fleet) return
-    sound.se('move', 0.3)
-    const cells = Array.from({ length: fleet.boardSize ** 2 }, (_, i) => i).sort(() => Math.random() - 0.5)
-    setPlacements(fleet.ships.map((_, i) => ({ row: Math.floor(cells[i] / fleet.boardSize), col: cells[i] % fleet.boardSize })))
+    audio.play('move')
+    const cells = Array.from({ length: size * size }, (_, i) => i).sort(() => Math.random() - 0.5)
+    setPlacements(fleet.map((_, i) => ({ row: Math.floor(cells[i] / size), col: cells[i] % size })))
   }
 
   const reset = () => {
-    if (!fleet) return
-    sound.se('click', 0.3)
-    setPlacements(fleet.ships.map(() => null))
+    audio.play('back')
+    setPlacements(Array(n).fill(null))
     setSelected(0)
   }
 
-  const ready = placements.length > 0 && placements.every((p) => p !== null)
-  const placedCount = placements.filter(Boolean).length
+  const ready = placements.length === n && placements.every((p) => p !== null)
 
   const deploy = async () => {
     setBusy(true)
-    setError(null)
     try {
-      sound.se('launch')
-      onDeploy(await api.createGame(placements as Pos[]))
+      audio.play('charge')
+      fx.flash('#bfe9ff', 400, 0.5)
+      onDeploy(await api.createGame(stage.id, placements as Pos[]))
     } catch (e) {
-      setError((e as Error).message)
+      notify((e as Error).message, 'error')
       setBusy(false)
     }
   }
 
-  const current = fleet?.ships[selected]
+  const current = fleet[selected]
+  const currentCard = current ? card(current.card) : undefined
 
   return (
     <div className="screen sortie-screen">
-      <Backdrop scene="standby" dim={0.45} />
+      <Backdrop scene="standby" dim={0.5} />
+      <TopBar title="出撃準備" en="DEPLOYMENT" onBack={onBack} />
 
-      <header className="screen-head">
-        <BackButton label="母港" onClick={onBack} />
-        <div className="head-title">
-          <span className="head-en">FORMATION</span>
-          <h1>出撃準備</h1>
-        </div>
-        <span className="head-step">
-          配置 <b>{placedCount}</b> / {fleet?.ships.length ?? 3}
-        </span>
-      </header>
-
-      {!fleet ? (
-        <p className={`center-msg ${error ? 'error' : ''}`}>{error ?? '艦隊情報を受信中…'}</p>
-      ) : (
-        <>
-          <section className="fleet-list">
-            <h2 className="panel-title">第一艦隊</h2>
-            {fleet.ships.map((s, i) => (
-              <button key={s.class} type="button" className={`fleet-card ${selected === i ? 'selected' : ''}`} onClick={() => select(i)}>
-                <span className="fleet-no">{i + 1}</span>
-                <Banner cls={s.class} state="b" />
-                <span className="fleet-stats">
-                  <span>
-                    耐久 <Pips value={s.hp} max={s.hp} kind="hp" />
-                  </span>
-                  <span>
-                    主砲 <Pips value={s.ammo} max={s.ammo} kind="ammo" />
-                  </span>
-                </span>
-                <span className={`fleet-pos ${placements[i] ? 'done' : ''}`}>{placements[i] ? posLabel(placements[i]!) : '未配置'}</span>
-              </button>
-            ))}
-            <div className="fleet-tools">
-              <button className="pill-btn" onClick={randomize}>
-                おまかせ配置
-              </button>
-              <button className="pill-btn ghost" onClick={reset}>
-                リセット
-              </button>
-            </div>
-          </section>
-
-          <section className="sortie-board">
-            <p className="board-hint">
-              {current ? (
-                <>
-                  <ShipBadge cls={current.class} /> <b>{current.name}</b> を配置する海域をタップ
-                </>
-              ) : null}
-            </p>
-            <Board
-              size={fleet.boardSize}
-              onCellClick={onCell}
-              cellClass={(p) => (shipAt(p) >= 0 ? `has-ship ${shipAt(p) === selected ? 'selected-ship' : ''}` : 'placeable')}
-              renderCell={(p) => {
-                const i = shipAt(p)
-                return i >= 0 ? <ShipToken cls={fleet.ships[i].class} no={i + 1} /> : null
-              }}
-            />
-          </section>
-
-          {current && (
-            <div className="sortie-portrait" key={current.class}>
-              <Portrait cls={current.class} />
-              <div className="portrait-name">
-                <small>{current.class.toUpperCase()}</small>
-                {current.name}
-              </div>
-            </div>
-          )}
-
-          {error && <p className="toast error">{error}</p>}
-
-          <button className={`go-btn ${ready ? 'ready' : ''}`} disabled={!ready || busy} onClick={deploy}>
-            <span className="go-en">LAUNCH</span>
-            <span className="go-jp">出撃！</span>
+      <section className="fleet-list">
+        <h2 className="panel-title">
+          第一艦隊
+          <button className="mini-btn" onClick={onFormation}>
+            編成変更
           </button>
-        </>
-      )}
+        </h2>
+        {fleet.map((s, i) => {
+          const c = card(s.card)
+          if (!c) return null
+          const sk = SKILL_INFO[skillOf(c.class)]
+          return (
+            <button key={s.uid} type="button" className={`fleet-card ${selected === i ? 'selected' : ''}`} onClick={() => select(i)}>
+              <span className="fleet-no">{i + 1}</span>
+              <CardView look={lookOfCard(c)} size="xs" />
+              <span className="fleet-stats">
+                <b>
+                  {c.name} <small>Lv.{s.level}</small>
+                </b>
+                <span>
+                  耐久 <Pips value={s.stats.hp} max={s.stats.hp} kind="hp" />
+                </span>
+                <span>
+                  主砲 {s.stats.ammo} {sk.icon}
+                  {sk.name}×{s.stats.skill}
+                </span>
+              </span>
+              <span className={`fleet-pos ${placements[i] ? 'done' : ''}`}>{placements[i] ? posLabel(placements[i]!) : '未配置'}</span>
+            </button>
+          )
+        })}
+        <div className="fleet-tools">
+          <button className="pill-btn" onClick={randomize}>
+            おまかせ配置
+          </button>
+          <button className="pill-btn ghost" onClick={reset}>
+            リセット
+          </button>
+        </div>
+      </section>
+
+      <section className="sortie-board">
+        <p className="board-hint">{currentCard ? <><b>{currentCard.name}</b> を配置する海域をタップ</> : null}</p>
+        <Board
+          size={size}
+          span={size >= 7 ? 460 : 440}
+          onCellClick={onCell}
+          cellClass={(p) => (shipAt(p) >= 0 ? `has-ship ${shipAt(p) === selected ? 'selected-ship' : ''}` : 'placeable')}
+          renderCell={(p) => {
+            const i = shipAt(p)
+            const c = i >= 0 ? card(fleet[i].card) : undefined
+            return c ? <ShipToken look={lookOfCard(c)} no={i + 1} /> : null
+          }}
+        />
+      </section>
+
+      <aside className="sortie-side">
+        <div className="sortie-stage">
+          <span className={`stage-id ${stage.boss ? 'boss' : ''}`}>{stageLabel(stage)}</span>
+          <b>{stage.name}</b>
+          <small>
+            {size}×{size} 海域{stage.maxTurns ? ` ／ ${stage.maxTurns}ターン` : ''}
+          </small>
+        </div>
+        {currentCard && current && (
+          <div className="sortie-portrait" key={current.uid}>
+            <CardView look={lookOfCard(currentCard)} level={current.level} stars={current.stars} size="lg" />
+            <p className="sortie-quote">「{currentCard.intro}」</p>
+          </div>
+        )}
+        <button className={`go-btn ${ready ? 'ready' : ''}`} disabled={!ready || busy} onClick={deploy}>
+          <span className="go-en">LAUNCH</span>
+          <span className="go-jp">出撃！</span>
+        </button>
+      </aside>
     </div>
   )
 }
