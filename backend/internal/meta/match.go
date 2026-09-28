@@ -117,7 +117,7 @@ type Reward struct {
 	Ships []ShipGrowth `json:"ships"`
 	Drop  *Gain        `json:"drop,omitempty"`
 
-	Chests []Chest `json:"chests"`
+	Chests []Chest `json:"chests"` // only a win offers chests
 	Picked int     `json:"picked"` // -1 until a chest is opened
 }
 
@@ -300,7 +300,9 @@ func Settle(m *Match, p *Profile, rng *rand.Rand, now time.Time) *Reward {
 
 	rw.LevelUp = p.give(&Grant{Coins: rw.Coins, Gems: rw.Gems, Exp: rw.Exp})
 	rw.ToLevel, rw.ToExp = p.Level, p.Exp
-	rw.Chests = rollChests(rng, stage, win)
+	if win {
+		rw.Chests = rollChests(rng, stage)
+	}
 	m.Reward = rw
 	return rw
 }
@@ -313,38 +315,34 @@ func popcount(n int) int {
 	return c
 }
 
-func rollChest(rng *rand.Rand, stage Stage, tier int, win bool) Chest {
-	scale := 1
-	if win {
-		scale = 2
-	}
+func rollChest(rng *rand.Rand, stage Stage, tier int) Chest {
 	c := Chest{Tier: tier}
 	switch tier {
 	case 0:
 		if rng.IntN(3) == 0 {
-			c.Grant.Gems = 5 * scale * (1 + rng.IntN(3))
+			c.Grant.Gems = 10 * (1 + rng.IntN(3))
 		} else {
-			c.Grant.Coins = stage.Coins * scale * (2 + rng.IntN(3)) / 10
+			c.Grant.Coins = stage.Coins * (2 + rng.IntN(3)) / 5
 		}
 	case 1:
 		if rng.IntN(2) == 0 {
-			c.Grant.Gems = 25 * scale
+			c.Grant.Gems = 50
 		} else {
-			c.Grant.Coins = stage.Coins * scale
+			c.Grant.Coins = stage.Coins * 2
 		}
 	default:
 		if rng.IntN(3) == 0 {
 			c.Grant.Cards = []Gain{{Card: randomCard(rng, rollRarity(rng, PullRates, SR))}}
 		} else {
-			c.Grant.Gems = 100 * scale
+			c.Grant.Gems = 200
 		}
 	}
 	return c
 }
 
-// rollChests fills the three chests. When none is a jackpot, one often is
+// rollChests fills the three chests a win offers. When none is a jackpot, one often is
 // swapped in so the chests left unopened keep the next pick tempting.
-func rollChests(rng *rand.Rand, stage Stage, win bool) []Chest {
+func rollChests(rng *rand.Rand, stage Stage) []Chest {
 	out := make([]Chest, 3)
 	jackpot := false
 	for i := range out {
@@ -357,10 +355,10 @@ func rollChests(rng *rand.Rand, stage Stage, win bool) []Chest {
 			tier = 1
 		}
 		jackpot = jackpot || tier == 2
-		out[i] = rollChest(rng, stage, tier, win)
+		out[i] = rollChest(rng, stage, tier)
 	}
 	if !jackpot && rng.IntN(100) < 45 {
-		out[rng.IntN(3)] = rollChest(rng, stage, 2, win)
+		out[rng.IntN(3)] = rollChest(rng, stage, 2)
 	}
 	return out
 }

@@ -287,6 +287,12 @@ func TestSettleLossBreaksStreak(t *testing.T) {
 	if rw.Win || rw.Rank != "E" || rw.Coins <= 0 || p.Stats.Streak != 0 || p.Stages["1-1"] != 0 {
 		t.Fatalf("loss reward %+v", rw)
 	}
+	if len(rw.Chests) != 0 {
+		t.Fatalf("a loss offered %d chests", len(rw.Chests))
+	}
+	if _, err := OpenChest(m, p, 0, t0); err == nil {
+		t.Fatal("opened a chest after a loss")
+	}
 }
 
 func TestChestsAreHiddenUntilOpened(t *testing.T) {

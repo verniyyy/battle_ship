@@ -284,27 +284,29 @@ export function ResultOverlay({
               {!reward.drop.new && <span className="lb">限界突破 ★{reward.drop.stars}</span>}
             </div>
           )}
-          <div className={`chests ${beat >= 6 ? 'in' : ''}`} onClick={(e) => e.stopPropagation()}>
-            <p>{reward.picked >= 0 ? '宝箱の中身' : '宝箱をひとつ選べ！'}</p>
-            <div className="chest-row">
-              {(reward.picked >= 0 ? reward.chests : [0, 1, 2]).map((c, i) => {
-                const ch = typeof c === 'number' ? undefined : (c as Chest)
-                const picked = reward.picked === i
-                return (
-                  <button
-                    key={i}
-                    ref={(el) => void (chestRefs.current[i] = el)}
-                    className={`chest ${opening === i && !ch ? 'shaking' : ''} ${ch ? `open t${ch.tier}` : ''} ${picked ? 'picked' : ''} ${ch && !picked ? 'missed' : ''}`}
-                    disabled={reward.picked >= 0 || opening !== null}
-                    onClick={() => void pick(i)}
-                  >
-                    <span className="chest-box">{ch ? (ch.tier === 2 ? '👑' : '🎁') : '🎁'}</span>
-                    {ch && <ChestPrize chest={ch} />}
-                  </button>
-                )
-              })}
+          {reward.win && (
+            <div className={`chests ${beat >= 6 ? 'in' : ''}`} onClick={(e) => e.stopPropagation()}>
+              <p>{reward.picked >= 0 ? '宝箱の中身' : '宝箱をひとつ選べ！'}</p>
+              <div className="chest-row">
+                {(reward.picked >= 0 ? reward.chests : [0, 1, 2]).map((c, i) => {
+                  const ch = typeof c === 'number' ? undefined : (c as Chest)
+                  const picked = reward.picked === i
+                  return (
+                    <button
+                      key={i}
+                      ref={(el) => void (chestRefs.current[i] = el)}
+                      className={`chest ${opening === i && !ch ? 'shaking' : ''} ${ch ? `open t${ch.tier}` : ''} ${picked ? 'picked' : ''} ${ch && !picked ? 'missed' : ''}`}
+                      disabled={reward.picked >= 0 || opening !== null}
+                      onClick={() => void pick(i)}
+                    >
+                      <span className="chest-box">{ch ? (ch.tier === 2 ? '👑' : '🎁') : '🎁'}</span>
+                      {ch && <ChestPrize chest={ch} />}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
