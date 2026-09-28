@@ -1,0 +1,5 @@
+node_modules
+dist
+*.tsbuildinfo
+# Third-party assets restored locally by scripts/salvage-legacy-assets.sh; never commit.
+public/legacy/
