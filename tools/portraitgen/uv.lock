@@ -1032,13 +1032,13 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "accelerate", specifier = ">=0.33" },
-    { name = "diffusers", specifier = ">=0.32" },
+    { name = "accelerate", specifier = ">=1.0" },
+    { name = "diffusers", specifier = ">=0.40" },
     { name = "huggingface-hub", specifier = ">=0.24" },
     { name = "numpy" },
     { name = "onnxruntime", specifier = ">=1.18" },
     { name = "pillow", specifier = ">=10" },
-    { name = "transformers", specifier = ">=4.44" },
+    { name = "transformers", specifier = ">=5.0" },
 ]
 
 [package.metadata.requires-dev]

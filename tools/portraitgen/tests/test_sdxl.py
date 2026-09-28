@@ -19,6 +19,15 @@ def gen():
     return Generator(TINY, vae_id=None, device="cpu", dtype=torch.float32)
 
 
+def test_weights_stay_in_the_requested_dtype():
+    # diffusers' from_pipe defaults to float32 and casts the shared modules
+    # in place; in fp16 that doubled SDXL's VRAM and ran a T4 out of memory.
+    g = Generator(TINY, vae_id=None, device="cpu", dtype=torch.float16)
+    for pipe in (g.txt2img, g.img2img, g.inpaint):
+        for name in ("unet", "vae", "text_encoder", "text_encoder_2"):
+            assert getattr(pipe, name).dtype == torch.float16, name
+
+
 LONG = ", ".join(["1girl", "solo", "full body"] + [f"very detailed ornament number {i}" for i in range(40)])
 
 

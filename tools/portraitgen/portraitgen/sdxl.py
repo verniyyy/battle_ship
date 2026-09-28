@@ -13,8 +13,14 @@ eyes, mouths and fingers smear. The standard fix, done here, is:
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
+
+# Fewer out-of-memory errors from fragmentation when pass sizes alternate
+# (832x1216 renders, 1248x1824 refines, 1024^2 details). Only takes effect
+# before CUDA is initialised, which importing this module precedes.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import numpy as np
 import torch
@@ -59,16 +65,29 @@ class Generator:
         self.txt2img = StableDiffusionXLPipeline.from_pretrained(model_id, torch_dtype=dtype, add_watermarker=False, **extra)
         # Euler a is what Illustrious-family models are tuned and sampled with.
         self.txt2img.scheduler = EulerAncestralDiscreteScheduler.from_config(self.txt2img.scheduler.config)
-        self.txt2img.to(device)
         self.txt2img.vae.enable_tiling()  # hires decode would not fit a T4 otherwise
         self.txt2img.set_progress_bar_config(disable=True)
-        # Same weights, different entry points.
-        self.img2img = StableDiffusionXLImg2ImgPipeline.from_pipe(self.txt2img)
-        self.inpaint = StableDiffusionXLInpaintPipeline.from_pipe(self.txt2img)
+        # Same weights, different entry points. from_pipe casts the shared
+        # modules to float32 unless told the dtype, which would double SDXL
+        # to ~13GB in place and run a 15GB T4 out of memory.
+        self.img2img = StableDiffusionXLImg2ImgPipeline.from_pipe(self.txt2img, torch_dtype=dtype)
+        self.inpaint = StableDiffusionXLInpaintPipeline.from_pipe(self.txt2img, torch_dtype=dtype)
         for p in (self.img2img, self.inpaint):
             p.set_progress_bar_config(disable=True)
+        # Belt and braces for other diffusers/transformers versions.
+        for name in ("unet", "vae", "text_encoder", "text_encoder_2"):
+            getattr(self.txt2img, name).to(device=device, dtype=dtype)
         self.device = device
         self._embeds: dict[tuple[str, str], Embeds] = {}
+
+    def memory_report(self) -> str:
+        p = self.txt2img
+        dtypes = ", ".join(f"{n} {getattr(p, n).dtype}".replace("torch.", "") for n in ("unet", "vae", "text_encoder", "text_encoder_2"))
+        if not torch.cuda.is_available():
+            return dtypes
+        used = torch.cuda.memory_allocated() / 2**30
+        total = torch.cuda.get_device_properties(0).total_memory / 2**30
+        return f"{dtypes}; VRAM {used:.1f} / {total:.1f} GiB"
 
     # ---- prompts ----
 
@@ -110,6 +129,7 @@ class Generator:
     # ---- passes ----
 
     def render(self, embeds: Embeds, seed: int, width: int, height: int, steps: int = 28, cfg: float = 6.0) -> Image.Image:
+        self._release()
         return self.txt2img(
             **embeds.kwargs(),
             width=width,
@@ -122,6 +142,7 @@ class Generator:
     def refine(self, image: Image.Image, embeds: Embeds, seed: int, scale: float = 1.5, strength: float = 0.4, steps: int = 28, cfg: float = 6.0) -> Image.Image:
         w, h = _mult8(image.width * scale), _mult8(image.height * scale)
         big = image.convert("RGB").resize((w, h), Image.LANCZOS)
+        self._release()
         return self.img2img(
             **embeds.kwargs(),
             image=big,
@@ -151,6 +172,7 @@ class Generator:
             k = size / (crop[2] - crop[0])
             local = tuple((v - o) * k for v, o in zip(box, (crop[0], crop[1], crop[0], crop[1])))
             mask = feathered_mask((size, size), local, grow=1.3, blur=size / 40)
+            self._release()
             painted = self.inpaint(
                 **embeds.kwargs(),
                 image=region,
@@ -165,6 +187,10 @@ class Generator:
             back = crop[2] - crop[0]
             out.paste(painted.resize((back, back), Image.LANCZOS), crop[:2], mask.resize((back, back), Image.LANCZOS))
         return out
+
+    def _release(self) -> None:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def _rng(self, seed: int) -> torch.Generator:
         return torch.Generator(self.device).manual_seed(int(seed))

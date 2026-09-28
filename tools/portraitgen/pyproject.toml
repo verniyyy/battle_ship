@@ -4,10 +4,12 @@ version = "0.1.0"
 description = "Character portrait generator for battle_ship ship cards (SDXL + anime detectors)"
 requires-python = ">=3.10"
 # torch is not listed: Colab (and any CUDA box) ships its own build.
+# The minimums are the versions the pipeline is tested with; they make pip
+# upgrade Colab's preinstalled (older) copies.
 dependencies = [
-  "diffusers>=0.32",
-  "transformers>=4.44",
-  "accelerate>=0.33",
+  "diffusers>=0.40",
+  "transformers>=5.0",
+  "accelerate>=1.0",
   "huggingface_hub>=0.24",
   "onnxruntime>=1.18",
   "numpy",
