@@ -2,100 +2,88 @@ package game
 
 import (
 	"math/rand/v2"
-	"strconv"
 )
 
-// CPUMemory is what the CPU has deduced about the player's fleet from public results only.
+// CPUMemory is what the CPU has inferred about the player's fleet from public
+// results, on top of the exact sightings in State.Intel.
 type CPUMemory struct {
-	// Known maps a player ship ID (as string, for JSON) to its last known position.
-	Known map[string]Pos `json:"known"`
 	// Hints are cells with at least one player ship in their 8 neighbours.
 	Hints []Pos `json:"hints"`
-	// Cleared cells are known to be empty.
+	// Cleared cells are believed to be empty.
 	Cleared []Pos `json:"cleared"`
 }
 
 // Observe updates the CPU memory with a public action result.
 func (m *CPUMemory) Observe(r Result) {
-	if m.Known == nil {
-		m.Known = map[string]Pos{}
-	}
 	switch {
-	case r.Side == SideCPU && r.Type == ActionAttack:
-		t := *r.Target
-		if r.HitShipID != nil {
-			key := strconv.Itoa(*r.HitShipID)
-			if r.Sunk {
-				delete(m.Known, key)
-			} else {
-				m.Known[key] = t
+	case r.Side == SideCPU:
+		for _, s := range r.Shots {
+			if s.HitShipID == nil {
+				m.Cleared = append(m.Cleared, s.Target)
 			}
-		} else {
-			m.Cleared = append(m.Cleared, t)
+			if s.Splash {
+				m.Hints = append(m.Hints, s.Target)
+			} else {
+				m.Cleared = append(m.Cleared, neighbours(s.Target)...)
+			}
 		}
-		if r.Splash {
-			m.Hints = append(m.Hints, t)
-		} else {
-			m.Cleared = append(m.Cleared, neighbours(t)...)
+		if r.Skill == SkillTorpedo && len(r.Shots) == 0 {
+			m.Cleared = append(m.Cleared, r.Path...)
 		}
-	case r.Side == SidePlayer && r.Type == ActionAttack:
-		// The attacking ship must be next to the target cell.
+		for _, c := range r.Scanned {
+			found := false
+			for _, s := range r.Revealed {
+				found = found || s.Pos == c
+			}
+			if !found {
+				m.Cleared = append(m.Cleared, c)
+			}
+		}
+	case r.Type == ActionAttack:
+		// A gun can only reach the 8 cells around the ship that fired it.
 		m.Hints = append(m.Hints, *r.Target)
-	case r.Side == SidePlayer && r.Type == ActionMove:
-		key := strconv.Itoa(r.ShipID)
-		if p, ok := m.Known[key]; ok {
-			m.Known[key] = shift(p, r.Direction, r.Distance)
-		}
+	case r.Type == ActionMove:
 		// We cannot tell which hints came from the moved ship, so forget them all.
 		m.Hints = nil
 		m.Cleared = nil
 	}
 }
 
-func shift(p Pos, d Direction, n int) Pos {
-	switch d {
-	case North:
-		p.Row -= n
-	case South:
-		p.Row += n
-	case East:
-		p.Col += n
-	case West:
-		p.Col -= n
-	}
-	return p
-}
-
 func neighbours(p Pos) []Pos {
 	out := []Pos{}
 	for dr := -1; dr <= 1; dr++ {
 		for dc := -1; dc <= 1; dc++ {
-			q := Pos{p.Row + dr, p.Col + dc}
-			if (dr != 0 || dc != 0) && q.InBounds() {
-				out = append(out, q)
+			if dr != 0 || dc != 0 {
+				out = append(out, Pos{p.Row + dr, p.Col + dc})
 			}
 		}
 	}
 	return out
 }
 
-// score estimates how likely a player ship sits on p.
-func (m *CPUMemory) score(p Pos) float64 {
+// heat estimates, per cell, how likely a player ship sits there.
+func (st *State) heat() map[Pos]float64 {
+	h := map[Pos]float64{}
+	for _, s := range st.Intel[SideCPU] {
+		if ship := st.Boards[SidePlayer].Ships[s.ShipID]; ship.Alive() {
+			h[s.Pos] += 100
+		}
+	}
+	for _, hint := range st.CPU.Hints {
+		for _, n := range neighbours(hint) {
+			h[n] += 10
+		}
+	}
+	for _, c := range st.CPU.Cleared {
+		h[c] -= 20
+	}
+	return h
+}
+
+func sumHeat(h map[Pos]float64, cells []Pos) float64 {
 	s := 0.0
-	for _, k := range m.Known {
-		if k == p {
-			s += 100
-		}
-	}
-	for _, h := range m.Hints {
-		if h.Adjacent(p) {
-			s += 10
-		}
-	}
-	for _, c := range m.Cleared {
-		if c == p {
-			s -= 20
-		}
+	for _, c := range cells {
+		s += max(h[c], 0)
 	}
 	return s
 }
@@ -103,23 +91,80 @@ func (m *CPUMemory) score(p Pos) float64 {
 // DecideCPU picks the CPU's next action.
 func (st *State) DecideCPU(rng *rand.Rand) Action {
 	own := st.Boards[SideCPU]
+	h := st.heat()
+	lvl := st.AI.Level
+	jitter := func() float64 { return rng.Float64() * float64(4-min(lvl, 3)) }
 
 	type cand struct {
 		action Action
 		score  float64
 	}
-	var attacks []cand
-	for _, s := range own.Ships {
-		for _, t := range own.AttackTargets(s.ID) {
-			// Small jitter breaks ties; prefer spending ammo from the best-stocked ship.
-			sc := st.CPU.score(t) + rng.Float64() + float64(s.Ammo)*0.05
-			attacks = append(attacks, cand{Action{ActionAttack, s.ID, t}, sc})
+	var best *cand
+	consider := func(a Action, sc float64) {
+		if best == nil || sc > best.score {
+			best = &cand{a, sc}
 		}
 	}
-	var best *cand
-	for i := range attacks {
-		if best == nil || attacks[i].score > best.score {
-			best = &attacks[i]
+
+	leads := 0
+	for _, v := range h {
+		if v >= 10 {
+			leads++
+		}
+	}
+
+	flagship := -1
+	for _, s := range own.Ships {
+		if s.Alive() {
+			flagship = s.ID
+			break
+		}
+	}
+	if st.Gauge[SideCPU] >= GaugeMax && flagship >= 0 {
+		for _, c := range own.cells() {
+			sc := sumHeat(h, Footprint(st.Size, ActionUltimate, "", Pos{}, c))
+			// Hold the barrage until there is something worth hitting, unless out of other options.
+			if sc >= 20 || !own.canStrike() {
+				consider(Action{ActionUltimate, flagship, c}, sc*1.3+10+jitter())
+			}
+		}
+	}
+
+	for _, s := range own.Ships {
+		if !s.Alive() {
+			continue
+		}
+		for _, t := range own.AttackTargets(s.ID) {
+			// Prefer spending ammo from the best-stocked ship.
+			consider(Action{ActionAttack, s.ID, t}, h[t]+jitter()+float64(s.Ammo)*0.05)
+		}
+		kind := s.Spec.SkillKind()
+		for _, t := range own.SkillTargets(s.ID) {
+			cells := Footprint(st.Size, ActionSkill, kind, s.Pos, t)
+			var sc float64
+			switch kind {
+			case SkillBarrage:
+				sc = sumHeat(h, cells) * 0.9
+			case SkillAirstrike:
+				sc = h[t] * 0.95
+			case SkillTorpedo:
+				for _, c := range cells {
+					sc = max(sc, h[c]*0.9)
+				}
+			case SkillFlare, SkillSonar:
+				// Scouting pays off when we know little.
+				if leads > 0 {
+					continue
+				}
+				unknown := 0
+				for _, c := range cells {
+					if h[c] > -20 {
+						unknown++
+					}
+				}
+				sc = 4 + float64(unknown)*0.6 + float64(lvl)
+			}
+			consider(Action{ActionSkill, s.ID, t}, sc+jitter())
 		}
 	}
 
@@ -130,13 +175,13 @@ func (st *State) DecideCPU(rng *rand.Rand) Action {
 	// If the player just found one of our ships, try to slip away.
 	if len(st.History) > 0 {
 		last := st.History[len(st.History)-1]
-		if last.Side == SidePlayer && last.Type == ActionAttack && (last.HitShipID != nil || last.Splash) && rng.Float64() < 0.7 {
+		if last.Side == SidePlayer && last.Target != nil && threatened(last) && rng.Float64() < 0.55+0.1*float64(lvl) {
 			if a, ok := st.evade(rng, *last.Target); ok {
 				return a
 			}
 		}
 	}
-	if best != nil && best.score > 0 && rng.Float64() < 0.55 {
+	if best != nil && best.score > 0 && rng.Float64() < 0.5+0.1*float64(lvl) {
 		return best.action
 	}
 	if a, ok := st.randomMove(rng); ok {
@@ -145,19 +190,29 @@ func (st *State) DecideCPU(rng *rand.Rand) Action {
 	if best != nil {
 		return best.action
 	}
-	// Unreachable while the game is in progress: a non-defeated side always has a living ship with ammo.
+	// Unreachable while the game is in progress: a living ship can always move
+	// or, failing that, strike.
 	return Action{Type: ActionMove}
+}
+
+func threatened(r Result) bool {
+	for _, s := range r.Shots {
+		if s.HitShipID != nil || s.Splash {
+			return true
+		}
+	}
+	return len(r.Revealed) > 0
 }
 
 func (st *State) evade(rng *rand.Rand, danger Pos) (Action, bool) {
 	own := st.Boards[SideCPU]
 	for _, s := range own.Ships {
-		if !s.Alive() || (s.Pos != danger && !s.Pos.Adjacent(danger)) {
+		if !s.Alive() || s.Pos.Dist(danger) > 1 {
 			continue
 		}
 		var safe []Pos
 		for _, t := range own.MoveTargets(s.ID) {
-			if t != danger && !t.Adjacent(danger) {
+			if t.Dist(danger) > 1 {
 				safe = append(safe, t)
 			}
 		}
@@ -184,12 +239,12 @@ func (st *State) randomMove(rng *rand.Rand) (Action, bool) {
 	return Action{ActionMove, id, ts[rng.IntN(len(ts))]}, true
 }
 
-// RandomPlacement places the fleet on distinct random cells.
-func RandomPlacement(rng *rand.Rand) []Pos {
-	cells := rng.Perm(BoardSize * BoardSize)[:len(Fleet)]
-	out := make([]Pos, len(cells))
+// RandomPlacement places n ships on distinct random cells of a size×size sea.
+func RandomPlacement(rng *rand.Rand, size, n int) []Pos {
+	cells := rng.Perm(size * size)[:n]
+	out := make([]Pos, n)
 	for i, c := range cells {
-		out[i] = Pos{c / BoardSize, c % BoardSize}
+		out[i] = Pos{c / size, c % size}
 	}
 	return out
 }

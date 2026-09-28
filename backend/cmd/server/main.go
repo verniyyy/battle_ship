@@ -52,7 +52,7 @@ func run(log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           logRequests(log, api.New(pg, log, rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))).Handler()),
+		Handler:           logRequests(log, api.New(pg, log, rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())), time.Now).Handler()),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	errCh := make(chan error, 1)
