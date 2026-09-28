@@ -18,7 +18,7 @@ func TestEveryCardHasACompleteSheet(t *testing.T) {
 			t.Errorf("%s: no character sheet", c.ID)
 			continue
 		}
-		for name, v := range map[string]string{"Hair": d.Hair, "Eyes": d.Eyes, "Face": d.Face, "Outfit": d.Outfit, "Hands": d.Hands, "Legs": d.Legs, "Pose": d.Pose} {
+		for name, v := range map[string]string{"Hair": d.Hair, "Eyes": d.Eyes, "Face": d.Face, "Outfit": d.Outfit, "Legs": d.Legs, "Item": d.Item, "Pose": d.Pose, "Check": d.Check} {
 			if strings.TrimSpace(v) == "" {
 				t.Errorf("%s: %s is empty", c.ID, name)
 			}
@@ -41,7 +41,7 @@ func TestJobsAskForAFullBodyOnAPlainBackground(t *testing.T) {
 	}
 	seeds := map[int]string{}
 	for _, j := range jobs {
-		for _, want := range []string{"1girl", "full body", "standing", "white background", "masterpiece"} {
+		for _, want := range []string{"1girl", "full body", "standing", "simple background", "masterpiece"} {
 			if !strings.Contains(j.Prompt, want) {
 				t.Errorf("%s: prompt lacks %q", j.ID, want)
 			}
@@ -51,6 +51,12 @@ func TestJobsAskForAFullBodyOnAPlainBackground(t *testing.T) {
 		}
 		if strings.Contains(j.DetailNegative, "close-up") {
 			t.Errorf("%s: detail negative fights the detail crop", j.ID)
+		}
+		if strings.Contains(j.TilePrompt, "1girl") {
+			t.Errorf("%s: tile prompt invites a face into every tile", j.ID)
+		}
+		if len(j.Expect) == 0 || strings.Contains(strings.Join(j.Expect, ","), " ") {
+			t.Errorf("%s: expect = %q", j.ID, j.Expect)
 		}
 		if strings.Contains(j.Prompt, ", ,") || strings.Contains(j.Prompt, "standing, standing") {
 			t.Errorf("%s: malformed prompt %q", j.ID, j.Prompt)
@@ -62,6 +68,46 @@ func TestJobsAskForAFullBodyOnAPlainBackground(t *testing.T) {
 	}
 	if _, err := buildJobs([]string{"nope"}); err == nil {
 		t.Error("unknown id accepted")
+	}
+}
+
+// Effects, scenery and rigging are what made the first generation of art
+// look cheap; no sheet may ask for them, and every pass must forbid them.
+func TestPromptsAskForTheCharacterOnly(t *testing.T) {
+	banned := []string{"glowing", "sparkle", "aura", "lightning", "electricity", "fire", "flame", "embers", "petals", "cherry blossoms",
+		"bubbles", "snowflakes", "light rays", "sunlight", "moon", "wings", "rigging", "turret", "cannon", "divine"}
+	jobs, err := buildJobs(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, j := range jobs {
+		for _, p := range []string{j.Prompt, j.FacePrompt, j.HandPrompt, j.TilePrompt} {
+			for tag := range strings.SplitSeq(p, ",") {
+				tag = strings.TrimSpace(tag)
+				for _, b := range banned {
+					if tag == b || strings.HasPrefix(tag, b+" ") || strings.HasSuffix(tag, " "+b) {
+						t.Errorf("%s: prompt asks for %q", j.ID, tag)
+					}
+				}
+			}
+		}
+		for _, want := range []string{"sparkle", "lightning", "high contrast", "moon", "rigging"} {
+			if !strings.Contains(j.Negative, want) {
+				t.Errorf("%s: negative lacks %q", j.ID, want)
+			}
+		}
+		if !strings.Contains(j.DetailNegative, "sparkle") {
+			t.Errorf("%s: detail passes may paint effects back in", j.ID)
+		}
+	}
+}
+
+func TestPaleHairGetsAGreyBackground(t *testing.T) {
+	if got := background(designs["ca_shirasagi"]); !strings.Contains(got, "grey background") {
+		t.Errorf("white-haired shirasagi on %q", got)
+	}
+	if got := background(designs["bb_guren"]); !strings.Contains(got, "white background") {
+		t.Errorf("red-haired guren on %q", got)
 	}
 }
 

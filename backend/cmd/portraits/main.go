@@ -68,23 +68,40 @@ type job struct {
 	Negative   string `json:"negative"`
 	FacePrompt string `json:"face_prompt"`
 	HandPrompt string `json:"hand_prompt"`
+	TilePrompt string `json:"tile_prompt"`
 	// The detail passes see a crop, so they must not be told to avoid close-ups.
 	DetailNegative string `json:"detail_negative"`
+	// Tagger tags (underscored, as the tagger names them) a good render shows.
+	Expect []string `json:"expect"`
 }
 
-// Quality tags as the Illustrious family (WAI in particular) expects them.
 const (
-	quality        = "masterpiece, best quality, amazing quality, very aesthetic, absurdres, newest"
-	detailNegative = "nsfw, nude, lowres, bad quality, worst quality, worst detail, sketch, censor, jpeg artifacts, blurry, " +
-		"bad anatomy, bad hands, extra fingers, missing fingers, fused fingers, extra digits, extra arms, extra legs, " +
-		"deformed, mutated, disfigured, long neck, " +
+	// Quality tags as the Illustrious family (WAI in particular) expects them.
+	quality = "masterpiece, best quality, amazing quality, very aesthetic, absurdres, newest"
+	// The look of official gacha character art: clean lines and soft, even
+	// light, instead of the model's default dramatic contrast.
+	// Kept free of body parts: it goes into the hand and tile prompts too.
+	style = "official art, clean lineart, soft shading, soft lighting, even lighting"
+
+	flaws = "nsfw, nude, lowres, bad quality, worst quality, worst detail, sketch, censor, jpeg artifacts, blurry, " +
+		"bad anatomy, bad hands, extra fingers, missing fingers, fused fingers, extra digits, bad feet, " +
+		"extra arms, extra legs, deformed, mutated, disfigured, long neck, " +
+		"broken weapon, bent weapon, extra weapon, multiple weapons, dual wielding, floating weapon, " +
 		"text, signature, watermark, logo, username"
+	// Effects and harsh lighting are banned from every pass, crops included:
+	// a detail pass at moderate strength will happily paint sparkles back in.
+	effects = "sparkle, light particles, glowing, glint, lens flare, light rays, magic, aura, energy, " +
+		"fire, flame, embers, lightning, electricity, smoke, petals, cherry blossoms, bubbles, snowflakes, water, " +
+		"high contrast, harsh shadows, dark, dim lighting, backlighting, dramatic lighting, rim lighting, chiaroscuro, " +
+		"oversaturated, neon, chromatic aberration, depth of field"
+	detailNegative = flaws + ", " + effects
 	// The full-body render additionally fights the ways a figure leaves the
-	// frame and the backgrounds that make the cut-out unreliable.
+	// frame, extra figures, scenery, and the ship rigging the model cannot draw.
 	negative = detailNegative + ", " +
 		"cropped, out of frame, head out of frame, feet out of frame, close-up, upper body, cowboy shot, portrait, " +
-		"multiple girls, 2girls, multiple views, " +
-		"scenery, detailed background, gradient background"
+		"multiple girls, 2girls, multiple views, reference sheet, " +
+		"scenery, detailed background, gradient background, sky, moon, stars, clouds, night, " +
+		"rigging, turret, cannon, machinery, mecha musume, mechanical parts"
 )
 
 func buildJob(c meta.Card, d design) job {
@@ -92,32 +109,62 @@ func buildJob(c meta.Card, d design) job {
 	if !strings.Contains(pose, "standing") {
 		pose = "standing, " + pose
 	}
+	var expect []string
+	for t := range strings.SplitSeq(d.Check, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			expect = append(expect, strings.ReplaceAll(t, " ", "_"))
+		}
+	}
 	return job{
 		ID:   c.ID,
 		Name: c.Name,
 		Seed: cardSeed(c.ID),
 		Prompt: tags(
-			"1girl, solo, original",
-			d.Hair, d.Eyes, d.Face, d.Head, d.Outfit, d.Hands, d.Legs, d.Gear, classGear[c.Class], rarityFinish[c.Rarity], d.Aura,
-			pose, "full body, looking at viewer",
-			"white background, simple background",
 			quality,
+			"1girl, solo, original",
+			d.Hair, d.Eyes, d.Face, d.Head, d.Outfit, d.Trim, rarityFinish[c.Rarity], d.Hands, d.Legs, d.Item,
+			pose, "full body, looking at viewer",
+			"beautiful detailed eyes, detailed clothes",
+			style,
+			background(d),
 		),
 		Negative:       negative,
 		DetailNegative: detailNegative,
 		FacePrompt: tags(
+			quality,
 			"1girl, solo, face focus",
 			d.Hair, d.Eyes, d.Face, d.Head,
 			"beautiful detailed eyes, detailed face, perfect face",
-			quality,
+			style,
 		),
 		HandPrompt: tags(
-			"1girl, solo, hand focus",
-			d.Hands, d.Outfit,
-			"detailed hands, perfect hands, five fingers",
 			quality,
+			"hand focus",
+			d.Hands, d.Item, d.Outfit,
+			"detailed hands, perfect hands, five fingers",
+			style,
 		),
+		// A tile shows a piece of the costume or the weapon, rarely the face:
+		// no "1girl", which would invite a face into every tile.
+		TilePrompt: tags(
+			quality,
+			d.Outfit, d.Trim, rarityFinish[c.Rarity], d.Hands, d.Legs, d.Item, d.Hair,
+			"detailed clothes",
+			style,
+		),
+		Expect: expect,
 	}
+}
+
+// background picks a plain background the figure stands out from, so the
+// segmenter separates them cleanly: white, or light grey behind pale hair.
+func background(d design) string {
+	for _, pale := range []string{"white hair", "grey hair", "silver hair"} {
+		if strings.Contains(d.Hair, pale) {
+			return "grey background, simple background"
+		}
+	}
+	return "white background, simple background"
 }
 
 // tags joins tag groups, dropping empty groups and repeated tags.
