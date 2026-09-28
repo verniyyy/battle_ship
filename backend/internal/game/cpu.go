@@ -228,8 +228,8 @@ func (st *State) Decide(side Side, rng *rand.Rand) Action {
 			cells := Footprint(st.Size, ActionAttack, "", sp.Class, s.Pos, t)
 			for i, c := range cells {
 				p := float64(sp.Firepower)
-				if i > 0 {
-					p = p * armCellPct / 100
+				if sp.Class == Battleship {
+					p = p * float64(gunPct(i)) / 100
 				}
 				sc += pos(h, c) / 100 * p
 			}

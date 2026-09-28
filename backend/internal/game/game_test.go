@@ -117,11 +117,11 @@ func TestBattleshipShellsLandInAPlus(t *testing.T) {
 		t.Fatalf("got %d shots, want 5", len(res.Shots))
 	}
 	center, arm := res.Shots[0], res.Shots[4] // (2,3) is the east arm
-	if center.HitShipID == nil || *center.HitShipID != 0 || !between(center.Damage, 200, 20, 1) {
+	if center.HitShipID == nil || *center.HitShipID != 0 || !between(center.Damage, 200*centerPct/100, 20, 1) {
 		t.Fatalf("centre shot %+v", center)
 	}
-	if arm.Target != (Pos{2, 3}) || !between(arm.Damage, 100, 0, 1) {
-		t.Fatalf("arm shot %+v, want half power on the destroyer", arm)
+	if arm.Target != (Pos{2, 3}) || !between(arm.Damage, 200*armCellPct/100, 0, 1) {
+		t.Fatalf("arm shot %+v, want reduced power on the destroyer", arm)
 	}
 	if st.Boards[SidePlayer].Ships[0].Ammo != bb.Ammo-1 {
 		t.Fatal("a salvo costs one shell")

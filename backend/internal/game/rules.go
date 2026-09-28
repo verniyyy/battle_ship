@@ -11,7 +11,8 @@ import (
 const (
 	critMult      = 2   // critical hits double the damage
 	rollSpread    = 15  // damage rolls within ±15% of the power
-	armCellPct    = 50  // battleship shells landing beside the aim point
+	centerPct     = 130 // battleship shell on the aim point
+	armCellPct    = 40  // battleship shells landing beside the aim point
 	barragePct    = 70  // per cell of the battleship barrage
 	spreadPct     = 80  // per torpedo of a submarine spread
 	antiSubMult   = 2   // destroyer guns on submarines
@@ -115,8 +116,8 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 		}
 		for i, c := range Footprint(st.Size, ActionAttack, "", sp.Class, ship.Pos, t) {
 			cs := s
-			if i > 0 {
-				cs.power = s.power * armCellPct / 100
+			if sp.Class == Battleship {
+				cs.power = s.power * gunPct(i) / 100
 			}
 			res.Shots = append(res.Shots, st.fire(side, c, cs, rng))
 		}
@@ -190,6 +191,15 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 	st.observe(res)
 	st.checkEnd(side)
 	return res, nil
+}
+
+// gunPct is the share of firepower the i-th shell of a battleship salvo
+// carries: the aim point takes the heaviest shell, the four around it less.
+func gunPct(i int) int {
+	if i == 0 {
+		return centerPct
+	}
+	return armCellPct
 }
 
 // launch runs torpedoes from ship along the lanes of its aim. Each stops at
