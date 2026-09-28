@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 're
 import { audio } from '../audio'
 import { CLASS_INFO, KANJI, rarityName, type Look } from '../game'
 import { anchors, useGame } from '../state'
-import { assets, backdropUrl, PORTRAIT_CARDS, useAssets, type Backdrop as BackdropName } from '../theme'
+import { backdropUrl, portraitOf, useAssets, type Backdrop as BackdropName } from '../theme'
 import type { ShipClass } from '../types'
 import { ShipArt } from './ShipArt'
 
@@ -23,21 +23,20 @@ export function ShipBadge({ cls, enemy, sunk }: { cls: ShipClass; enemy?: boolea
   return <span className={`ship-badge ${cls} ${enemy ? 'enemy' : ''} ${sunk ? 'sunk' : ''}`}>{KANJI[cls]}</span>
 }
 
-// Map piece for one ship: the character's face for the portrait starters,
+// Map piece for one ship: the character's face for cards with a portrait,
 // otherwise the class kanji, ringed in the card colour, with its fleet number.
 export function ShipToken({ look, no, sunk, spotted }: { look: Look; no: number; sunk?: boolean; spotted?: boolean }) {
-  const { legacy } = useAssets()
-  const faceCls = legacy && look.cardId ? PORTRAIT_CARDS[look.cardId] : undefined
+  const portrait = portraitOf(look, useAssets())
   return (
     <span
-      className={`ship-token ${faceCls ?? look.cls} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${sunk ? 'sunk' : ''} ${spotted ? 'spotted' : ''}`}
+      className={`ship-token ${look.cls} ${portrait?.face ?? ''} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${sunk ? 'sunk' : ''} ${spotted ? 'spotted' : ''}`}
       style={{ ['--c' as string]: look.enemy ? undefined : look.color }}
     >
       <span className="token-disc">
-        {faceCls ? <img className="token-face" src={assets.portrait(faceCls)} alt="" draggable={false} /> : <span className="token-kanji">{look.enemy && look.boss ? '王' : KANJI[look.cls]}</span>}
+        {portrait ? <img className="token-face" src={portrait.src} alt="" draggable={false} /> : <span className="token-kanji">{look.enemy && look.boss ? '王' : KANJI[look.cls]}</span>}
       </span>
       <span className="token-no">{no}</span>
-      {faceCls && <span className="token-class">{KANJI[look.cls]}</span>}
+      {portrait && <span className="token-class">{KANJI[look.cls]}</span>}
     </span>
   )
 }

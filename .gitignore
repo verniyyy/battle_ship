@@ -2,3 +2,5 @@
 .vscode/
 .DS_Store
 .env
+# Prompts for scripts/portraits_colab.ipynb (go run ./cmd/portraits prompts)
+.cache/

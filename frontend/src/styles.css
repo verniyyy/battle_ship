@@ -788,6 +788,12 @@ p {
 .ship-token.enemy {
   --c: #7c2a2a;
 }
+/* generated portraits (scripts/portraits_colab.ipynb) are full-body and centred */
+.ship-token.gen {
+  --fx: 50%;
+  --fy: 25%;
+  --zoom: 5;
+}
 
 .token-disc {
   position: absolute;

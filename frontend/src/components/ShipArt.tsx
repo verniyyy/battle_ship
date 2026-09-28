@@ -1,9 +1,9 @@
 // Procedural card art: a ship silhouette on a themed seascape, so every card
-// has art without an asset pack. The three starter cards use the legacy
-// character portraits when that pack is installed.
+// has art without an asset pack. Cards with a character portrait (legacy
+// starters or generated ones, see theme.portraitOf) show it instead.
 import { useId, type ReactNode } from 'react'
 import { CLASS_INFO, type Look } from '../game'
-import { assets, PORTRAIT_CARDS, useAssets } from '../theme'
+import { portraitOf, useAssets } from '../theme'
 import type { ShipClass } from '../types'
 
 interface Hull {
@@ -127,11 +127,10 @@ function palette(look: Look) {
 
 export function ShipArt({ look, className = '', showKanji = true }: { look: Look; className?: string; showKanji?: boolean }) {
   const id = useId().replace(/:/g, '')
-  const { legacy } = useAssets()
+  const portrait = portraitOf(look, useAssets())
   const hull = HULLS[look.cls]
   const pal = palette(look)
   const rays = look.rarity >= 3 || look.boss
-  const portraitCls = legacy && look.cardId ? PORTRAIT_CARDS[look.cardId] : undefined
   const k = 176 / Math.max(hull.len, 150)
   const x0 = 100 - (hull.len * k) / 2
 
@@ -170,7 +169,7 @@ export function ShipArt({ look, className = '', showKanji = true }: { look: Look
             {look.enemy ? '敵' : CLASS_INFO[look.cls].kanji}
           </text>
         )}
-        {portraitCls ? null : (
+        {portrait ? null : (
           <g transform={`translate(${x0} 214) scale(${k})`}>
             <g filter={`url(#glow${id})`} fill={pal.orb} stroke={pal.orb} opacity="0.7">
               {hull.body}
@@ -187,7 +186,7 @@ export function ShipArt({ look, className = '', showKanji = true }: { look: Look
         <path className="art-wave" d="M-20,214 Q0,208 20,214 T60,214 T100,214 T140,214 T180,214 T220,214 T260,214" stroke="#9fe0ff" strokeOpacity="0.45" strokeWidth="1.5" fill="none" />
         <path className="art-wave slow" d="M-20,232 Q0,226 20,232 T60,232 T100,232 T140,232 T180,232 T220,232 T260,232" stroke="#9fe0ff" strokeOpacity="0.2" strokeWidth="1.2" fill="none" />
       </svg>
-      {portraitCls && <img className="art-portrait" src={assets.portrait(portraitCls)} alt="" draggable={false} />}
+      {portrait && <img className={`art-portrait ${portrait.face}`} src={portrait.src} alt="" draggable={false} />}
     </div>
   )
 }

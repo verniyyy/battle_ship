@@ -37,6 +37,28 @@ docker compose up --build
 
 復元先はいずれも `.gitignore` 済みです。第三者の素材を含むため **コミットしないでください**。
 
+### キャラ絵を生成する（任意・無料）
+
+立ち絵のない艦カードに、AI で生成したキャラ絵を補充できます。生成した絵は艦カード・母港の秘書艦・カットイン・マップ上の駒に使われます（旧素材がある初期 3 隻はそちらを優先）。
+
+GPU は [Google Colab](https://colab.research.google.com) の無料枠（T4）を使い、Hugging Face のアニメ系 SDXL モデル（既定: [Animagine XL 4.0](https://huggingface.co/cagliostrolab/animagine-xl-4.0)）で生成します。手元に必要なのは Go だけです。
+
+1. プロンプトを書き出す（カタログの艦種・レアリティ・カード色と、`backend/cmd/portraits/main.go` の `cardMotif` から Danbooru タグ形式で組み立て）
+
+   ```sh
+   cd backend && go run ./cmd/portraits prompts        # -> .cache/portraits/prompts.json
+   ```
+
+2. [`scripts/portraits_colab.ipynb`](scripts/portraits_colab.ipynb) を Colab で開き（ファイル → ノートブックをアップロード）、ランタイムを **T4 GPU** にして上から実行。`prompts.json` をアップロードすると、カードごとに候補を数枚生成して並べて表示します
+3. 気に入った候補を `PICKS` で選んで最後のセルを実行すると、背景を切り抜いた（rembg `isnet-anime`）`portraits.zip` がダウンロードされる
+4. 取り込む（`frontend/public/portraits/` に展開し、フロントが自動検出する `manifest.json` を更新）
+
+   ```sh
+   cd backend && go run ./cmd/portraits import ~/Downloads/portraits.zip
+   ```
+
+T4 では 1 枚およそ 40 秒です。気に入らないカードはノートブックの `ONLY` / `SEED_OFFSET` で引き直せます。モデルは `MODEL_ID` で他の SDXL 系（Illustrious 系など）に差し替え可能です。生成物は `.gitignore` 済みです。自作の絵を `frontend/public/portraits/<カード ID>.png`（背景透過）に置いた場合は、`go run ./cmd/portraits import`（zip なし）で manifest だけ更新できます。
+
 ## ゲームの流れ
 
 1. **母港** — 秘書艦、ログインボーナス（7 日周期）、通知バッジ、連勝数と艦隊戦力
