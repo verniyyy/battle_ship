@@ -232,15 +232,16 @@ func (s *Server) getGame(w http.ResponseWriter, r *http.Request, pid string) {
 }
 
 type actionResponse struct {
-	Player  game.Result       `json:"player"`
-	CPU     *game.Result      `json:"cpu,omitempty"`
+	// Results are the round's actions, player's and CPU's, in the order they resolved.
+	Results []game.Result     `json:"results"`
 	Game    game.View         `json:"game"`
 	Reward  *meta.Reward      `json:"reward,omitempty"`
 	Profile *meta.ProfileView `json:"profile,omitempty"`
 }
 
-// act applies the player's action and, unless that ended the game, the CPU's
-// reply. The battle that ends here is settled in the same transaction.
+// act plays one round: the player's action against the CPU's, which it
+// commits without seeing the player's. The battle that ends here is settled in
+// the same transaction.
 func (s *Server) act(w http.ResponseWriter, r *http.Request, pid string) {
 	var a game.Action
 	if !s.decode(w, r, &a) {
@@ -255,20 +256,8 @@ func (s *Server) act(w http.ResponseWriter, r *http.Request, pid string) {
 		}
 		var err error
 		s.withRng(func(rng *rand.Rand) {
-			var res game.Result
-			if res, err = m.Game.Apply(game.SidePlayer, a, rng); err != nil {
+			if resp.Results, err = m.Game.Round(a, rng); err != nil {
 				return
-			}
-			resp.Player = res
-			if m.Game.Status == game.StatusInProgress {
-				cpuAction := m.Game.DecideCPU(rng)
-				cpuRes, cerr := m.Game.Apply(game.SideCPU, cpuAction, rng)
-				if cerr != nil {
-					s.log.Error("cpu chose an invalid action", "action", cpuAction, "err", cerr)
-					err = cerr
-					return
-				}
-				resp.CPU = &cpuRes
 			}
 			meta.Settle(m, p, rng, now)
 		})

@@ -1,31 +1,42 @@
 // Package game implements the naval battle rules as pure, storage-agnostic logic.
 //
-// Both fleets hide on one shared N×N sea. On its turn a side picks one living
-// ship and does one of:
+// Both fleets hide on one shared N×N sea. The battle is played in rounds: each
+// side secretly commits one action for one living ship, then the two actions
+// resolve in initiative order — the faster acting ship first, except that
+// torpedo launches always resolve last. An action is one of:
 //
-//   - attack: shell one of the 8 cells around the ship (1 ammo);
-//   - move: sail any distance along the ship's row or column (announced to the
-//     opponent as ship + direction + distance, except for submarines, which
-//     move submerged);
+//   - attack: fire the main guns at a cell within the class's gun range (1
+//     ammo). Battleship shells land in a plus shape;
+//   - torpedo: launch along a row or column; the torpedo runs to the edge of
+//     the sea and hits the first surface ship in its path (1 torpedo). The wake
+//     gives the launcher's position away;
+//   - move: sail up to the class's move range along the ship's row or column
+//     (announced as ship + direction + distance, except for submarines);
 //   - skill: the ship's class skill, a limited number of times per battle;
-//   - ultimate: once the fleet gauge is full, any living ship calls a 3×3
-//     all-fleet barrage anywhere on the sea.
+//   - ultimate: once the fleet gauge is full, a 3×3 all-fleet barrage anywhere.
 //
-// A shot reports hit (possibly critical, possibly evaded) and "splash" when a
-// surface ship lies on one of the 8 cells around it. Hits and scouting skills
-// give the shooter intel on where enemy ships are, which then follows their
-// announced moves.
+// Damage is rolled around the attacker's power, reduced by armour (and, for
+// aircraft, by the defending fleet's total anti-air) and doubled on a
+// critical hit. A battleship shell that misses throws up a water column that
+// pins the ships next to it in place until the end of the next round.
 //
-// A side loses when every ship is sunk, or when it can no longer deal damage.
-// When the turn limit runs out the fleet with the larger share of its hull
-// left wins; ties go to the defender (the CPU).
+// Three situational attacks always crit or cannot miss, and get a cut-in:
+// firing the main guns at the cell the fleet just shelled (spotting fire),
+// bombing a ship the fleet is tracking (precision bombing), and torpedoing a
+// ship at most two cells away (point-blank torpedo).
+//
+// Hits and scouting give the shooter intel on where enemy ships are, which
+// then follows their announced moves. Only a submarine can shake off contact,
+// by moving submerged.
+//
+// A side loses when every ship is sunk, or withdraws when it can no longer
+// deal damage. When the turn limit runs out the fleet with the larger share of
+// its hull left wins; ties go to the defender (the CPU).
 package game
 
 import (
 	"errors"
 	"fmt"
-	"math/rand/v2"
-	"strconv"
 )
 
 const (
@@ -33,7 +44,7 @@ const (
 	MaxBoardSize = 8
 	GaugeMax     = 100
 	// StateVersion is bumped whenever State stops being readable by older code.
-	StateVersion = 2
+	StateVersion = 3
 )
 
 type Side string
@@ -60,18 +71,36 @@ const (
 	Carrier    ShipClass = "carrier"
 )
 
+// ClassRule is what a hull type can physically do, whatever the card.
+type ClassRule struct {
+	// GunRange is how far (king moves) the main guns reach; 0 means no guns.
+	GunRange int `json:"gunRange"`
+	// MoveRange caps how many cells the ship sails in one move.
+	MoveRange int `json:"moveRange"`
+	// MinSpeed is the floor for the ship's speed.
+	MinSpeed int `json:"minSpeed"`
+}
+
+var Classes = map[ShipClass]ClassRule{
+	Battleship: {GunRange: 2, MoveRange: 1, MinSpeed: 10},
+	Cruiser:    {GunRange: 2, MoveRange: 2, MinSpeed: 20},
+	Destroyer:  {GunRange: 1, MoveRange: 3, MinSpeed: 30},
+	Submarine:  {GunRange: 0, MoveRange: 2, MinSpeed: 15},
+	Carrier:    {GunRange: 1, MoveRange: 1, MinSpeed: 15},
+}
+
 type SkillKind string
 
 const (
-	// SkillBarrage shells a plus shape centred up to 2 cells away.
+	// SkillBarrage shells a 3×3 area centred up to 3 cells away.
 	SkillBarrage SkillKind = "barrage"
 	// SkillFlare lights a 3×3 area up to 3 cells away, revealing surface ships.
 	SkillFlare SkillKind = "flare"
 	// SkillSonar pings the ship's whole row and column, revealing every ship, submarines included.
 	SkillSonar SkillKind = "sonar"
-	// SkillTorpedo runs straight from the ship and hits the first enemy in its path for 2 damage.
-	SkillTorpedo SkillKind = "torpedo"
-	// SkillAirstrike hits any single cell on the sea.
+	// SkillSpread launches three torpedoes side by side along parallel lanes.
+	SkillSpread SkillKind = "spread"
+	// SkillAirstrike bombs any single cell on the sea.
 	SkillAirstrike SkillKind = "airstrike"
 )
 
@@ -79,31 +108,45 @@ var ClassSkill = map[ShipClass]SkillKind{
 	Battleship: SkillBarrage,
 	Cruiser:    SkillFlare,
 	Destroyer:  SkillSonar,
-	Submarine:  SkillTorpedo,
+	Submarine:  SkillSpread,
 	Carrier:    SkillAirstrike,
 }
 
 // Offensive reports whether the skill can deal damage.
 func (k SkillKind) Offensive() bool {
-	return k == SkillBarrage || k == SkillTorpedo || k == SkillAirstrike
+	return k == SkillBarrage || k == SkillSpread || k == SkillAirstrike
+}
+
+// Stats are a ship's battle numbers.
+type Stats struct {
+	HP        int `json:"hp"`
+	Firepower int `json:"firepower"` // main gun power
+	Torpedo   int `json:"torpedo"`   // torpedo power
+	Air       int `json:"air"`       // airstrike power
+	AA        int `json:"aa"`        // anti-air, summed over the living fleet
+	Armor     int `json:"armor"`     // percent of damage absorbed
+	Speed     int `json:"speed"`     // initiative
+	Ammo      int `json:"ammo"`      // gun salvos per battle
+	Torps     int `json:"torps"`     // torpedo launches per battle
+	Skill     int `json:"skill"`     // skill uses per battle
+	Crit      int `json:"crit"`      // percent
+	Evasion   int `json:"evasion"`   // percent
 }
 
 // Spec is one ship's fully resolved stats for a battle (catalog card plus
 // level and limit-break bonuses, or an enemy template).
 type Spec struct {
-	Key     string    `json:"key"`
-	Class   ShipClass `json:"class"`
-	Name    string    `json:"name"`
-	Rarity  int       `json:"rarity"`
-	HP      int       `json:"hp"`
-	Ammo    int       `json:"ammo"`
-	Skill   int       `json:"skill"`   // skill uses per battle
-	Crit    int       `json:"crit"`    // percent
-	Evasion int       `json:"evasion"` // percent
-	Boss    bool      `json:"boss,omitempty"`
+	Key    string    `json:"key"`
+	Class  ShipClass `json:"class"`
+	Name   string    `json:"name"`
+	Rarity int       `json:"rarity"`
+	Boss   bool      `json:"boss,omitempty"`
+	Stats
 }
 
 func (s Spec) SkillKind() SkillKind { return ClassSkill[s.Class] }
+func (s Spec) Rule() ClassRule      { return Classes[s.Class] }
+func (s Spec) Surface() bool        { return s.Class != Submarine }
 
 type Pos struct {
 	Row int `json:"row"`
@@ -124,6 +167,8 @@ func (p Pos) Dist(q Pos) int {
 	return max(abs(p.Row-q.Row), abs(p.Col-q.Col))
 }
 
+func (p Pos) add(d Pos) Pos { return Pos{p.Row + d.Row, p.Col + d.Col} }
+
 func abs(n int) int {
 	if n < 0 {
 		return -n
@@ -137,19 +182,32 @@ type Ship struct {
 	Pos   Pos  `json:"pos"`
 	HP    int  `json:"hp"`
 	Ammo  int  `json:"ammo"`
+	Torps int  `json:"torps"`
 	Skill int  `json:"skill"` // remaining skill uses
+	// Pinned counts the round ends left before a water column stops holding the ship in place.
+	Pinned int `json:"pinned,omitempty"`
 }
 
 func (s *Ship) Alive() bool { return s.HP > 0 }
 
+func (s *Ship) canGun() bool { return s.Ammo > 0 && s.Spec.Rule().GunRange > 0 }
+
 // CanStrike reports whether the ship can still deal damage on its own.
-func (s *Ship) CanStrike() bool {
-	return s.Alive() && (s.Ammo > 0 || (s.Skill > 0 && s.Spec.SkillKind().Offensive()))
+// Torpedoes only count while the enemy has a surface ship for them to hit.
+func (s *Ship) CanStrike(enemySurface bool) bool {
+	if !s.Alive() {
+		return false
+	}
+	kind := s.Spec.SkillKind()
+	skill := s.Skill > 0 && kind.Offensive() && (kind != SkillSpread || enemySurface)
+	return s.canGun() || skill || (s.Torps > 0 && enemySurface)
 }
 
 type Board struct {
 	Size  int     `json:"size"`
 	Ships []*Ship `json:"ships"`
+	// Weather is copied from the state so target lists can honour it.
+	Weather Weather `json:"weather,omitempty"`
 }
 
 func (b *Board) shipAt(p Pos) *Ship {
@@ -178,6 +236,17 @@ func (b *Board) alive() int {
 	return n
 }
 
+// AA is the fleet's anti-air: the sum over its living ships.
+func (b *Board) AA() int {
+	n := 0
+	for _, s := range b.Ships {
+		if s.Alive() {
+			n += s.Spec.AA
+		}
+	}
+	return n
+}
+
 // hull is the share of total hit points left, used to judge a timed-out battle.
 func (b *Board) hull() float64 {
 	hp, maxHP := 0, 0
@@ -191,9 +260,21 @@ func (b *Board) hull() float64 {
 	return float64(hp) / float64(maxHP)
 }
 
-func (b *Board) canStrike() bool {
+// surface reports whether the fleet still has a surface ship afloat.
+func (b *Board) surface() bool {
 	for _, s := range b.Ships {
-		if s.CanStrike() {
+		if s.Alive() && s.Spec.Surface() {
+			return true
+		}
+	}
+	return false
+}
+
+// canStrike reports whether the fleet can still damage the enemy fleet.
+func (b *Board) canStrike(enemy *Board) bool {
+	surface := enemy.surface()
+	for _, s := range b.Ships {
+		if s.CanStrike(surface) {
 			return true
 		}
 	}
@@ -210,31 +291,65 @@ func (b *Board) cells() []Pos {
 	return out
 }
 
-// AttackTargets lists cells the ship can shell: surrounding cells that are
-// on the sea and not occupied by a friendly living ship.
+var orthogonal = []Pos{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
+
+// neighbours4 lists the in-bounds cells next to p along its row and column.
+func (b *Board) neighbours4(p Pos) []Pos {
+	out := []Pos{}
+	for _, d := range orthogonal {
+		if q := p.add(d); q.InBounds(b.Size) {
+			out = append(out, q)
+		}
+	}
+	return out
+}
+
+// AttackTargets lists cells the ship's guns can reach: within its class's
+// gun range, and not occupied by a friendly living ship.
 func (b *Board) AttackTargets(id int) []Pos {
 	s, err := b.ship(id)
-	if err != nil || !s.Alive() || s.Ammo <= 0 {
+	if err != nil || !s.Alive() || !s.canGun() {
 		return []Pos{}
 	}
 	out := []Pos{}
 	for _, p := range b.cells() {
-		if s.Pos.Adjacent(p) && b.shipAt(p) == nil {
+		if d := s.Pos.Dist(p); d >= 1 && d <= s.Spec.Rule().GunRange && b.shipAt(p) == nil {
 			out = append(out, p)
 		}
 	}
 	return out
 }
 
-// MoveTargets lists cells in the same row or column not occupied by a friendly living ship.
+// TorpedoTargets lists the cells next to the ship along its row and column;
+// each picks the direction the torpedo runs.
+func (b *Board) TorpedoTargets(id int) []Pos {
+	s, err := b.ship(id)
+	if err != nil || !s.Alive() || s.Torps <= 0 {
+		return []Pos{}
+	}
+	return b.neighbours4(s.Pos)
+}
+
+// MoveRange is how far the ship may sail this round.
+func (b *Board) MoveRange(s *Ship) int {
+	r := s.Spec.Rule().MoveRange
+	if b.Weather == Storm {
+		r = max(r-1, 1)
+	}
+	return r
+}
+
+// MoveTargets lists cells in the same row or column within the ship's move
+// range that no friendly living ship occupies. A pinned ship cannot move.
 func (b *Board) MoveTargets(id int) []Pos {
 	s, err := b.ship(id)
-	if err != nil || !s.Alive() {
+	if err != nil || !s.Alive() || s.Pinned > 0 {
 		return []Pos{}
 	}
 	out := []Pos{}
+	reach := b.MoveRange(s)
 	for _, p := range b.cells() {
-		if p != s.Pos && (p.Row == s.Pos.Row || p.Col == s.Pos.Col) && b.shipAt(p) == nil {
+		if d := s.Pos.Dist(p); d >= 1 && d <= reach && (p.Row == s.Pos.Row || p.Col == s.Pos.Col) && b.shipAt(p) == nil {
 			out = append(out, p)
 		}
 	}
@@ -242,12 +357,18 @@ func (b *Board) MoveTargets(id int) []Pos {
 }
 
 // SkillTargets lists the cells the ship's skill can be aimed at. For sonar the
-// only target is the ship itself; for torpedoes it is the neighbouring cell in
-// the direction of travel.
+// only target is the ship itself; for a torpedo spread it is the neighbouring
+// cell in the direction of travel.
 func (b *Board) SkillTargets(id int) []Pos {
 	s, err := b.ship(id)
 	if err != nil || !s.Alive() || s.Skill <= 0 {
 		return []Pos{}
+	}
+	switch s.Spec.SkillKind() {
+	case SkillSonar:
+		return []Pos{s.Pos}
+	case SkillSpread:
+		return b.neighbours4(s.Pos)
 	}
 	out := []Pos{}
 	for _, p := range b.cells() {
@@ -255,13 +376,9 @@ func (b *Board) SkillTargets(id int) []Pos {
 		ok := false
 		switch s.Spec.SkillKind() {
 		case SkillBarrage:
-			ok = d >= 1 && d <= 2
+			ok = d >= 1 && d <= 3
 		case SkillFlare:
 			ok = d <= 3
-		case SkillSonar:
-			ok = d == 0
-		case SkillTorpedo:
-			ok = d == 1 && (p.Row == s.Pos.Row || p.Col == s.Pos.Col)
 		case SkillAirstrike:
 			ok = true
 		}
@@ -273,8 +390,20 @@ func (b *Board) SkillTargets(id int) []Pos {
 }
 
 // Footprint returns the cells an action affects, in the order they resolve.
-// Frontends mirror this to preview an aim.
-func Footprint(size int, t ActionType, kind SkillKind, from, target Pos) []Pos {
+// class is the acting ship's class (it shapes gunfire). Frontends mirror
+// this to preview an aim.
+func Footprint(size int, t ActionType, kind SkillKind, class ShipClass, from, target Pos) []Pos {
+	var out []Pos
+	for _, lane := range footprintLanes(size, t, kind, class, from, target) {
+		out = append(out, lane...)
+	}
+	return out
+}
+
+// footprintLanes splits a footprint into lanes: torpedo lanes each stop at
+// the first ship they meet, every other footprint is a single lane of
+// independent cells.
+func footprintLanes(size int, t ActionType, kind SkillKind, class ShipClass, from, target Pos) [][]Pos {
 	var out []Pos
 	add := func(p Pos) {
 		if p.InBounds(size) {
@@ -288,15 +417,34 @@ func Footprint(size int, t ActionType, kind SkillKind, from, target Pos) []Pos {
 			}
 		}
 	}
+	lane := func(start, dir Pos) []Pos {
+		var l []Pos
+		for p := start; p.InBounds(size); p = p.add(dir) {
+			l = append(l, p)
+		}
+		return l
+	}
 	switch {
 	case t == ActionUltimate:
 		area()
-	case t == ActionSkill && kind == SkillBarrage:
+	case t == ActionAttack && class == Battleship:
 		add(target)
-		for _, d := range []Pos{{-1, 0}, {1, 0}, {0, -1}, {0, 1}} {
-			add(Pos{target.Row + d.Row, target.Col + d.Col})
+		for _, d := range orthogonal {
+			add(target.add(d))
 		}
-	case t == ActionSkill && kind == SkillFlare:
+	case t == ActionTorpedo:
+		return [][]Pos{lane(target, Pos{target.Row - from.Row, target.Col - from.Col})}
+	case t == ActionSkill && kind == SkillSpread:
+		dir := Pos{target.Row - from.Row, target.Col - from.Col}
+		side := Pos{dir.Col, dir.Row}
+		var lanes [][]Pos
+		for _, k := range []int{-1, 0, 1} {
+			if l := lane(Pos{target.Row + k*side.Row, target.Col + k*side.Col}, dir); len(l) > 0 {
+				lanes = append(lanes, l)
+			}
+		}
+		return lanes
+	case t == ActionSkill && (kind == SkillBarrage || kind == SkillFlare):
 		area()
 	case t == ActionSkill && kind == SkillSonar:
 		for i := 0; i < size; i++ {
@@ -307,15 +455,10 @@ func Footprint(size int, t ActionType, kind SkillKind, from, target Pos) []Pos {
 				add(Pos{i, from.Col})
 			}
 		}
-	case t == ActionSkill && kind == SkillTorpedo:
-		dr, dc := target.Row-from.Row, target.Col-from.Col
-		for p := target; p.InBounds(size); p = (Pos{p.Row + dr, p.Col + dc}) {
-			out = append(out, p)
-		}
 	default:
 		add(target)
 	}
-	return out
+	return [][]Pos{out}
 }
 
 var (
@@ -325,6 +468,7 @@ var (
 )
 
 // NewBoard validates placements (index = ship ID) and builds a fresh board.
+// Speeds below the class floor are raised to it.
 func NewBoard(size int, specs []Spec, placements []Pos) (*Board, error) {
 	if size < MinBoardSize || size > MaxBoardSize {
 		return nil, fmt.Errorf("%w: board size %d", ErrInvalidPlacement, size)
@@ -343,7 +487,8 @@ func NewBoard(size int, specs []Spec, placements []Pos) (*Board, error) {
 		}
 		seen[p] = true
 		sp := specs[id]
-		b.Ships = append(b.Ships, &Ship{ID: id, Spec: sp, Pos: p, HP: sp.HP, Ammo: sp.Ammo, Skill: sp.Skill})
+		sp.Speed = max(sp.Speed, sp.Rule().MinSpeed)
+		b.Ships = append(b.Ships, &Ship{ID: id, Spec: sp, Pos: p, HP: sp.HP, Ammo: sp.Ammo, Torps: sp.Torps, Skill: sp.Skill})
 	}
 	return b, nil
 }
@@ -352,6 +497,7 @@ type ActionType string
 
 const (
 	ActionAttack   ActionType = "attack"
+	ActionTorpedo  ActionType = "torpedo"
 	ActionMove     ActionType = "move"
 	ActionSkill    ActionType = "skill"
 	ActionUltimate ActionType = "ultimate"
@@ -363,6 +509,11 @@ type Action struct {
 	Target Pos        `json:"target"`
 }
 
+// Late reports whether the action always resolves after the other side's.
+func (a Action) Late(sp Spec) bool {
+	return a.Type == ActionTorpedo || (a.Type == ActionSkill && sp.SkillKind() == SkillSpread)
+}
+
 type Direction string
 
 const (
@@ -370,6 +521,18 @@ const (
 	South Direction = "south"
 	East  Direction = "east"
 	West  Direction = "west"
+)
+
+// Special names a situational attack that gets a cut-in.
+type Special string
+
+const (
+	// SpecialSpotting: main guns fired at the cell the fleet shelled with its previous action. Always crits.
+	SpecialSpotting Special = "spotting"
+	// SpecialPrecision: an airstrike on a tracked ship. Ignores anti-air and evasion.
+	SpecialPrecision Special = "precision"
+	// SpecialPointBlank: a torpedo hit within 2 cells of the launcher. Always crits.
+	SpecialPointBlank Special = "pointblank"
 )
 
 // Shot is the outcome of one shell, torpedo or bomb landing on a cell.
@@ -383,7 +546,7 @@ type Shot struct {
 	Splash    bool `json:"splash,omitempty"`
 }
 
-// Sighting is an enemy ship located by a hit or a scouting skill.
+// Sighting is an enemy ship located by a hit, a scouting skill or a torpedo wake.
 type Sighting struct {
 	ShipID int `json:"shipId"`
 	Pos    Pos `json:"pos"`
@@ -396,13 +559,25 @@ type Result struct {
 	Type   ActionType `json:"type"`
 	ShipID int        `json:"shipId"`
 	Skill  SkillKind  `json:"skill,omitempty"`
+	// Round is the 1-based round the action was played in.
+	Round int `json:"round"`
+	// Speed is the acting ship's speed; Late marks torpedoes, which always go last.
+	Speed int  `json:"speed"`
+	Late  bool `json:"late,omitempty"`
+	// Cancelled actions never happened: the ship was sunk earlier in the round.
+	Cancelled bool    `json:"cancelled,omitempty"`
+	Special   Special `json:"special,omitempty"`
 
-	// Target is where the action was aimed (attack, skill, ultimate).
+	// Target is where the action was aimed (attack, torpedo, skill, ultimate).
 	Target *Pos `json:"target,omitempty"`
 	// Shots lists every cell that took fire, in order.
 	Shots []Shot `json:"shots,omitempty"`
-	// Path is the torpedo track up to where it stopped.
-	Path []Pos `json:"path,omitempty"`
+	// Origin is where torpedoes were launched from; their wake gives it away.
+	Origin *Pos `json:"origin,omitempty"`
+	// Paths are the torpedo tracks up to where each one stopped.
+	Paths [][]Pos `json:"paths,omitempty"`
+	// Columns are the cells where a battleship shell threw up a water column.
+	Columns []Pos `json:"columns,omitempty"`
 	// Scanned and Revealed are the area a scouting skill covered and what it found.
 	Scanned  []Pos      `json:"scanned,omitempty"`
 	Revealed []Sighting `json:"revealed,omitempty"`
@@ -424,6 +599,15 @@ func (r Result) Hits() int {
 		if s.Damage > 0 {
 			n++
 		}
+	}
+	return n
+}
+
+// Damage totals the damage dealt.
+func (r Result) Damage() int {
+	n := 0
+	for _, s := range r.Shots {
+		n += s.Damage
 	}
 	return n
 }
@@ -461,9 +645,21 @@ type EndReason string
 
 const (
 	EndAnnihilated EndReason = "annihilated" // every ship sunk
-	EndDisarmed    EndReason = "disarmed"    // no way left to deal damage
+	EndDisarmed    EndReason = "disarmed"    // no way left to deal damage: strategic withdrawal
 	EndJudgment    EndReason = "judgment"    // turn limit reached
 )
+
+// Weather is the sea condition of a battle, rolled per sortie.
+type Weather string
+
+const (
+	Clear Weather = "clear" // no modifiers
+	Fog   Weather = "fog"   // every ship +10 evasion; bombs lose their accuracy edge
+	Storm Weather = "storm" // move range -1 (min 1); torpedoes -25%
+	Night Weather = "night" // torpedoes +25%; airstrikes -50%
+)
+
+var Weathers = []Weather{Clear, Fog, Storm, Night}
 
 // AI tunes the CPU opponent. Level 0 is the gentlest, 3 the sharpest.
 type AI struct {
@@ -475,8 +671,9 @@ type State struct {
 	Version   int             `json:"version"`
 	Size      int             `json:"size"`
 	MaxTurns  int             `json:"maxTurns"`
+	Weather   Weather         `json:"weather"`
 	Boards    map[Side]*Board `json:"boards"`
-	Turn      int             `json:"turn"`
+	Turn      int             `json:"turn"` // rounds completed
 	Status    Status          `json:"status"`
 	Winner    Side            `json:"winner,omitempty"`
 	EndReason EndReason       `json:"endReason,omitempty"`
@@ -484,292 +681,41 @@ type State struct {
 	Gauge     map[Side]int    `json:"gauge"`
 	Combo     map[Side]int    `json:"combo"`
 	MaxCombo  map[Side]int    `json:"maxCombo"`
+	// LastGun is where each side's previous action fired its guns, if it did.
+	LastGun map[Side]*Pos `json:"lastGun"`
 	// Intel[s] is what side s knows about the opponent's ship positions, keyed by ship ID.
-	Intel map[Side]map[string]Sighting `json:"intel"`
-	CPU   CPUMemory                    `json:"cpu"`
-	AI    AI                           `json:"ai"`
+	Intel  map[Side]map[string]Sighting `json:"intel"`
+	Memory map[Side]*Memory             `json:"memory"`
+	AI     AI                           `json:"ai"`
 }
 
-func NewState(player, cpu *Board, maxTurns int, ai AI) *State {
-	return &State{
+func NewState(player, cpu *Board, maxTurns int, ai AI, weather Weather) *State {
+	if weather == "" {
+		weather = Clear
+	}
+	st := &State{
 		Version:  StateVersion,
 		Size:     player.Size,
 		MaxTurns: maxTurns,
+		Weather:  weather,
 		Boards:   map[Side]*Board{SidePlayer: player, SideCPU: cpu},
 		Status:   StatusInProgress,
 		History:  []Result{},
 		Gauge:    map[Side]int{},
 		Combo:    map[Side]int{},
 		MaxCombo: map[Side]int{},
+		LastGun:  map[Side]*Pos{},
 		Intel:    map[Side]map[string]Sighting{SidePlayer: {}, SideCPU: {}},
+		Memory:   map[Side]*Memory{SidePlayer: {}, SideCPU: {}},
 		AI:       ai,
 	}
+	st.syncWeather()
+	return st
 }
 
-// Gauge gains. Shooting gains are scaled by the running combo.
-const (
-	gaugeHit    = 14
-	gaugeSink   = 22
-	gaugeSplash = 5
-	gaugeScout  = 8
-	gaugeHurt   = 12
-)
-
-// Apply executes one action for side and returns its public result. rng
-// decides critical hits and evasion.
-func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
-	if st.Status != StatusInProgress {
-		return Result{}, ErrGameOver
+// syncWeather hands the weather to the boards.
+func (st *State) syncWeather() {
+	for _, b := range st.Boards {
+		b.Weather = st.Weather
 	}
-	own := st.Boards[side]
-	ship, err := own.ship(a.ShipID)
-	if err != nil {
-		return Result{}, err
-	}
-	if !ship.Alive() {
-		return Result{}, fmt.Errorf("%w: ship %d is sunk", ErrInvalidAction, a.ShipID)
-	}
-	if !a.Target.InBounds(st.Size) {
-		return Result{}, fmt.Errorf("%w: target (%d,%d) is off the sea", ErrInvalidAction, a.Target.Row, a.Target.Col)
-	}
-
-	res := Result{Side: side, Type: a.Type, ShipID: a.ShipID}
-	t := a.Target
-	switch a.Type {
-	case ActionAttack:
-		if !contains(own.AttackTargets(a.ShipID), t) {
-			return Result{}, fmt.Errorf("%w: cannot attack (%d,%d) with ship %d", ErrInvalidAction, t.Row, t.Col, a.ShipID)
-		}
-		ship.Ammo--
-		res.Target = &t
-		res.Shots = []Shot{st.fire(side, t, 1, ship.Spec.Crit, true, rng)}
-
-	case ActionMove:
-		if !contains(own.MoveTargets(a.ShipID), t) {
-			return Result{}, fmt.Errorf("%w: cannot move ship %d to (%d,%d)", ErrInvalidAction, a.ShipID, t.Row, t.Col)
-		}
-		if ship.Spec.Class == Submarine {
-			res.Hidden = true
-		} else {
-			res.Direction, res.Distance = direction(ship.Pos, t)
-		}
-		ship.Pos = t
-
-	case ActionSkill:
-		if !contains(own.SkillTargets(a.ShipID), t) {
-			return Result{}, fmt.Errorf("%w: cannot use skill of ship %d at (%d,%d)", ErrInvalidAction, a.ShipID, t.Row, t.Col)
-		}
-		ship.Skill--
-		kind := ship.Spec.SkillKind()
-		res.Skill = kind
-		res.Target = &t
-		cells := Footprint(st.Size, ActionSkill, kind, ship.Pos, t)
-		switch kind {
-		case SkillBarrage:
-			for _, c := range cells {
-				res.Shots = append(res.Shots, st.fire(side, c, 1, ship.Spec.Crit, true, rng))
-			}
-		case SkillAirstrike:
-			res.Shots = []Shot{st.fire(side, t, 1, ship.Spec.Crit+10, true, rng)}
-		case SkillTorpedo:
-			for _, c := range cells {
-				res.Path = append(res.Path, c)
-				if st.Boards[side.Opponent()].shipAt(c) != nil {
-					res.Shots = []Shot{st.fire(side, c, 2, ship.Spec.Crit, true, rng)}
-					break
-				}
-			}
-		case SkillFlare, SkillSonar:
-			res.Scanned = cells
-			for _, e := range st.Boards[side.Opponent()].Ships {
-				if e.Alive() && contains(cells, e.Pos) && (kind == SkillSonar || e.Spec.Class != Submarine) {
-					res.Revealed = append(res.Revealed, Sighting{ShipID: e.ID, Pos: e.Pos, Turn: st.Turn})
-				}
-			}
-		}
-
-	case ActionUltimate:
-		if st.Gauge[side] < GaugeMax {
-			return Result{}, fmt.Errorf("%w: gauge is not full", ErrInvalidAction)
-		}
-		st.Gauge[side] = 0
-		res.Target = &t
-		for _, c := range Footprint(st.Size, ActionUltimate, "", ship.Pos, t) {
-			res.Shots = append(res.Shots, st.fire(side, c, 1, 0, false, rng))
-		}
-
-	default:
-		return Result{}, fmt.Errorf("%w: unknown action type %q", ErrInvalidAction, a.Type)
-	}
-
-	st.score(side, &res)
-	if side == SidePlayer {
-		st.Turn++
-	}
-	st.learn(res)
-	st.History = append(st.History, res)
-	st.CPU.Observe(res)
-	st.checkEnd(side)
-	return res, nil
-}
-
-// fire lands one shot from side on cell t.
-func (st *State) fire(side Side, t Pos, dmg, crit int, evadable bool, rng *rand.Rand) Shot {
-	enemy := st.Boards[side.Opponent()]
-	sh := Shot{Target: t}
-	if hit := enemy.shipAt(t); hit != nil {
-		id := hit.ID
-		sh.HitShipID = &id
-		switch {
-		case evadable && rng.IntN(100) < hit.Spec.Evasion:
-			sh.Evaded = true
-		default:
-			if crit > 0 && rng.IntN(100) < crit {
-				sh.Crit = true
-				dmg++
-			}
-			hit.HP = max(hit.HP-dmg, 0)
-			sh.Damage = dmg
-			sh.Sunk = !hit.Alive()
-		}
-	}
-	for _, s := range enemy.Ships {
-		if s.Alive() && s.Spec.Class != Submarine && s.Pos.Adjacent(t) {
-			sh.Splash = true
-		}
-	}
-	return sh
-}
-
-// score updates combos and gauges after an action.
-func (st *State) score(side Side, res *Result) {
-	hits, sinks, splash := 0, 0, false
-	for _, s := range res.Shots {
-		if s.Damage > 0 {
-			hits++
-		}
-		if s.Sunk {
-			sinks++
-		}
-		splash = splash || s.Splash
-	}
-	opp := side.Opponent()
-	st.Gauge[opp] = min(st.Gauge[opp]+hits*gaugeHurt, GaugeMax)
-
-	switch {
-	case hits > 0 || len(res.Revealed) > 0:
-		st.Combo[side]++
-	default:
-		st.Combo[side] = 0
-	}
-	st.MaxCombo[side] = max(st.MaxCombo[side], st.Combo[side])
-
-	if res.Type != ActionUltimate {
-		gain := hits*gaugeHit + sinks*gaugeSink + len(res.Revealed)*gaugeScout
-		if hits == 0 && splash {
-			gain += gaugeSplash
-		}
-		if c := st.Combo[side]; c > 1 {
-			gain = gain * (10 + 3*(c-1)) / 10
-		}
-		st.Gauge[side] = min(st.Gauge[side]+gain, GaugeMax)
-	}
-	res.Combo = st.Combo[side]
-	res.Gauge = st.Gauge[side]
-}
-
-// learn updates both sides' intel from a public result.
-func (st *State) learn(r Result) {
-	mine, theirs := st.Intel[r.Side], st.Intel[r.Side.Opponent()]
-	for _, s := range r.Shots {
-		if s.HitShipID == nil {
-			continue
-		}
-		key := strconv.Itoa(*s.HitShipID)
-		if s.Sunk {
-			delete(mine, key)
-		} else {
-			mine[key] = Sighting{ShipID: *s.HitShipID, Pos: s.Target, Turn: st.Turn}
-		}
-	}
-	for _, s := range r.Revealed {
-		mine[strconv.Itoa(s.ShipID)] = Sighting{ShipID: s.ShipID, Pos: s.Pos, Turn: st.Turn}
-	}
-	if r.Type == ActionMove {
-		key := strconv.Itoa(r.ShipID)
-		if seen, ok := theirs[key]; ok {
-			if r.Hidden {
-				delete(theirs, key)
-			} else {
-				seen.Pos = shift(seen.Pos, r.Direction, r.Distance)
-				theirs[key] = seen
-			}
-		}
-	}
-}
-
-// checkEnd decides the winner; the acting side's opponent is checked first so
-// that landing the final blow wins even if the attacker just spent its last shell.
-func (st *State) checkEnd(actor Side) {
-	for _, s := range []Side{actor.Opponent(), actor} {
-		b := st.Boards[s]
-		switch {
-		case b.alive() == 0:
-			st.finish(s.Opponent(), EndAnnihilated)
-			return
-		case !b.canStrike() && st.Gauge[s] < GaugeMax:
-			st.finish(s.Opponent(), EndDisarmed)
-			return
-		}
-	}
-	// A round ends with the CPU's reply.
-	if actor == SideCPU && st.MaxTurns > 0 && st.Turn >= st.MaxTurns {
-		if st.Boards[SidePlayer].hull() > st.Boards[SideCPU].hull() {
-			st.finish(SidePlayer, EndJudgment)
-		} else {
-			st.finish(SideCPU, EndJudgment)
-		}
-	}
-}
-
-func (st *State) finish(winner Side, why EndReason) {
-	st.Status = StatusFinished
-	st.Winner = winner
-	st.EndReason = why
-}
-
-func direction(from, to Pos) (Direction, int) {
-	switch {
-	case to.Row < from.Row:
-		return North, from.Row - to.Row
-	case to.Row > from.Row:
-		return South, to.Row - from.Row
-	case to.Col > from.Col:
-		return East, to.Col - from.Col
-	default:
-		return West, from.Col - to.Col
-	}
-}
-
-func shift(p Pos, d Direction, n int) Pos {
-	switch d {
-	case North:
-		p.Row -= n
-	case South:
-		p.Row += n
-	case East:
-		p.Col += n
-	case West:
-		p.Col -= n
-	}
-	return p
-}
-
-func contains(ps []Pos, p Pos) bool {
-	for _, q := range ps {
-		if q == p {
-			return true
-		}
-	}
-	return false
 }

@@ -4,55 +4,74 @@ import (
 	"math/rand/v2"
 )
 
-// CPUMemory is what the CPU has inferred about the player's fleet from public
+// Hint says at least one enemy ship was within R cells of Pos.
+type Hint struct {
+	Pos Pos `json:"pos"`
+	R   int `json:"r"`
+}
+
+// Memory is what one side has inferred about the other's fleet from public
 // results, on top of the exact sightings in State.Intel.
-type CPUMemory struct {
-	// Hints are cells with at least one player ship in their 8 neighbours.
-	Hints []Pos `json:"hints"`
+type Memory struct {
+	Hints []Hint `json:"hints"`
 	// Cleared cells are believed to be empty.
 	Cleared []Pos `json:"cleared"`
 }
 
-// Observe updates the CPU memory with a public action result.
-func (m *CPUMemory) Observe(r Result) {
-	switch {
-	case r.Side == SideCPU:
-		for _, s := range r.Shots {
-			if s.HitShipID == nil {
-				m.Cleared = append(m.Cleared, s.Target)
-			}
-			if s.Splash {
-				m.Hints = append(m.Hints, s.Target)
-			} else {
-				m.Cleared = append(m.Cleared, neighbours(s.Target)...)
-			}
+// observe updates both sides' memories with a public action result.
+func (st *State) observe(r Result) {
+	if r.Cancelled {
+		return
+	}
+	for side, m := range st.Memory {
+		if r.Side == side {
+			m.ownResult(r)
+			continue
 		}
-		if r.Skill == SkillTorpedo && len(r.Shots) == 0 {
-			m.Cleared = append(m.Cleared, r.Path...)
+		switch r.Type {
+		case ActionAttack:
+			// Guns only reach so far from the ship that fired them.
+			m.Hints = append(m.Hints, Hint{*r.Target, st.Boards[r.Side].Ships[r.ShipID].Spec.Rule().GunRange})
+		case ActionMove:
+			// We cannot tell which hints came from the moved ship, so forget them all.
+			m.Hints = nil
+			m.Cleared = nil
 		}
-		for _, c := range r.Scanned {
-			found := false
-			for _, s := range r.Revealed {
-				found = found || s.Pos == c
-			}
-			if !found {
-				m.Cleared = append(m.Cleared, c)
-			}
-		}
-	case r.Type == ActionAttack:
-		// A gun can only reach the 8 cells around the ship that fired it.
-		m.Hints = append(m.Hints, *r.Target)
-	case r.Type == ActionMove:
-		// We cannot tell which hints came from the moved ship, so forget them all.
-		m.Hints = nil
-		m.Cleared = nil
 	}
 }
 
-func neighbours(p Pos) []Pos {
+func (m *Memory) ownResult(r Result) {
+	for _, s := range r.Shots {
+		if s.HitShipID == nil {
+			m.Cleared = append(m.Cleared, s.Target)
+		}
+		if s.Splash {
+			m.Hints = append(m.Hints, Hint{s.Target, 1})
+		} else {
+			m.Cleared = append(m.Cleared, ring(s.Target, 1)...)
+		}
+	}
+	if r.Origin != nil && len(r.Shots) == 0 {
+		for _, p := range r.Paths {
+			m.Cleared = append(m.Cleared, p...)
+		}
+	}
+	for _, c := range r.Scanned {
+		found := false
+		for _, s := range r.Revealed {
+			found = found || s.Pos == c
+		}
+		if !found {
+			m.Cleared = append(m.Cleared, c)
+		}
+	}
+}
+
+// ring lists the cells at most r king moves from p, excluding p.
+func ring(p Pos, r int) []Pos {
 	out := []Pos{}
-	for dr := -1; dr <= 1; dr++ {
-		for dc := -1; dc <= 1; dc++ {
+	for dr := -r; dr <= r; dr++ {
+		for dc := -r; dc <= r; dc++ {
 			if dr != 0 || dc != 0 {
 				out = append(out, Pos{p.Row + dr, p.Col + dc})
 			}
@@ -61,39 +80,44 @@ func neighbours(p Pos) []Pos {
 	return out
 }
 
-// heat estimates, per cell, how likely a player ship sits there.
-func (st *State) heat() map[Pos]float64 {
+// heat estimates, per cell, how likely an enemy ship of side's sits there
+// (100 = certain).
+func (st *State) heat(side Side) map[Pos]float64 {
 	h := map[Pos]float64{}
-	for _, s := range st.Intel[SideCPU] {
-		if ship := st.Boards[SidePlayer].Ships[s.ShipID]; ship.Alive() {
+	enemy := st.Boards[side.Opponent()]
+	for _, s := range st.Intel[side] {
+		if enemy.Ships[s.ShipID].Alive() {
 			h[s.Pos] += 100
 		}
 	}
-	for _, hint := range st.CPU.Hints {
-		for _, n := range neighbours(hint) {
-			h[n] += 10
+	m := st.Memory[side]
+	for _, hint := range m.Hints {
+		cells := ring(hint.Pos, hint.R)
+		for _, n := range cells {
+			h[n] += 80 / float64(len(cells))
 		}
 	}
-	for _, c := range st.CPU.Cleared {
+	for _, c := range m.Cleared {
 		h[c] -= 20
 	}
 	return h
 }
 
-func sumHeat(h map[Pos]float64, cells []Pos) float64 {
-	s := 0.0
-	for _, c := range cells {
-		s += max(h[c], 0)
-	}
-	return s
-}
+func pos(h map[Pos]float64, p Pos) float64 { return max(h[p], 0) }
 
-// DecideCPU picks the CPU's next action.
-func (st *State) DecideCPU(rng *rand.Rand) Action {
-	own := st.Boards[SideCPU]
-	h := st.heat()
+// Decide picks side's next action from what that side knows. The CPU uses it
+// every round; simulations use it for both fleets.
+func (st *State) Decide(side Side, rng *rand.Rand) Action {
+	st.syncWeather()
+	own := st.Boards[side]
+	enemy := st.Boards[side.Opponent()]
+	h := st.heat(side)
 	lvl := st.AI.Level
-	jitter := func() float64 { return rng.Float64() * float64(4-min(lvl, 3)) }
+	if side == SidePlayer {
+		lvl = 3
+	}
+	jitter := func() float64 { return rng.Float64() * 6 * float64(4-min(lvl, 3)) }
+	aa := float64(aaScale) / float64(aaScale+enemy.AA())
 
 	type cand struct {
 		action Action
@@ -106,11 +130,36 @@ func (st *State) DecideCPU(rng *rand.Rand) Action {
 		}
 	}
 
-	leads := 0
+	known := 0
+	for _, s := range st.Intel[side] {
+		if enemy.Ships[s.ShipID].Alive() {
+			known++
+		}
+	}
+	leads := known
 	for _, v := range h {
-		if v >= 10 {
+		if v >= 8 {
 			leads++
 		}
+	}
+
+	// torpedoValue scores lanes by the first likely target in each. Torpedoes
+	// are scarce and the wake gives the launcher away, so faint hints are ignored.
+	torpedoValue := func(from Pos, lanes [][]Pos, power float64) float64 {
+		sum := 0.0
+		for _, lane := range lanes {
+			for _, c := range lane {
+				if v := pos(h, c); v >= 25 {
+					p := power
+					if from.Dist(c) <= pointBlank {
+						p *= critMult
+					}
+					sum += v / 100 * p
+					break
+				}
+			}
+		}
+		return sum
 	}
 
 	flagship := -1
@@ -120,111 +169,247 @@ func (st *State) DecideCPU(rng *rand.Rand) Action {
 			break
 		}
 	}
-	if st.Gauge[SideCPU] >= GaugeMax && flagship >= 0 {
+	if st.Gauge[side] >= GaugeMax && flagship >= 0 {
+		power := float64(own.ultimatePower())
 		for _, c := range own.cells() {
-			sc := sumHeat(h, Footprint(st.Size, ActionUltimate, "", Pos{}, c))
+			sum := 0.0
+			for _, f := range Footprint(st.Size, ActionUltimate, "", "", Pos{}, c) {
+				sum += pos(h, f)
+			}
 			// Hold the barrage until there is something worth hitting, unless out of other options.
-			if sc >= 20 || !own.canStrike() {
-				consider(Action{ActionUltimate, flagship, c}, sc*1.3+10+jitter())
+			if sum >= 30 || !own.canStrike(enemy) {
+				consider(Action{ActionUltimate, flagship, c}, sum/100*power*1.2+10+jitter())
 			}
 		}
+	}
+
+	// Waiting for a lead can take forever — with nothing but torpedoes left, or
+	// when neither fleet has found the other for a while. Then fire blind at
+	// cells nobody has cleared yet.
+	onlyTorps := true
+	for _, s := range own.Ships {
+		kind := s.Spec.SkillKind()
+		if s.Alive() && (s.canGun() || (s.Skill > 0 && kind.Offensive() && kind != SkillSpread)) {
+			onlyTorps = false
+		}
+	}
+	idle := 0
+	for i := len(st.History) - 1; i >= 0; i-- {
+		if r := st.History[i]; r.Side == side {
+			if len(r.Shots) > 0 || len(r.Scanned) > 0 {
+				break
+			}
+			idle++
+		}
+	}
+	blindMode := onlyTorps || idle >= 3
+	blind := func(lanes ...[]Pos) float64 {
+		if !blindMode {
+			return 0
+		}
+		open := 0
+		for _, lane := range lanes {
+			for _, c := range lane {
+				if h[c] > -20 {
+					open++
+				}
+			}
+		}
+		return float64(open) * 5
 	}
 
 	for _, s := range own.Ships {
 		if !s.Alive() {
 			continue
 		}
+		sp := s.Spec
 		for _, t := range own.AttackTargets(s.ID) {
+			sc := 0.0
+			cells := Footprint(st.Size, ActionAttack, "", sp.Class, s.Pos, t)
+			for i, c := range cells {
+				p := float64(sp.Firepower)
+				if i > 0 {
+					p = p * armCellPct / 100
+				}
+				sc += pos(h, c) / 100 * p
+			}
+			sc = max(sc, blind(cells))
+			if prev := st.LastGun[side]; prev != nil && *prev == t && (sp.Class == Battleship || sp.Class == Cruiser) && lvl >= 1 {
+				sc *= critMult
+			}
 			// Prefer spending ammo from the best-stocked ship.
-			consider(Action{ActionAttack, s.ID, t}, h[t]+jitter()+float64(s.Ammo)*0.05)
+			consider(Action{ActionAttack, s.ID, t}, sc+jitter()+float64(s.Ammo))
 		}
-		kind := s.Spec.SkillKind()
+		for _, t := range own.TorpedoTargets(s.ID) {
+			lanes := footprintLanes(st.Size, ActionTorpedo, "", sp.Class, s.Pos, t)
+			sc := max(torpedoValue(s.Pos, lanes, float64(st.torpedoPower(sp))), blind(lanes...))
+			if sc > 0 {
+				// The wake gives the launcher away; weigh that against the hit.
+				consider(Action{ActionTorpedo, s.ID, t}, sc*0.9+jitter()-8)
+			}
+		}
+		kind := sp.SkillKind()
 		for _, t := range own.SkillTargets(s.ID) {
-			cells := Footprint(st.Size, ActionSkill, kind, s.Pos, t)
 			var sc float64
 			switch kind {
 			case SkillBarrage:
-				sc = sumHeat(h, cells) * 0.9
-			case SkillAirstrike:
-				sc = h[t] * 0.95
-			case SkillTorpedo:
-				for _, c := range cells {
-					sc = max(sc, h[c]*0.9)
+				for _, c := range Footprint(st.Size, ActionSkill, kind, sp.Class, s.Pos, t) {
+					sc += pos(h, c) / 100 * float64(sp.Firepower) * barragePct / 100
 				}
+				sc *= 0.9
+			case SkillAirstrike:
+				p := float64(st.airPower(sp))
+				if st.tracking(side, t) && lvl >= 1 {
+					sc = pos(h, t) / 100 * p
+				} else {
+					sc = max(pos(h, t)/100*p*aa, blind([]Pos{t})*2)
+				}
+			case SkillSpread:
+				lanes := footprintLanes(st.Size, ActionSkill, kind, sp.Class, s.Pos, t)
+				sc = max(torpedoValue(s.Pos, lanes, float64(st.torpedoPower(sp))*spreadPct/100), blind(lanes...))*0.9 - 8
 			case SkillFlare, SkillSonar:
 				// Scouting pays off when we know little.
-				if leads > 0 {
+				if known > 0 && leads > 1 {
 					continue
 				}
 				unknown := 0
-				for _, c := range cells {
+				for _, c := range Footprint(st.Size, ActionSkill, kind, sp.Class, s.Pos, t) {
 					if h[c] > -20 {
 						unknown++
 					}
 				}
-				sc = 4 + float64(unknown)*0.6 + float64(lvl)
+				sc = 25 + float64(unknown)*3 + float64(lvl)*4
 			}
-			consider(Action{ActionSkill, s.ID, t}, sc+jitter())
+			if sc > 0 {
+				consider(Action{ActionSkill, s.ID, t}, sc+jitter())
+			}
 		}
 	}
 
 	// A promising lead: take the shot.
-	if best != nil && best.score >= 10 {
+	if best != nil && best.score >= 70 {
 		return best.action
 	}
-	// If the player just found one of our ships, try to slip away.
-	if len(st.History) > 0 {
-		last := st.History[len(st.History)-1]
-		if last.Side == SidePlayer && last.Target != nil && threatened(last) && rng.Float64() < 0.55+0.1*float64(lvl) {
-			if a, ok := st.evade(rng, *last.Target); ok {
-				return a
-			}
-		}
+	// A spotted submarine dives away; a badly hurt ship slips out of a known position.
+	if a, ok := st.evade(side, rng, lvl); ok {
+		return a
 	}
-	if best != nil && best.score > 0 && rng.Float64() < 0.5+0.1*float64(lvl) {
+	if best != nil && best.score > 25 && rng.Float64() < 0.55+0.1*float64(lvl) {
 		return best.action
 	}
-	if a, ok := st.randomMove(rng); ok {
+	if a, ok := st.approach(side, h, rng); ok && (best == nil || rng.Float64() < 0.6) {
 		return a
 	}
 	if best != nil {
 		return best.action
 	}
-	// Unreachable while the game is in progress: a living ship can always move
-	// or, failing that, strike.
-	return Action{Type: ActionMove}
-}
-
-func threatened(r Result) bool {
-	for _, s := range r.Shots {
-		if s.HitShipID != nil || s.Splash {
-			return true
-		}
+	if a, ok := st.randomMove(side, rng); ok {
+		return a
 	}
-	return len(r.Revealed) > 0
+	if all := st.Actions(side); len(all) > 0 {
+		return all[rng.IntN(len(all))]
+	}
+	// Nothing is legal; Resolve cancels this.
+	return Action{Type: ActionMove, ShipID: max(flagship, 0)}
 }
 
-func (st *State) evade(rng *rand.Rand, danger Pos) (Action, bool) {
-	own := st.Boards[SideCPU]
+// Actions lists every legal action for side except the ultimate.
+func (st *State) Actions(side Side) []Action {
+	own := st.Boards[side]
+	var out []Action
 	for _, s := range own.Ships {
-		if !s.Alive() || s.Pos.Dist(danger) > 1 {
-			continue
-		}
-		var safe []Pos
-		for _, t := range own.MoveTargets(s.ID) {
-			if t.Dist(danger) > 1 {
-				safe = append(safe, t)
+		add := func(t ActionType, targets []Pos) {
+			for _, p := range targets {
+				out = append(out, Action{t, s.ID, p})
 			}
 		}
-		if len(safe) > 0 {
-			return Action{ActionMove, s.ID, safe[rng.IntN(len(safe))]}, true
+		add(ActionAttack, own.AttackTargets(s.ID))
+		add(ActionTorpedo, own.TorpedoTargets(s.ID))
+		add(ActionMove, own.MoveTargets(s.ID))
+		add(ActionSkill, own.SkillTargets(s.ID))
+	}
+	return out
+}
+
+// evade moves a ship the enemy is tracking when that is worth a turn:
+// submarines (which vanish when they move) and badly damaged surface ships.
+func (st *State) evade(side Side, rng *rand.Rand, lvl int) (Action, bool) {
+	own := st.Boards[side]
+	for _, seen := range st.Intel[side.Opponent()] {
+		s := own.Ships[seen.ShipID]
+		if !s.Alive() {
+			continue
+		}
+		sub := s.Spec.Class == Submarine
+		hurt := s.HP*100/s.Spec.HP < 35
+		if !sub && !hurt {
+			continue
+		}
+		chance := 0.25 + 0.15*float64(lvl)
+		if sub && s.Torps == 0 && s.Skill == 0 {
+			chance = 1
+		}
+		if rng.Float64() >= chance {
+			continue
+		}
+		var far []Pos
+		for _, t := range own.MoveTargets(s.ID) {
+			if t.Dist(seen.Pos) > 1 || sub {
+				far = append(far, t)
+			}
+		}
+		if len(far) > 0 {
+			return Action{ActionMove, s.ID, far[rng.IntN(len(far))]}, true
 		}
 	}
 	return Action{}, false
 }
 
-func (st *State) randomMove(rng *rand.Rand) (Action, bool) {
-	own := st.Boards[SideCPU]
+// approach closes in on where the enemy probably is, with the ship that has
+// the most shells left, so that its guns come into range.
+func (st *State) approach(side Side, h map[Pos]float64, rng *rand.Rand) (Action, bool) {
+	own := st.Boards[side]
+	var goal *Pos
+	bestHeat := 0.0
+	for p, v := range h {
+		if v > bestHeat && p.InBounds(st.Size) {
+			q := p
+			goal, bestHeat = &q, v
+		}
+	}
+	if goal == nil {
+		c := Pos{st.Size / 2, st.Size / 2}
+		goal = &c
+	}
+	var mover *Ship
+	for _, s := range own.Ships {
+		if s.Alive() && s.canGun() && len(own.MoveTargets(s.ID)) > 0 && s.Pos.Dist(*goal) > s.Spec.Rule().GunRange {
+			if mover == nil || s.Ammo > mover.Ammo {
+				mover = s
+			}
+		}
+	}
+	if mover == nil {
+		return Action{}, false
+	}
+	var steps []Pos
+	bestD := mover.Pos.Dist(*goal)
+	for _, t := range own.MoveTargets(mover.ID) {
+		switch d := t.Dist(*goal); {
+		case d < bestD:
+			steps, bestD = []Pos{t}, d
+		case d == bestD && len(steps) > 0:
+			steps = append(steps, t)
+		}
+	}
+	if len(steps) == 0 {
+		return Action{}, false
+	}
+	return Action{ActionMove, mover.ID, steps[rng.IntN(len(steps))]}, true
+}
+
+func (st *State) randomMove(side Side, rng *rand.Rand) (Action, bool) {
+	own := st.Boards[side]
 	var ids []int
 	for _, s := range own.Ships {
 		if s.Alive() && len(own.MoveTargets(s.ID)) > 0 {

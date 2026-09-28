@@ -61,10 +61,14 @@ func TestNewProfileHasStarterFleet(t *testing.T) {
 func TestSpecGrowsWithLevelAndStars(t *testing.T) {
 	s := &OwnedShip{Card: "bb_kurogane", Level: 1}
 	base := s.Spec()
-	s.Level, s.Stars = 15, 2
+	s.Level, s.Stars = 26, 5
 	grown := s.Spec()
-	if grown.HP != base.HP+2 || grown.Ammo != base.Ammo+1 || grown.Crit <= base.Crit || grown.Evasion != base.Evasion+2 {
+	if grown.HP != base.HP*1150/1000 || grown.Firepower <= base.Firepower || grown.Ammo != base.Ammo+1 ||
+		grown.Skill != base.Skill+2 || grown.Crit != base.Crit+2+5 || grown.Speed != base.Speed || grown.Armor != base.Armor {
 		t.Fatalf("base %+v grown %+v", base, grown)
+	}
+	if max := (&OwnedShip{Card: "bb_kurogane", Level: 50, Stars: 5}).Spec(); max.HP > base.HP*14/10 {
+		t.Fatalf("a maxed ship should stay within reach of a fresh one: %d vs %d", max.HP, base.HP)
 	}
 }
 
@@ -201,7 +205,7 @@ func playOut(t *testing.T, m *Match, win bool) {
 		}
 	} else {
 		for _, s := range st.Boards[game.SidePlayer].Ships {
-			s.Ammo, s.Skill = 0, 0
+			s.Ammo, s.Torps, s.Skill = 0, 0, 0
 		}
 		st.Boards[game.SidePlayer].Ships[0].Ammo = 1
 		ts := st.Boards[game.SidePlayer].AttackTargets(0)

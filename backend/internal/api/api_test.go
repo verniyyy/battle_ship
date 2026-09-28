@@ -156,11 +156,15 @@ func TestGameFlow(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("action: status %d", code)
 	}
-	if resp.Player.Type != game.ActionAttack || resp.Game.Turn != 1 {
+	if len(resp.Results) != 2 || resp.Game.Turn != 1 {
 		t.Fatalf("unexpected response %+v", resp)
 	}
-	if resp.Game.Status == game.StatusInProgress && resp.CPU == nil {
-		t.Fatal("expected a CPU reply")
+	sides := map[game.Side]game.Result{}
+	for _, r := range resp.Results {
+		sides[r.Side] = r
+	}
+	if sides[game.SidePlayer].Type != game.ActionAttack || sides[game.SideCPU].Side != game.SideCPU {
+		t.Fatalf("expected the player's salvo and a CPU action, got %+v", resp.Results)
 	}
 	if resp.Game.PlayerShips[1].Ammo != resp.Game.PlayerShips[1].MaxAmmo-1 {
 		t.Fatalf("ammo not spent: %d", resp.Game.PlayerShips[1].Ammo)
@@ -186,6 +190,7 @@ func TestPlayToTheEnd(t *testing.T) {
 			t.Fatal("battle never ended")
 		}
 		a := randomAction(r, g)
+		resp = actionResponse{}
 		if code := do(t, ts, alice, "POST", "/api/games/"+m.ID+"/actions", a, &resp); code != http.StatusOK {
 			t.Fatalf("step %d: %d for %+v", step, code, a)
 		}
@@ -228,6 +233,8 @@ func randomAction(r *rand.Rand, g game.View) game.Action {
 			return game.Action{Type: game.ActionUltimate, ShipID: s.ID, Target: game.Pos{Row: 2, Col: 2}}
 		case len(s.SkillTargets) > 0 && r.IntN(3) == 0:
 			return game.Action{Type: game.ActionSkill, ShipID: s.ID, Target: pick(s.SkillTargets)}
+		case len(s.TorpedoTargets) > 0 && r.IntN(4) == 0:
+			return game.Action{Type: game.ActionTorpedo, ShipID: s.ID, Target: pick(s.TorpedoTargets)}
 		case len(s.AttackTargets) > 0 && r.IntN(3) > 0:
 			return game.Action{Type: game.ActionAttack, ShipID: s.ID, Target: pick(s.AttackTargets)}
 		case len(s.MoveTargets) > 0:

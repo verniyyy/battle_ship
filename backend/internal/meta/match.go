@@ -39,11 +39,20 @@ func NewMatch(p *Profile, stageID string, placements []game.Pos, rng *rand.Rand)
 		return nil, err
 	}
 	return &Match{
-		Game:     game.NewState(player, cpu, stage.MaxTurns, game.AI{Level: stage.AI}),
+		Game:     game.NewState(player, cpu, stage.MaxTurns, game.AI{Level: stage.AI}, rollWeather(rng)),
 		PlayerID: p.ID,
 		Stage:    stage,
 		Fleet:    append([]string{}, p.Fleet...),
 	}, nil
+}
+
+// rollWeather picks the sea condition: calm about half the time, otherwise
+// fog, storm or night, so the same stage never plays out the same way twice.
+func rollWeather(rng *rand.Rand) game.Weather {
+	if rng.IntN(100) < 46 {
+		return game.Clear
+	}
+	return game.Weathers[1+rng.IntN(len(game.Weathers)-1)]
 }
 
 type Rank string

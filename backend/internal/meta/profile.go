@@ -25,32 +25,39 @@ type OwnedShip struct {
 }
 
 // Spec resolves the ship's battle stats from its card, level and limit breaks.
+//
+// Levels grow the main numbers continuously (+0.6% per level, so Lv.50 is
+// about +30% over Lv.1) and add a salvo, a torpedo or a skill use at
+// milestones. Limit breaks mostly raise the level cap; on their own they add
+// only a little crit and, at ★5, one more skill use, so duplicates from the
+// gacha never decide a battle.
 func (o *OwnedShip) Spec() game.Spec {
 	c := cardIndex[o.Card]
-	sp := game.Spec{
-		Key: c.ID, Class: c.Class, Name: c.Name, Rarity: int(c.Rarity),
-		HP: c.HP, Ammo: c.Ammo, Skill: c.Skill, Crit: c.Crit, Evasion: c.Evasion,
-	}
+	sp := game.Spec{Key: c.ID, Class: c.Class, Name: c.Name, Rarity: int(c.Rarity), Stats: c.Stats}
 	lv, st := o.Level, o.Stars
+	grow := func(v int) int { return v * (1000 + 6*(lv-1)) / 1000 }
+	for _, f := range []*int{&sp.HP, &sp.Firepower, &sp.Torpedo, &sp.Air, &sp.AA} {
+		*f = grow(*f)
+	}
 	for _, b := range []struct {
 		ok    bool
 		field *int
 	}{
-		{lv >= 10, &sp.Ammo}, {lv >= 15, &sp.HP}, {lv >= 25, &sp.Skill}, {lv >= 30, &sp.Ammo}, {lv >= 40, &sp.HP},
-		{st >= 2, &sp.HP}, {st >= 4, &sp.Ammo}, {st >= 5, &sp.Skill},
+		{lv >= 10 && sp.Ammo > 0, &sp.Ammo}, {lv >= 20 && sp.Torps > 0, &sp.Torps}, {lv >= 25, &sp.Skill},
+		{lv >= 30 && sp.Ammo > 0, &sp.Ammo}, {st >= 5, &sp.Skill},
 	} {
 		if b.ok {
 			*b.field++
 		}
 	}
-	sp.Crit += lv/5 + 2*st
-	sp.Evasion += st
+	sp.Crit += lv/10 + st
 	return sp
 }
 
 // Power is a single number summarising a ship, shown as 戦力.
 func Power(sp game.Spec) int {
-	return sp.HP*120 + sp.Ammo*45 + sp.Skill*90 + sp.Crit*6 + sp.Evasion*5
+	return sp.HP/2 + sp.Firepower + sp.Torpedo*3/5 + sp.Air*4/5 + sp.AA + sp.Armor*3 + sp.Speed*3 +
+		sp.Ammo*20 + sp.Torps*30 + sp.Skill*40 + sp.Crit*4 + sp.Evasion*4
 }
 
 type GachaState struct {

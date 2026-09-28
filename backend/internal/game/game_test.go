@@ -6,13 +6,13 @@ import (
 	"testing"
 )
 
-// Plain specs without crits or evasion keep outcomes deterministic.
+// Plain specs without crits or evasion keep outcomes deterministic up to the damage roll.
 var (
-	bb  = Spec{Key: "bb", Class: Battleship, Name: "戦艦", HP: 3, Ammo: 7, Skill: 1}
-	ca  = Spec{Key: "ca", Class: Cruiser, Name: "巡洋艦", HP: 3, Ammo: 5, Skill: 2}
-	dd  = Spec{Key: "dd", Class: Destroyer, Name: "駆逐艦", HP: 2, Ammo: 3, Skill: 2}
-	ss  = Spec{Key: "ss", Class: Submarine, Name: "潜水艦", HP: 1, Ammo: 1, Skill: 2}
-	cv  = Spec{Key: "cv", Class: Carrier, Name: "空母", HP: 3, Ammo: 1, Skill: 3}
+	bb  = Spec{Key: "bb", Class: Battleship, Name: "戦艦", Stats: Stats{HP: 600, Firepower: 200, AA: 40, Armor: 20, Speed: 10, Ammo: 6, Skill: 1}}
+	ca  = Spec{Key: "ca", Class: Cruiser, Name: "巡洋艦", Stats: Stats{HP: 400, Firepower: 120, Torpedo: 200, AA: 40, Armor: 10, Speed: 20, Ammo: 6, Torps: 2, Skill: 2}}
+	dd  = Spec{Key: "dd", Class: Destroyer, Name: "駆逐艦", Stats: Stats{HP: 250, Firepower: 80, Torpedo: 250, AA: 20, Speed: 30, Ammo: 6, Torps: 2, Skill: 2}}
+	ss  = Spec{Key: "ss", Class: Submarine, Name: "潜水艦", Stats: Stats{HP: 100, Torpedo: 300, Speed: 15, Torps: 4, Skill: 1}}
+	cv  = Spec{Key: "cv", Class: Carrier, Name: "空母", Stats: Stats{HP: 400, Firepower: 50, Air: 300, AA: 30, Armor: 10, Speed: 15, Ammo: 2, Skill: 3}}
 	std = []Spec{bb, dd, ss}
 )
 
@@ -29,7 +29,12 @@ func mustBoard(t *testing.T, specs []Spec, ps ...Pos) *Board {
 
 func newGame(t *testing.T, player, cpu []Pos) *State {
 	t.Helper()
-	return NewState(mustBoard(t, std, player...), mustBoard(t, std, cpu...), 0, AI{})
+	return fleetGame(t, std, std, player, cpu)
+}
+
+func fleetGame(t *testing.T, pf, cf []Spec, player, cpu []Pos) *State {
+	t.Helper()
+	return NewState(mustBoard(t, pf, player...), mustBoard(t, cf, cpu...), 0, AI{}, Clear)
 }
 
 func apply(t *testing.T, st *State, side Side, a Action) Result {
@@ -39,6 +44,13 @@ func apply(t *testing.T, st *State, side Side, a Action) Result {
 		t.Fatal(err)
 	}
 	return res
+}
+
+// between reports whether dmg is a legal roll of power through armor% (×mult).
+func between(dmg, power, armor int, mult float64) bool {
+	lo := float64(power) * 0.85 * mult * float64(100-armor) / 100
+	hi := float64(power) * 1.15 * mult * float64(100-armor) / 100
+	return float64(dmg) >= lo-1 && float64(dmg) <= hi+1
 }
 
 func TestNewBoardValidation(t *testing.T) {
@@ -57,278 +69,327 @@ func TestNewBoardValidation(t *testing.T) {
 	}
 }
 
-func TestAttackTargetsExcludeFriendlyShips(t *testing.T) {
-	b := mustBoard(t, std, Pos{0, 0}, Pos{0, 1}, Pos{4, 4})
-	got := b.AttackTargets(0)
-	want := []Pos{{1, 0}, {1, 1}}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Fatalf("got %v, want %v", got, want)
+func TestSpeedHasClassFloor(t *testing.T) {
+	slow := dd
+	slow.Speed = 1
+	b := mustBoard(t, []Spec{slow}, Pos{0, 0})
+	if got := b.Ships[0].Spec.Speed; got != Classes[Destroyer].MinSpeed {
+		t.Fatalf("destroyer speed %d, want the class floor", got)
 	}
 }
 
-func TestMoveTargetsRowAndColumnOnly(t *testing.T) {
-	b := mustBoard(t, std, Pos{2, 2}, Pos{2, 4}, Pos{0, 0})
-	got := b.MoveTargets(0)
-	if len(got) != 7 { // 4 in column + 3 in row (one blocked by ship 1)
-		t.Fatalf("got %d targets: %v", len(got), got)
+func TestAttackTargetsFollowGunRange(t *testing.T) {
+	b := mustBoard(t, []Spec{bb, dd, ss}, Pos{2, 2}, Pos{2, 3}, Pos{4, 4})
+	bt := b.AttackTargets(0)
+	if len(bt) != 22 { // 5×5 minus itself, the destroyer and the submarine
+		t.Fatalf("battleship reaches %d cells, want 22", len(bt))
 	}
-	for _, p := range got {
-		if p.Row != 2 && p.Col != 2 {
-			t.Errorf("diagonal target %v", p)
-		}
-		if p == (Pos{2, 4}) {
-			t.Errorf("target occupied by friendly ship")
-		}
+	if dt := b.AttackTargets(1); len(dt) != 7 { // 8 neighbours minus the battleship
+		t.Fatalf("destroyer reaches %d cells, want 7", len(dt))
+	}
+	if st := b.AttackTargets(2); len(st) != 0 {
+		t.Fatal("submarines have no guns")
 	}
 }
 
-func TestAttackHitSplashAndSink(t *testing.T) {
-	st := newGame(t, []Pos{{2, 2}, {4, 4}, {0, 4}}, []Pos{{3, 3}, {0, 0}, {3, 1}})
-	cpu := st.Boards[SideCPU]
-
-	// Hit the CPU battleship. The submarine at (3,1) is not adjacent to (3,3), and nothing else is near.
-	res := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{3, 3}})
-	sh := res.Shots[0]
-	if sh.HitShipID == nil || *sh.HitShipID != 0 || sh.Damage != 1 || sh.Sunk || sh.Splash {
-		t.Fatalf("unexpected shot %+v", sh)
+func TestMoveTargetsAreCappedByClass(t *testing.T) {
+	b := mustBoard(t, std, Pos{2, 2}, Pos{0, 0}, Pos{4, 4})
+	if got := b.MoveTargets(0); len(got) != 4 {
+		t.Fatalf("battleship moves to %v, want the 4 cells next to it", got)
 	}
-	if cpu.Ships[0].HP != 2 || st.Boards[SidePlayer].Ships[0].Ammo != 6 || st.Turn != 1 {
-		t.Fatalf("state not updated")
+	if got := b.MoveTargets(1); len(got) != 6 { // 3 along the row, 3 down the column
+		t.Fatalf("destroyer moves to %d cells, want 6", len(got))
 	}
-
-	// Submarines never raise a splash: (3,2) touches the sub at (3,1) and the battleship at (3,3).
-	res = apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{3, 2}})
-	if !res.Shots[0].Splash {
-		t.Fatal("battleship next door should splash")
+	b.Weather = Storm
+	if got := b.MoveTargets(1); len(got) != 4 {
+		t.Fatalf("destroyer in a storm moves to %d cells, want 4", len(got))
 	}
-	cpu.Ships[0].Pos = Pos{4, 4}
-	res = apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{3, 2}})
-	if res.Shots[0].Splash {
-		t.Fatal("a lone submarine must not splash")
-	}
-
-	// Sink the submarine (1 HP).
-	res = apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{3, 1}})
-	if !res.Shots[0].Sunk {
-		t.Fatalf("expected sink, got %+v", res.Shots[0])
+	b.Ships[0].Pinned = 1
+	if len(b.MoveTargets(0)) != 0 {
+		t.Fatal("a pinned ship moved")
 	}
 }
 
-func TestCritAndEvasion(t *testing.T) {
-	sharp := bb
+func TestBattleshipShellsLandInAPlus(t *testing.T) {
+	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{2, 2}, {2, 3}, {4, 0}})
+	res := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{2, 2}})
+	if len(res.Shots) != 5 {
+		t.Fatalf("got %d shots, want 5", len(res.Shots))
+	}
+	center, arm := res.Shots[0], res.Shots[4] // (2,3) is the east arm
+	if center.HitShipID == nil || *center.HitShipID != 0 || !between(center.Damage, 200, 20, 1) {
+		t.Fatalf("centre shot %+v", center)
+	}
+	if arm.Target != (Pos{2, 3}) || !between(arm.Damage, 100, 0, 1) {
+		t.Fatalf("arm shot %+v, want half power on the destroyer", arm)
+	}
+	if st.Boards[SidePlayer].Ships[0].Ammo != bb.Ammo-1 {
+		t.Fatal("a salvo costs one shell")
+	}
+}
+
+func TestCriticalHitDoubles(t *testing.T) {
+	sharp := dd
 	sharp.Crit = 100
+	st := fleetGame(t, []Spec{sharp}, []Spec{bb}, []Pos{{2, 2}}, []Pos{{2, 3}})
+	res := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{2, 3}})
+	if s := res.Shots[0]; !s.Crit || !between(s.Damage, 80, 20, 2) {
+		t.Fatalf("crit shot %+v", s)
+	}
+}
+
+func TestEvasion(t *testing.T) {
 	slippery := dd
 	slippery.Evasion = 100
-	st := NewState(mustBoard(t, []Spec{sharp, dd, ss}, Pos{0, 0}, Pos{4, 4}, Pos{0, 4}),
-		mustBoard(t, []Spec{bb, slippery, ss}, Pos{1, 1}, Pos{1, 0}, Pos{3, 3}), 0, AI{})
-
-	res := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{1, 1}})
-	if sh := res.Shots[0]; !sh.Crit || sh.Damage != 2 || st.Boards[SideCPU].Ships[0].HP != 1 {
-		t.Fatalf("crit expected: %+v", sh)
+	st := fleetGame(t, std, []Spec{slippery}, []Pos{{2, 2}, {0, 0}, {4, 4}}, []Pos{{2, 3}})
+	res := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{2, 3}})
+	if s := res.Shots[0]; !s.Evaded || s.Damage != 0 || s.HitShipID == nil {
+		t.Fatalf("shot %+v, want evaded", s)
 	}
-	res = apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{1, 0}})
-	if sh := res.Shots[0]; !sh.Evaded || sh.Damage != 0 || st.Boards[SideCPU].Ships[1].HP != 2 {
-		t.Fatalf("evasion expected: %+v", sh)
-	}
-	// An evaded shell still gives away the ship's position.
-	if st.Intel[SidePlayer]["1"].Pos != (Pos{1, 0}) {
-		t.Fatal("evading ship should be spotted")
+	if _, ok := st.Intel[SidePlayer]["0"]; !ok {
+		t.Fatal("a dodged shell still gives the ship away")
 	}
 }
 
-func TestAttackOutOfRangeRejected(t *testing.T) {
-	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{2, 2}, {3, 3}, {4, 0}})
-	if _, err := st.Apply(SidePlayer, Action{ActionAttack, 0, Pos{2, 2}}, rng()); !errors.Is(err, ErrInvalidAction) {
-		t.Fatalf("got %v, want ErrInvalidAction", err)
+func TestDestroyerGunsHuntSubmarines(t *testing.T) {
+	st := fleetGame(t, []Spec{dd}, []Spec{ss}, []Pos{{2, 2}}, []Pos{{2, 3}})
+	res := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{2, 3}})
+	if s := res.Shots[0]; !s.Sunk || !between(s.Damage, 80, 0, 2) {
+		t.Fatalf("anti-sub shot %+v", s)
 	}
 }
 
-func TestMoveReportsDirectionExceptSubmarines(t *testing.T) {
-	st := newGame(t, []Pos{{3, 1}, {4, 4}, {0, 4}}, []Pos{{2, 2}, {3, 3}, {4, 0}})
-	res := apply(t, st, SidePlayer, Action{ActionMove, 0, Pos{0, 1}})
-	if res.Direction != North || res.Distance != 3 || res.Hidden {
-		t.Fatalf("got %+v", res)
+func TestWaterColumnsPinNearMisses(t *testing.T) {
+	st := fleetGame(t, std, []Spec{dd, ss}, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{2, 2}, {1, 1}})
+	res := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{0, 2}})
+	if len(res.Columns) == 0 {
+		t.Fatal("no water column next to the destroyer")
 	}
-	res = apply(t, st, SidePlayer, Action{ActionMove, 2, Pos{0, 2}})
-	if !res.Hidden || res.Direction != "" || res.Distance != 0 {
-		t.Fatalf("submarine move leaked: %+v", res)
+	cpu := st.Boards[SideCPU]
+	if cpu.Ships[0].Pinned == 0 || cpu.Ships[1].Pinned != 0 {
+		t.Fatalf("pinned = %d/%d, want the destroyer only (submarines run deep)", cpu.Ships[0].Pinned, cpu.Ships[1].Pinned)
 	}
-}
-
-func TestBarrageHitsPlusShape(t *testing.T) {
-	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{2, 2}, {2, 1}, {1, 2}})
-	res := apply(t, st, SidePlayer, Action{ActionSkill, 0, Pos{2, 2}})
-	if res.Skill != SkillBarrage || len(res.Shots) != 5 || res.Hits() != 3 || res.Sinks() != 1 {
-		t.Fatalf("barrage: hits=%d sinks=%d shots=%+v", res.Hits(), res.Sinks(), res.Shots)
+	if len(cpu.MoveTargets(0)) != 0 {
+		t.Fatal("pinned destroyer can still move")
 	}
-	if st.Boards[SidePlayer].Ships[0].Skill != 0 {
-		t.Fatal("skill use not spent")
+	st.endRound()
+	if len(cpu.MoveTargets(0)) != 0 {
+		t.Fatal("the column should hold through the next round")
 	}
-	if _, err := st.Apply(SidePlayer, Action{ActionSkill, 0, Pos{2, 2}}, rng()); !errors.Is(err, ErrInvalidAction) {
-		t.Fatal("skill should be exhausted")
+	st.endRound()
+	if len(cpu.MoveTargets(0)) == 0 {
+		t.Fatal("the column never settled")
 	}
 }
 
-func TestBarrageRange(t *testing.T) {
-	b := mustBoard(t, std, Pos{0, 0}, Pos{4, 4}, Pos{0, 4})
-	for _, p := range b.SkillTargets(0) {
-		if d := p.Dist(Pos{0, 0}); d < 1 || d > 2 {
-			t.Fatalf("barrage target %v at distance %d", p, d)
-		}
+func TestSpottingFireCrits(t *testing.T) {
+	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{3, 3}, {4, 0}, {3, 0}})
+	first := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{2, 2}})
+	if first.Special != "" {
+		t.Fatal("the first salvo is not spotting fire")
 	}
-	if n := len(b.SkillTargets(0)); n != 8 {
-		t.Fatalf("got %d barrage targets", n)
+	if *st.LastGun[SidePlayer] != (Pos{2, 2}) {
+		t.Fatal("last gun target not recorded")
+	}
+	second := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{2, 2}})
+	if second.Special != SpecialSpotting {
+		t.Fatalf("special = %q, want spotting", second.Special)
+	}
+	st.Boards[SideCPU].Ships[0].Pos = Pos{2, 2}
+	third := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{2, 2}})
+	if !third.Shots[0].Crit {
+		t.Fatal("spotting fire must crit")
+	}
+	apply(t, st, SidePlayer, Action{ActionMove, 1, Pos{4, 3}})
+	if st.LastGun[SidePlayer] != nil {
+		t.Fatal("any other action breaks the spotting chain")
 	}
 }
 
-func TestTorpedoStopsAtFirstShip(t *testing.T) {
-	st := newGame(t, []Pos{{0, 0}, {4, 4}, {2, 0}}, []Pos{{2, 3}, {2, 4}, {0, 4}})
-	res := apply(t, st, SidePlayer, Action{ActionSkill, 2, Pos{2, 1}})
-	if len(res.Shots) != 1 || res.Shots[0].Target != (Pos{2, 3}) || res.Shots[0].Damage != 2 {
-		t.Fatalf("torpedo: %+v", res)
+func TestTorpedoRunsToTheFirstSurfaceShip(t *testing.T) {
+	// Torpedo runs east along row 2; the submarine at (2,2) is passed under.
+	st := fleetGame(t, []Spec{dd}, []Spec{ss, bb, ca}, []Pos{{2, 0}}, []Pos{{2, 2}, {2, 4}, {4, 4}})
+	res := apply(t, st, SidePlayer, Action{ActionTorpedo, 0, Pos{2, 1}})
+	if len(res.Shots) != 1 || *res.Shots[0].HitShipID != 1 {
+		t.Fatalf("shots %+v, want the battleship", res.Shots)
 	}
-	if len(res.Path) != 3 {
-		t.Fatalf("path %v", res.Path)
+	if !between(res.Shots[0].Damage, 250, 10, 1) {
+		t.Fatalf("torpedo damage %d ignores half the armour", res.Shots[0].Damage)
 	}
-	// A miss runs to the edge.
-	res = apply(t, st, SidePlayer, Action{ActionSkill, 2, Pos{3, 0}})
-	if len(res.Shots) != 0 || len(res.Path) != 2 {
-		t.Fatalf("torpedo miss: %+v", res)
+	if len(res.Paths) != 1 || len(res.Paths[0]) != 4 {
+		t.Fatalf("path %v", res.Paths)
+	}
+	if !res.Late {
+		t.Fatal("torpedoes always resolve late")
+	}
+	if seen, ok := st.Intel[SideCPU]["0"]; !ok || seen.Pos != (Pos{2, 0}) {
+		t.Fatal("the wake must give the launcher away")
+	}
+}
+
+func TestPointBlankTorpedoCrits(t *testing.T) {
+	st := fleetGame(t, []Spec{dd}, []Spec{bb}, []Pos{{2, 0}}, []Pos{{2, 2}})
+	res := apply(t, st, SidePlayer, Action{ActionTorpedo, 0, Pos{2, 1}})
+	if res.Special != SpecialPointBlank || !res.Shots[0].Crit {
+		t.Fatalf("%+v, want a point-blank crit", res)
+	}
+}
+
+func TestSpreadFiresThreeLanes(t *testing.T) {
+	st := fleetGame(t, []Spec{ss}, []Spec{bb, dd, ca}, []Pos{{2, 0}}, []Pos{{1, 4}, {2, 4}, {3, 4}})
+	res := apply(t, st, SidePlayer, Action{ActionSkill, 0, Pos{2, 1}})
+	if len(res.Paths) != 3 || len(res.Shots) != 3 {
+		t.Fatalf("paths %v shots %v, want three hits", res.Paths, res.Shots)
+	}
+}
+
+func TestAirstrikeAntiAirAndPrecision(t *testing.T) {
+	st := fleetGame(t, []Spec{cv}, []Spec{bb, dd}, []Pos{{0, 0}}, []Pos{{4, 4}, {3, 3}})
+	res := apply(t, st, SidePlayer, Action{ActionSkill, 0, Pos{4, 4}})
+	aa := float64(aaScale) / float64(aaScale+bb.AA+dd.AA)
+	if !between(res.Shots[0].Damage, 300, 20, aa) || res.Special != "" {
+		t.Fatalf("blind bombing %+v, want anti-air reduced", res)
+	}
+	// Now tracked: precision bombing ignores anti-air.
+	res = apply(t, st, SidePlayer, Action{ActionSkill, 0, Pos{4, 4}})
+	if res.Special != SpecialPrecision || !between(res.Shots[0].Damage, 300, 20, 1) {
+		t.Fatalf("precision bombing %+v", res)
 	}
 }
 
 func TestFlareMissesSubmarinesSonarDoesNot(t *testing.T) {
-	player := mustBoard(t, []Spec{ca, dd, ss}, Pos{0, 0}, Pos{4, 2}, Pos{0, 4})
-	cpu := mustBoard(t, std, Pos{2, 2}, Pos{4, 4}, Pos{3, 2})
-	st := NewState(player, cpu, 0, AI{})
-
-	res := apply(t, st, SidePlayer, Action{ActionSkill, 0, Pos{2, 2}})
-	if len(res.Scanned) != 9 || len(res.Revealed) != 1 || res.Revealed[0].ShipID != 0 {
-		t.Fatalf("flare: %+v", res)
+	st := fleetGame(t, []Spec{ca, dd}, std, []Pos{{0, 0}, {2, 0}}, []Pos{{1, 1}, {0, 1}, {2, 3}})
+	res := apply(t, st, SidePlayer, Action{ActionSkill, 0, Pos{1, 1}})
+	if len(res.Revealed) != 2 {
+		t.Fatalf("flare revealed %v, want the two surface ships", res.Revealed)
 	}
-	// Sonar from (4,2) covers row 4 and column 2: battleship (2,2), destroyer (4,4), submarine (3,2).
-	res = apply(t, st, SidePlayer, Action{ActionSkill, 1, Pos{4, 2}})
-	if len(res.Revealed) != 3 {
-		t.Fatalf("sonar revealed %v", res.Revealed)
-	}
-	v := st.PlayerView()
-	for _, s := range v.EnemyShips {
-		if s.Pos == nil || !s.Spotted {
-			t.Fatalf("ship %d should be spotted", s.ID)
-		}
-	}
-	if res.Combo != 2 {
-		t.Fatalf("scouting twice should chain a combo, got %d", res.Combo)
+	res = apply(t, st, SidePlayer, Action{ActionSkill, 1, Pos{2, 0}})
+	if len(res.Revealed) != 1 || res.Revealed[0].ShipID != 2 {
+		t.Fatalf("sonar revealed %v, want the submarine", res.Revealed)
 	}
 }
 
-func TestIntelFollowsAnnouncedMoves(t *testing.T) {
-	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{1, 1}, {3, 3}, {4, 0}})
-	apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{1, 1}})
+func TestIntelFollowsMovesUntilASubDives(t *testing.T) {
+	st := fleetGame(t, []Spec{ca, dd}, []Spec{dd, ss}, []Pos{{0, 0}, {4, 0}}, []Pos{{1, 1}, {4, 2}})
+	apply(t, st, SidePlayer, Action{ActionSkill, 0, Pos{1, 1}})
+	apply(t, st, SidePlayer, Action{ActionSkill, 1, Pos{4, 0}})
 	apply(t, st, SideCPU, Action{ActionMove, 0, Pos{1, 4}})
-	if got := st.Intel[SidePlayer]["0"].Pos; got != (Pos{1, 4}) {
-		t.Fatalf("tracked position = %v", got)
+	if seen := st.Intel[SidePlayer]["0"]; seen.Pos != (Pos{1, 4}) {
+		t.Fatalf("intel %v, want the announced move followed", seen)
 	}
-	// Submerged moves shake off pursuit.
-	st.Intel[SidePlayer]["2"] = Sighting{ShipID: 2, Pos: Pos{4, 0}}
-	apply(t, st, SideCPU, Action{ActionMove, 2, Pos{4, 2}})
-	if _, ok := st.Intel[SidePlayer]["2"]; ok {
-		t.Fatal("submarine should be lost after diving")
+	apply(t, st, SideCPU, Action{ActionMove, 1, Pos{2, 2}})
+	if _, ok := st.Intel[SidePlayer]["1"]; ok {
+		t.Fatal("a submerged move must shake off contact")
+	}
+}
+
+func TestInitiativeFasterFirstTorpedoesLast(t *testing.T) {
+	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{2, 2}, {3, 3}, {4, 0}})
+	r := rng()
+	order := st.Initiative(map[Side]Action{SidePlayer: {Type: ActionAttack, ShipID: 1}, SideCPU: {Type: ActionAttack, ShipID: 0}}, r)
+	if order[0] != SidePlayer {
+		t.Fatal("the faster destroyer should act first")
+	}
+	order = st.Initiative(map[Side]Action{SidePlayer: {Type: ActionTorpedo, ShipID: 1}, SideCPU: {Type: ActionAttack, ShipID: 0}}, r)
+	if order[0] != SideCPU {
+		t.Fatal("a torpedo launch always goes last")
+	}
+}
+
+func TestShipSunkBeforeActingIsCancelled(t *testing.T) {
+	sharp := dd
+	sharp.Firepower = 1000
+	st := fleetGame(t, []Spec{sharp}, []Spec{bb, dd}, []Pos{{2, 2}}, []Pos{{2, 3}, {0, 0}})
+	out := st.Resolve(map[Side]Action{
+		SidePlayer: {ActionAttack, 0, Pos{2, 3}},
+		SideCPU:    {ActionAttack, 0, Pos{2, 2}},
+	}, rng())
+	if len(out) != 2 || out[0].Side != SidePlayer || !out[1].Cancelled {
+		t.Fatalf("results %+v, want the battleship's salvo cancelled", out)
+	}
+	if st.Turn != 1 || st.Boards[SidePlayer].Ships[0].HP != sharp.HP {
+		t.Fatal("round not closed cleanly")
 	}
 }
 
 func TestGaugeComboAndUltimate(t *testing.T) {
-	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{1, 1}, {2, 2}, {3, 3}})
+	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{1, 1}, {3, 3}, {4, 0}})
 	if _, err := st.Apply(SidePlayer, Action{ActionUltimate, 0, Pos{2, 2}}, rng()); !errors.Is(err, ErrInvalidAction) {
-		t.Fatal("ultimate should need a full gauge")
+		t.Fatal("ultimate allowed with an empty gauge")
 	}
-	r1 := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{1, 1}})
-	r2 := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{1, 1}})
-	if r1.Combo != 1 || r2.Combo != 2 || r2.Gauge <= r1.Gauge*2 {
-		t.Fatalf("combo should snowball the gauge: %d/%d → %d/%d", r1.Combo, r1.Gauge, r2.Combo, r2.Gauge)
+	res := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{1, 1}})
+	if res.Combo != 1 || res.Gauge == 0 || st.Gauge[SideCPU] == 0 {
+		t.Fatalf("combo %d gauge %d enemy gauge %d", res.Combo, res.Gauge, st.Gauge[SideCPU])
 	}
-	if st.Gauge[SideCPU] != 2*gaugeHurt {
-		t.Fatalf("taking damage should charge the victim's gauge, got %d", st.Gauge[SideCPU])
-	}
-	r3 := apply(t, st, SidePlayer, Action{ActionMove, 0, Pos{0, 1}})
-	if r3.Combo != 0 {
-		t.Fatal("moving should break the combo")
-	}
-
 	st.Gauge[SidePlayer] = GaugeMax
-	res := apply(t, st, SidePlayer, Action{ActionUltimate, 1, Pos{2, 2}})
-	if len(res.Shots) != 9 || res.Hits() != 3 || st.Gauge[SidePlayer] != 0 {
-		t.Fatalf("ultimate: hits=%d gauge=%d", res.Hits(), st.Gauge[SidePlayer])
+	res = apply(t, st, SidePlayer, Action{ActionUltimate, 2, Pos{3, 3}})
+	if len(res.Shots) != 9 || res.Hits() != 1 || st.Gauge[SidePlayer] != 0 {
+		t.Fatalf("ultimate shots %d hits %d", len(res.Shots), res.Hits())
 	}
 }
 
 func TestWinByDestroyingFleet(t *testing.T) {
-	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{1, 1}, {3, 3}, {4, 0}})
-	cpu := st.Boards[SideCPU]
-	cpu.Ships[0].HP, cpu.Ships[1].HP, cpu.Ships[2].HP = 1, 0, 0
-
+	sharp := bb
+	sharp.Firepower = 5000
+	st := fleetGame(t, []Spec{sharp}, []Spec{dd}, []Pos{{0, 0}}, []Pos{{1, 1}})
 	apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{1, 1}})
 	if st.Status != StatusFinished || st.Winner != SidePlayer || st.EndReason != EndAnnihilated {
-		t.Fatalf("status=%s winner=%s reason=%s", st.Status, st.Winner, st.EndReason)
+		t.Fatalf("status %s winner %s reason %s", st.Status, st.Winner, st.EndReason)
 	}
-	if _, err := st.Apply(SideCPU, Action{ActionMove, 0, Pos{1, 0}}, rng()); !errors.Is(err, ErrGameOver) {
-		t.Fatalf("got %v, want ErrGameOver", err)
+	if _, err := st.Apply(SidePlayer, Action{ActionAttack, 0, Pos{1, 1}}, rng()); !errors.Is(err, ErrGameOver) {
+		t.Fatal("actions accepted after game over")
 	}
 }
 
-func TestLoseByRunningOutOfFirepower(t *testing.T) {
-	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{2, 2}, {3, 3}, {4, 0}})
-	for _, s := range st.Boards[SidePlayer].Ships {
-		s.Ammo, s.Skill = 0, 0
-	}
-	st.Boards[SidePlayer].Ships[0].Ammo = 1
-
-	apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{1, 1}})
+func TestWithdrawWhenOutOfWeapons(t *testing.T) {
+	dry := bb
+	dry.Ammo, dry.Skill = 1, 0
+	st := fleetGame(t, []Spec{dry}, []Spec{dd}, []Pos{{0, 0}}, []Pos{{4, 4}})
+	apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{2, 2}})
 	if st.Winner != SideCPU || st.EndReason != EndDisarmed {
-		t.Fatalf("winner=%s reason=%s, want cpu disarmed", st.Winner, st.EndReason)
+		t.Fatalf("winner %s reason %s, want strategic withdrawal", st.Winner, st.EndReason)
 	}
 }
 
 func TestFullGaugeKeepsDisarmedFleetFighting(t *testing.T) {
-	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{2, 2}, {3, 3}, {4, 0}})
-	for _, s := range st.Boards[SidePlayer].Ships {
-		s.Ammo, s.Skill = 0, 0
-	}
-	st.Boards[SidePlayer].Ships[0].Ammo = 1
-	st.Gauge[SidePlayer] = GaugeMax - 1
-	apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{1, 1}}) // splash on (2,2) tops the gauge up
+	dry := bb
+	dry.Ammo, dry.Skill = 1, 0
+	st := fleetGame(t, []Spec{dry}, []Spec{dd}, []Pos{{0, 0}}, []Pos{{4, 4}})
+	st.Gauge[SidePlayer] = GaugeMax
+	apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{2, 2}})
 	if st.Status != StatusInProgress {
-		t.Fatalf("a full gauge is still firepower: %s", st.EndReason)
+		t.Fatal("a full gauge is still a weapon")
 	}
 }
 
 func TestTurnLimitJudgment(t *testing.T) {
-	st := NewState(mustBoard(t, std, Pos{0, 0}, Pos{4, 4}, Pos{0, 4}), mustBoard(t, std, Pos{1, 1}, Pos{3, 2}, Pos{4, 0}), 1, AI{})
-	apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{1, 1}})
-	if st.Status != StatusInProgress {
-		t.Fatal("the round is not over until the CPU replies")
-	}
-	apply(t, st, SideCPU, Action{ActionMove, 1, Pos{3, 0}})
+	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{1, 1}, {3, 3}, {4, 0}})
+	st.MaxTurns = 1
+	st.Boards[SideCPU].Ships[0].HP = 100
+	st.Resolve(map[Side]Action{SidePlayer: {ActionMove, 0, Pos{0, 1}}, SideCPU: {ActionMove, 1, Pos{3, 2}}}, rng())
 	if st.Status != StatusFinished || st.Winner != SidePlayer || st.EndReason != EndJudgment {
-		t.Fatalf("status=%s winner=%s reason=%s", st.Status, st.Winner, st.EndReason)
+		t.Fatalf("status %s winner %s reason %s", st.Status, st.Winner, st.EndReason)
 	}
 }
 
 func TestFootprintClipsToBoard(t *testing.T) {
-	if n := len(Footprint(5, ActionUltimate, "", Pos{}, Pos{0, 0})); n != 4 {
+	if n := len(Footprint(5, ActionUltimate, "", "", Pos{}, Pos{0, 0})); n != 4 {
 		t.Fatalf("corner ultimate covers %d cells", n)
 	}
-	if n := len(Footprint(5, ActionSkill, SkillSonar, Pos{2, 2}, Pos{2, 2})); n != 8 {
+	if n := len(Footprint(5, ActionAttack, "", Battleship, Pos{}, Pos{0, 0})); n != 3 {
+		t.Fatalf("corner battleship salvo covers %d cells", n)
+	}
+	if n := len(Footprint(5, ActionSkill, SkillSonar, Destroyer, Pos{2, 2}, Pos{2, 2})); n != 8 {
 		t.Fatalf("sonar covers %d cells", n)
 	}
 }
 
-// TestCPUAlwaysLegal plays many random games with every class and asserts
-// the CPU never picks an illegal action and every game ends.
-func TestCPUAlwaysLegal(t *testing.T) {
+// TestAIAlwaysLegalAndGamesEnd plays many AI-vs-AI games with every class
+// and asserts neither side ever picks an illegal action and every game ends.
+func TestAIAlwaysLegalAndGamesEnd(t *testing.T) {
 	r := rng()
 	fleets := [][]Spec{std, {bb, ca, dd, ss}, {cv, ca, ss}, {cv, bb, dd, ss}}
-	for i := 0; i < 400; i++ {
+	for i := 0; i < 300; i++ {
 		size := 5 + i%3
 		pf, cf := fleets[i%len(fleets)], fleets[(i+1)%len(fleets)]
 		p, err := NewBoard(size, pf, RandomPlacement(r, size, len(pf)))
@@ -339,56 +400,30 @@ func TestCPUAlwaysLegal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		st := NewState(p, c, 30*(i%2), AI{Level: i % 4})
-		for step := 0; st.Status == StatusInProgress; step++ {
-			if step > 2000 {
+		st := NewState(p, c, 30*(i%2), AI{Level: i % 4}, Weathers[i%len(Weathers)])
+		for round := 0; st.Status == StatusInProgress; round++ {
+			if round > 400 {
 				t.Fatal("game did not finish")
 			}
-			side := SidePlayer
-			if step%2 == 1 {
-				side = SideCPU
+			acts := map[Side]Action{}
+			for _, side := range []Side{SidePlayer, SideCPU} {
+				a := st.Decide(side, r)
+				if err := st.Legal(side, a); err != nil && len(st.Actions(side)) > 0 {
+					t.Fatalf("game %d round %d (%s): %v", i, round, side, err)
+				}
+				acts[side] = a
 			}
-			var a Action
-			if side == SideCPU {
-				a = st.DecideCPU(r)
-			} else {
-				a = randomPlayerAction(r, st)
-			}
-			if _, err := st.Apply(side, a, r); err != nil {
-				t.Fatalf("game %d step %d (%s): %v", i, step, side, err)
-			}
+			st.Resolve(acts, r)
 		}
 	}
 }
 
-func randomPlayerAction(r *rand.Rand, st *State) Action {
-	b := st.Boards[SidePlayer]
-	for {
-		s := b.Ships[r.IntN(len(b.Ships))]
-		if !s.Alive() {
-			continue
-		}
-		if st.Gauge[SidePlayer] >= GaugeMax && r.IntN(2) == 0 {
-			return Action{ActionUltimate, s.ID, Pos{r.IntN(b.Size), r.IntN(b.Size)}}
-		}
-		if ts := b.SkillTargets(s.ID); len(ts) > 0 && r.IntN(4) == 0 {
-			return Action{ActionSkill, s.ID, ts[r.IntN(len(ts))]}
-		}
-		if ts := b.AttackTargets(s.ID); len(ts) > 0 && r.IntN(2) == 0 {
-			return Action{ActionAttack, s.ID, ts[r.IntN(len(ts))]}
-		}
-		if ts := b.MoveTargets(s.ID); len(ts) > 0 {
-			return Action{ActionMove, s.ID, ts[r.IntN(len(ts))]}
-		}
-	}
-}
-
-// TestCPUFindsKnownShip checks the CPU shoots a sighted ship it can reach.
-func TestCPUFindsKnownShip(t *testing.T) {
+// TestCPUShootsKnownShip checks the CPU shoots a sighted ship it can reach.
+func TestCPUShootsKnownShip(t *testing.T) {
 	st := newGame(t, []Pos{{2, 2}, {4, 4}, {0, 4}}, []Pos{{3, 3}, {0, 0}, {4, 0}})
 	st.Intel[SideCPU]["0"] = Sighting{ShipID: 0, Pos: Pos{2, 2}}
 	for i := 0; i < 20; i++ {
-		a := st.DecideCPU(rand.New(rand.NewPCG(uint64(i), 9)))
+		a := st.Decide(SideCPU, rand.New(rand.NewPCG(uint64(i), 9)))
 		if a.Type == ActionMove {
 			t.Fatalf("CPU ran instead of shooting a known ship: %+v", a)
 		}
@@ -402,6 +437,9 @@ func TestPlayerViewHidesEnemy(t *testing.T) {
 		if s.Pos != nil {
 			t.Fatalf("enemy ship %d position leaked", s.ID)
 		}
+	}
+	if v.AA != bb.AA+dd.AA || v.Weather != Clear {
+		t.Fatalf("view AA %d weather %s", v.AA, v.Weather)
 	}
 	st.Status = StatusFinished
 	if st.PlayerView().EnemyShips[0].Pos == nil {
