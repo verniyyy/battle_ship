@@ -228,7 +228,8 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
   const markers = lastRoundMarkers(game)
   const turn = game.turn + (finished ? 0 : 1)
   const turnsLeft = game.maxTurns ? game.maxTurns - game.turn : undefined
-  const aim = hover && targets.some((t) => samePos(t, hover)) ? hover : target
+  // Once a target is chosen the preview stays on it; hovering only aims before that.
+  const aim = target ?? (hover && targets.some((t) => samePos(t, hover)) ? hover : null)
   const actorPos = mode === 'ultimate' ? flagship?.pos : ship?.pos
   const preview = aim && mode && mode !== 'move' && actorPos ? footprint(game.boardSize, mode, ship?.skillKind, ship?.class, actorPos, aim) : []
   const special = predictSpecial(game, ship, mode, aim)
@@ -656,7 +657,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
 
       {/* ---- board ---- */}
       <main className="battle-center">
-        <div ref={boardRef} className={`board-wrap ${mode === 'ultimate' ? 'ult-aim' : ''}`}>
+        <div ref={boardRef} className={`board-wrap ${mode === 'ultimate' && !target ? 'ult-aim' : ''}`}>
           <Board
             size={game.boardSize}
             span={span}
@@ -665,7 +666,8 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
             className={`battle-board ${mode ? `mode-${mode}` : ''}`}
             cellClass={(p) => {
               const cls: string[] = []
-              if (targets.some((t) => samePos(t, p))) cls.push(`target-${mode === 'ultimate' ? 'skill' : mode}`)
+              // The barrage can aim anywhere: stop pulsing the whole sea once it is aimed.
+              if (targets.some((t) => samePos(t, p)) && !(mode === 'ultimate' && target)) cls.push(`target-${mode === 'ultimate' ? 'skill' : mode}`)
               if (inPreview(p)) cls.push('aoe')
               if (samePos(target, p)) cls.push('chosen')
               if (litCell(p)) cls.push(`lit-${lit!.kind}`)
