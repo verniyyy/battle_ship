@@ -3,7 +3,7 @@ import type { Scene } from '../App'
 import { api } from '../api'
 import { audio } from '../audio'
 import { Board, CellOverlay } from '../components/Board'
-import { CutinLayer, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, type Cutin, type Float } from '../components/battle'
+import { CutinLayer, DamageTally, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, tallyTier, type Cutin, type Float, type Tally } from '../components/battle'
 import { Backdrop, ShipToken, SoundToggle } from '../components/ui'
 import { fx, RAINBOW } from '../fx'
 import { CLASS_INFO, describe, footprint, historyLog, lookOfShip, SKILL_INFO, SPECIAL_INFO, stageLabel, TORPEDO_INFO, WEATHER_INFO, type Look, type LogLine } from '../game'
@@ -138,12 +138,14 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
   const [showResult, setShowResult] = useState(initial.game.status === 'finished')
   const [speed, setSpeed] = useState(loadSpeed)
   const [combo, setCombo] = useState<{ n: number; key: number } | null>(null)
+  const [tally, setTally] = useState<Tally | null>(null)
   const mounted = useRef(true)
   const speedRef = useRef(speed)
   const skip = useRef<(() => void) | null>(null)
   const boardRef = useRef<HTMLDivElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
   const floatSeq = useRef(0)
+  const tallySeq = useRef(0)
   speedRef.current = speed
 
   const looks = useMemo(
@@ -179,9 +181,9 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
   const cellEl = (p: Pos) => boardRef.current?.querySelector(`[data-cell="${p.row}-${p.col}"]`)
   const cellPt = (p: Pos) => fx.center(cellEl(p))
 
-  const float = (at: Pos, text: string, kind: Float['kind']) => {
+  const float = (at: Pos, text: string, kind: Float['kind'], tier = 0) => {
     const id = ++floatSeq.current
-    setFloats((f) => [...f, { id, at, text, kind }])
+    setFloats((f) => [...f, { id, at, text, kind, tier }])
     window.setTimeout(() => mounted.current && setFloats((f) => f.filter((x) => x.id !== id)), 1400)
   }
 
@@ -278,17 +280,28 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
     const pt = cellPt(shot.target)
     const victims = mine ? game.enemyShips : game.playerShips
     if ((shot.damage ?? 0) > 0) {
-      const big = shot.sunk ? 1.9 : shot.crit ? 1.4 : 1
+      const dmg = shot.damage!
+      const share = dmg / (victims[shot.hitShipId!]?.maxHp || dmg)
+      const tier = share >= 0.45 ? 2 : share >= 0.25 ? 1 : 0
+      const big = shot.sunk ? 1.9 : shot.crit ? 1.4 : 1 + tier * 0.25
       fx.explosion(pt.x, pt.y, big, mine ? '#ffb347' : '#ff5a4e')
-      audio.play(shot.sunk ? 'bigboom' : 'boom')
+      audio.play(shot.sunk || tier === 2 ? 'bigboom' : 'boom')
+      addTally(dmg, mine)
       if (shot.crit) {
         audio.play('crit')
-        float(shot.target, `CRITICAL -${shot.damage}`, 'crit')
+        float(shot.target, `CRITICAL -${dmg}`, 'crit', tier)
         fx.flash('#fff', 220, 0.55)
         await fx.hitstop(130)
-      } else float(shot.target, `-${shot.damage}`, mine ? 'dmg' : 'hurt')
-      fx.shake(shot.sunk ? 20 : shot.crit ? 14 : 9)
-      fx.punch(shot.crit || shot.sunk ? 1.035 : 1.015)
+      } else {
+        float(shot.target, `-${dmg}`, mine ? 'dmg' : 'hurt', tier)
+        if (tier === 2) {
+          fx.flash('#fff', 160, 0.4)
+          if (mine) fx.rays(pt.x, pt.y, '#ffe36b', 12, 1)
+          await fx.hitstop(90)
+        }
+      }
+      fx.shake(shot.sunk ? 20 : shot.crit ? 14 : 9 + tier * 3)
+      fx.punch(shot.crit || shot.sunk || tier === 2 ? 1.035 : 1.015)
       if (!mine) {
         fx.flash('#ff2a2a', 320, 0.35)
         audio.buzz(90)
@@ -316,6 +329,36 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       audio.play('miss')
       float(shot.target, 'MISS', 'miss')
     }
+  }
+
+  // fleetScale is the average max HP of the fleet taking the hits, the yardstick for big damage.
+  const fleetScale = (mine: boolean) => {
+    const pool = mine ? game.enemyShips : game.playerShips
+    return pool.reduce((n, s) => n + s.maxHp, 0) / Math.max(pool.length, 1)
+  }
+
+  // addTally adds a hit to the running damage of the current action.
+  const addTally = (dmg: number, mine: boolean) =>
+    setTally((t) =>
+      t && t.rating === undefined && t.enemy === !mine
+        ? { ...t, total: t.total + dmg, hits: t.hits + 1 }
+        : { key: ++tallySeq.current, total: dmg, hits: 1, enemy: !mine, scale: fleetScale(mine) },
+    )
+
+  // settleTally grades the finished action, gives big totals a payoff and clears the tally later.
+  const settleTally = async (shots: Shot[], mine: boolean) => {
+    const total = shots.reduce((n, s) => n + (s.damage ?? 0), 0)
+    if (!total || !mounted.current) return
+    const key = tallySeq.current
+    const tier = tallyTier(total, fleetScale(mine))
+    setTally((t) => (t?.key === key ? { ...t, total, rating: mine ? ['', 'GREAT!', 'EXCELLENT!!', 'MASSIVE!!!'][tier] : '' } : t))
+    if (mine && tier >= 2) {
+      audio.play('stamp')
+      fx.shake(tier === 3 ? 18 : 12, 420)
+      if (tier === 3) fx.confetti(60, ['#ffd24a', '#fff', '#ff5a4e'])
+    }
+    window.setTimeout(() => mounted.current && setTally((t) => (t?.key === key ? null : t)), 1900)
+    await wait(mine && tier >= 1 ? 550 : 250)
   }
 
   const skyPoint = (to: { x: number; y: number }) => ({ x: to.x + rnd(-220, 220), y: -40 })
@@ -470,6 +513,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       columns(r)
     }
     if (!mounted.current) return
+    await settleTally(shots, mine)
     setLog((l) => [line, ...l])
     setGame((g) => patchMeta(g, r))
 
@@ -699,6 +743,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
               </>
             }
           />
+          {tally && <DamageTally key={tally.key} t={tally} />}
         </div>
 
         <div className="command-dock">

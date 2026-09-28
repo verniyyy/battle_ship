@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { DAMAGE_LABEL, damageOf, SKILL_INFO, SPECIAL_INFO, TORPEDO_INFO, type Look } from '../game'
 import type { Pos, ShipView, SkillKind, Special } from '../types'
 import { ShipArt } from './ShipArt'
@@ -216,10 +216,55 @@ export interface Float {
   at: Pos
   text: string
   kind: 'dmg' | 'crit' | 'evade' | 'miss' | 'splash' | 'sunk' | 'hurt' | 'found' | 'combo'
+  tier?: number // 0 normal, 1 big, 2 huge: how hard the hit was for its victim
 }
 
 export function FloatText({ f, children }: { f: Float; children?: ReactNode }) {
-  return <span className={`float-text ${f.kind}`}>{children ?? f.text}</span>
+  return <span className={`float-text ${f.kind} t${f.tier ?? 0}`}>{children ?? f.text}</span>
+}
+
+// Tally is the running damage of one action, shown large beside the board.
+export interface Tally {
+  key: number
+  total: number
+  hits: number
+  enemy: boolean
+  scale: number // average max HP of the fleet taking the hits
+  rating?: string // set once the action has landed
+}
+
+// tallyTier grades damage against the fleet it hit: 1 a good hit, 3 half a fleet's worth of ship gone.
+export function tallyTier(total: number, scale: number) {
+  const r = total / Math.max(scale, 1)
+  return r >= 1.2 ? 3 : r >= 0.7 ? 2 : r >= 0.35 ? 1 : 0
+}
+
+export function DamageTally({ t }: { t: Tally }) {
+  const [shown, setShown] = useState(0)
+  const shownRef = useRef(0)
+  // Count up to the new total rather than jumping to it.
+  useEffect(() => {
+    const from = shownRef.current
+    const start = performance.now()
+    let raf = 0
+    const step = (now: number) => {
+      const k = Math.min(1, (now - start) / 320)
+      const v = Math.round(from + (t.total - from) * (1 - (1 - k) ** 3))
+      shownRef.current = v
+      setShown(v)
+      if (k < 1) raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [t.total])
+  const tier = tallyTier(shown, t.scale)
+  return (
+    <div className={`dmg-tally t${tier} ${t.enemy ? 'enemy' : ''} ${t.rating !== undefined ? 'done' : ''}`}>
+      <small>{t.enemy ? 'DAMAGE TAKEN' : t.hits > 1 ? `${t.hits} HITS` : 'DAMAGE'}</small>
+      <b key={t.hits}>{shown.toLocaleString()}</b>
+      {t.rating && <em>{t.rating}</em>}
+    </div>
+  )
 }
 
 // ---------------- projectiles ----------------

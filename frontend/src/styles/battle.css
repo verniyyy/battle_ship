@@ -830,6 +830,177 @@
   animation: float-sunk 1.4s cubic-bezier(0.2, 1.6, 0.4, 1) both;
 }
 
+.float-text.dmg.t1 {
+  font-size: 54px;
+}
+
+.float-text.dmg.t2 {
+  font-size: 70px;
+  color: #fff;
+  -webkit-text-stroke: 2px #a3240f;
+  text-shadow:
+    0 3px 0 #000,
+    0 0 18px #ff7a2e,
+    0 0 36px #ffb347;
+}
+
+.float-text.crit.t1 {
+  font-size: 44px;
+}
+
+.float-text.crit.t2 {
+  font-size: 58px;
+}
+
+.float-text.hurt.t1 {
+  font-size: 46px;
+}
+
+.float-text.hurt.t2 {
+  font-size: 56px;
+}
+
+/* ---------- damage tally ---------- */
+
+.dmg-tally {
+  position: absolute;
+  top: -6px;
+  right: -40px;
+  z-index: 20;
+  display: grid;
+  justify-items: end;
+  pointer-events: none;
+  font-weight: 900;
+  font-style: italic;
+  white-space: nowrap;
+  transform: rotate(-6deg);
+  animation: tally-in 0.25s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+
+.dmg-tally.done {
+  animation:
+    tally-in 0.25s cubic-bezier(0.2, 1.6, 0.4, 1) both,
+    tally-out 0.35s ease-in 1.5s forwards;
+}
+
+.dmg-tally small {
+  font-size: 14px;
+  letter-spacing: 0.16em;
+  color: #fff;
+  text-shadow: 0 2px 0 #000;
+}
+
+.dmg-tally b {
+  display: block;
+  font-size: 46px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #ffe36b;
+  -webkit-text-stroke: 2px #6b3a00;
+  text-shadow:
+    0 3px 0 #000,
+    0 0 14px rgba(255, 180, 60, 0.6);
+  transition: font-size 0.2s cubic-bezier(0.2, 1.6, 0.4, 1);
+  animation: tally-bump 0.22s ease-out;
+}
+
+.dmg-tally.t1 b {
+  font-size: 58px;
+}
+
+.dmg-tally.t2 b {
+  font-size: 72px;
+  color: #fff;
+  -webkit-text-stroke: 2px #a3240f;
+  text-shadow:
+    0 3px 0 #000,
+    0 0 20px #ff7a2e,
+    0 0 40px #ffb347;
+}
+
+.dmg-tally.t3 b {
+  font-size: 88px;
+  color: #fff;
+  -webkit-text-stroke: 2.5px #8a0c3a;
+  text-shadow:
+    0 4px 0 #000,
+    0 0 24px #ff3b6b,
+    0 0 48px #ffd24a;
+  animation:
+    tally-bump 0.22s ease-out,
+    tally-throb 0.5s ease-in-out 0.22s infinite;
+}
+
+.dmg-tally.enemy b {
+  font-size: 40px;
+  color: #ff6b6b;
+  -webkit-text-stroke: 2px #4a0000;
+  text-shadow: 0 3px 0 #000;
+  animation: tally-bump 0.22s ease-out;
+}
+
+.dmg-tally em {
+  margin-top: 2px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 26px;
+  font-style: italic;
+  color: #fff;
+  background: linear-gradient(90deg, #ff3b3b, #ffb23f);
+  box-shadow: 0 3px 0 #000;
+  text-shadow: 0 2px 0 #7a1200;
+  animation: tally-rate 0.4s cubic-bezier(0.2, 1.8, 0.4, 1) both;
+}
+
+.dmg-tally.t3 em {
+  background: linear-gradient(90deg, #ff3b9a, #ffb23f, #ffe36b);
+  font-size: 32px;
+}
+
+@keyframes tally-in {
+  0% {
+    opacity: 0;
+    transform: rotate(-6deg) scale(2);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-6deg) scale(1);
+  }
+}
+
+@keyframes tally-out {
+  to {
+    opacity: 0;
+    transform: rotate(-6deg) translateY(-24px);
+  }
+}
+
+@keyframes tally-bump {
+  0% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes tally-throb {
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes tally-rate {
+  0% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @keyframes float-pop {
   0% {
     opacity: 0;
