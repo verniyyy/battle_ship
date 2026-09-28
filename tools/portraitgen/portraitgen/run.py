@@ -48,11 +48,11 @@ class Job:
         return [cls(**{k: v for k, v in j.items() if k in fields}) for j in data["jobs"]]
 
 
-def _cand_dir(work: Path, card: str) -> Path:
-    return work / "candidates" / card
+def _cand_dir(work: str | Path, card: str) -> Path:
+    return Path(work) / "candidates" / card
 
 
-def candidates(work: Path, card: str) -> list[tuple[int, dict]]:
+def candidates(work: str | Path, card: str) -> list[tuple[int, dict]]:
     """(seed, report) of every rendered candidate, best first."""
     out = []
     for f in sorted(_cand_dir(work, card).glob("*.json")):
@@ -60,7 +60,7 @@ def candidates(work: Path, card: str) -> list[tuple[int, dict]]:
     return sorted(out, key=lambda c: (not c[1]["ok"], -c[1]["aesthetic"]))
 
 
-def best(work: Path, card: str) -> int | None:
+def best(work: str | Path, card: str) -> int | None:
     ok = [seed for seed, r in candidates(work, card) if r["ok"]]
     return ok[0] if ok else None
 
