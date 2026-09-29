@@ -76,6 +76,14 @@ type job struct {
 	// tags (the item, which the tagger may overlook) only lower its rank.
 	Require []string `json:"require"`
 	Expect  []string `json:"expect"`
+	// The staged illustration (design.Stage), for cards that have one. The
+	// card colour tints the guide the backdrop is painted from; the prompt
+	// drives Animagine repainting around the figure, the instruction drives
+	// FLUX.2 [klein] editing the whole picture.
+	Color            string `json:"color"`
+	StagePrompt      string `json:"stage_prompt,omitempty"`
+	StageNegative    string `json:"stage_negative,omitempty"`
+	StageInstruction string `json:"stage_instruction,omitempty"`
 }
 
 const (
@@ -161,9 +169,47 @@ func buildJob(c meta.Card, d design) job {
 			style,
 			quality,
 		),
-		Require: require,
-		Expect:  expect,
+		Require:          require,
+		Expect:           expect,
+		Color:            c.Color,
+		StagePrompt:      stagePrompt(d),
+		StageNegative:    stageNegative(d),
+		StageInstruction: stageInstruction(d),
 	}
+}
+
+// The staged illustration shows the whole figure over its backdrop; the
+// prompt names the figure too, so the model paints a scene around a girl
+// rather than fighting the one it is given.
+func stagePrompt(d design) string {
+	if d.Stage == "" {
+		return ""
+	}
+	return tags(
+		"1girl, solo",
+		d.Hair, d.Outfit, d.Item,
+		"full body, standing, looking at viewer",
+		d.Stage,
+		"official art, key visual, dramatic lighting, detailed background",
+		quality,
+	)
+}
+
+// The usual flaws, minus the effects and scenery the backdrop is made of.
+func stageNegative(d design) string {
+	if d.Stage == "" {
+		return ""
+	}
+	return tags(flaws, "multiple girls, 2girls, multiple views, simple background, white background, grey background, cropped, out of frame")
+}
+
+func stageInstruction(d design) string {
+	if d.Stage == "" {
+		return ""
+	}
+	return "Turn the plain backdrop of this anime illustration into a dramatic scene around the girl: " + d.Stage + ". " +
+		"Keep the girl exactly as she is: the same face, hair, pose, outfit, colours and anime art style. " +
+		"Light from the scene may fall on her and effects may pass in front of her, but do not redraw or restyle her."
 }
 
 // similarHair lists the colours the tagger may name a hair colour by; a

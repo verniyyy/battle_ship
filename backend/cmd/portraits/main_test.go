@@ -205,3 +205,47 @@ func writeZip(t *testing.T, files map[string]string) string {
 	f.Close()
 	return p
 }
+
+// Only high-rarity cards get a staged illustration, and its prompts must
+// allow the effects the portrait prompts forbid.
+func TestStageIsForHighRaritiesAndAllowsItsEffects(t *testing.T) {
+	jobs, err := buildJobs(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	staged := 0
+	for _, j := range jobs {
+		c, _ := meta.CardByID(j.ID)
+		d := designs[j.ID]
+		if j.Color != c.Color {
+			t.Errorf("%s: color %q", j.ID, j.Color)
+		}
+		if d.Stage == "" {
+			if j.StagePrompt != "" || j.StageNegative != "" || j.StageInstruction != "" {
+				t.Errorf("%s: stage prompts without a stage", j.ID)
+			}
+			continue
+		}
+		staged++
+		if c.Rarity < meta.SR {
+			t.Errorf("%s: stage on a %s card", j.ID, c.Rarity)
+		}
+		for tag := range strings.SplitSeq(d.Stage, ",") {
+			tag = strings.TrimSpace(tag)
+			if !strings.Contains(j.StagePrompt, tag) || !strings.Contains(j.StageInstruction, tag) {
+				t.Errorf("%s: stage tag %q missing from the stage prompts", j.ID, tag)
+			}
+			for neg := range strings.SplitSeq(j.StageNegative, ",") {
+				if strings.TrimSpace(neg) == tag {
+					t.Errorf("%s: stage negative forbids %q", j.ID, tag)
+				}
+			}
+		}
+		if !strings.Contains(j.StagePrompt, strings.Split(d.Hair, ",")[0]) || !strings.Contains(j.StageInstruction, "Keep the girl") {
+			t.Errorf("%s: stage prompts do not hold on to the figure", j.ID)
+		}
+	}
+	if staged == 0 {
+		t.Error("no card has a stage")
+	}
+}

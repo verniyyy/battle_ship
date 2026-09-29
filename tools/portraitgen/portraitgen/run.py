@@ -49,6 +49,11 @@ class Job:
     detail_negative: str
     require: list[str] = field(default_factory=list)  # tagger tags, one of which must show (hair colour)
     expect: list[str] = field(default_factory=list)  # tagger tags the design should show (the item)
+    # The staged illustration (see stage.py); empty for cards without one.
+    color: str = ""
+    stage_prompt: str = ""
+    stage_negative: str = ""
+    stage_instruction: str = ""
 
     @classmethod
     def load(cls, path: str | Path) -> list[Job]:

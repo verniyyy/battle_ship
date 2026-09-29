@@ -222,6 +222,22 @@ class Generator:
             out = self._repaint(out, crop, region, mask, embeds, seed + 104729 * (i + 1), strength, size, steps, cfg)
         return out
 
+    def paint(self, image: Image.Image, mask: Image.Image, embeds: Embeds, seed: int, strength: float = 0.95, steps: int = 28, cfg: float = CFG) -> Image.Image:
+        """Repaint the white part of mask over the whole image, at its size."""
+        self._release()
+        w, h = _mult8(image.width), _mult8(image.height)
+        return self.inpaint(
+            **embeds.kwargs(),
+            image=image.convert("RGB").resize((w, h)),
+            mask_image=mask.resize((w, h)),
+            strength=strength,
+            width=w,
+            height=h,
+            num_inference_steps=steps,
+            guidance_scale=cfg,
+            generator=self._rng(seed),
+        ).images[0].resize(image.size)
+
     def _repaint(self, out, crop, region, mask, embeds, seed, strength, size, steps, cfg) -> Image.Image:
         self._release()
         painted = self.inpaint(

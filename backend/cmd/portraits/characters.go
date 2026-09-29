@@ -32,6 +32,11 @@ type design struct {
 	// in a good render: the hair colour and the item. Only tags from its
 	// vocabulary work here, e.g. "sword" rather than "broadsword".
 	Check string
+	// Stage is the backdrop of the staged illustration high-rarity cards
+	// get for showcase screens: light, sky and effects painted around the
+	// finished portrait, which is laid back on top untouched. The one place
+	// effects are allowed, since they never touch the figure. Empty: none.
+	Stage string
 }
 
 // Rarity dresses the costume up; the card frame does the rest. Deliberately
@@ -97,6 +102,7 @@ var designs = map[string]design{
 		Item:   "holding polearm, spear, gold spear",
 		Pose:   "standing, holding polearm",
 		Check:  "blonde hair, polearm",
+		Stage:  "sun, sunrise, golden sky, clouds, light rays, sunlight, golden aura, light particles, sparkle, horizon, ocean",
 	},
 	"bb_susanoo": { // 須佐之男 嵐を統べる者 black, violet, gold
 		Hair:   "purple hair, very long hair, messy hair",
@@ -110,6 +116,7 @@ var designs = map[string]design{
 		Item:   "holding katana, sheathed",
 		Pose:   "standing, holding katana, hand on own hip",
 		Check:  "purple hair, katana",
+		Stage:  "storm, dark clouds, lightning, purple lightning, electricity, wind, rain, stormy sea, waves, dramatic sky, purple aura",
 	},
 
 	// ---- cruisers: sharp, agile, one tool each ----
