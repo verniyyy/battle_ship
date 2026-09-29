@@ -782,6 +782,7 @@
 .float-text.crit {
   font-size: 34px;
   font-style: italic;
+  padding: 0 0.15em;
   color: #fff;
   background: linear-gradient(180deg, #fff 20%, #ff5a5a 60%, #ffb23f);
   -webkit-background-clip: text;
@@ -1672,6 +1673,8 @@
   font-weight: 900;
   font-style: italic;
   line-height: 0.9;
+  /* background-clip: text only paints inside the box; room for the italic overhang */
+  padding: 0 0.18em 0 0.06em;
   background: linear-gradient(180deg, #fff 20%, #9fb0c8);
   -webkit-background-clip: text;
   background-clip: text;
