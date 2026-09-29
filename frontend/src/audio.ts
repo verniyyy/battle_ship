@@ -1,6 +1,7 @@
 // Procedural sound: every effect and the fallback music are synthesised with
 // Web Audio, so the game is fully voiced without any asset pack. When the
-// legacy pack is present its recorded BGM replaces the synth tracks it covers.
+// legacy pack is present its recorded BGM and gunfire replace the synth
+// sounds they cover.
 
 export type Sfx =
   | 'tap'
@@ -42,6 +43,17 @@ export type Sfx =
 export type Track = 'home' | 'battle' | 'boss' | 'gacha'
 
 const MUTE_KEY = 'muted'
+
+// Recorded effects from the legacy pack: file name and volume. They play
+// through media elements, so they still sound if the Web Audio context stalls.
+const RECORDED_SFX: Partial<Record<Sfx, [string, number]>> = {
+  cannon: ['launch', 0.5],
+  boom: ['explosion1', 0.6],
+  bigboom: ['explosion3', 0.7],
+  splash: ['explosion2', 0.35],
+  miss: ['explosion2', 0.3],
+  move: ['move', 0.5],
+}
 
 const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12)
 
@@ -169,7 +181,8 @@ class AudioEngine {
   private musicBus?: GainNode
   private noiseBuf?: AudioBuffer
   muted = readMuted()
-  legacyBgm = false
+  private legacy = false
+  private recordedSfx = new Map<string, HTMLAudioElement>()
   private track: Track | null = null
   private seqTimer?: number
   private nextTime = 0
@@ -201,12 +214,39 @@ class AudioEngine {
       const d = this.noiseBuf.getChannelData(0)
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume()
+    this.resume()
     const t = this.track
     if (t && !this.seqTimer && !this.recorded) {
       this.track = null
       this.music(t)
     }
+  }
+
+  /** The context can be suspended after the first gesture (tab switch, device change); wake it on the next one. */
+  private resume() {
+    if (this.ctx && this.ctx.state !== 'running') void this.ctx.resume().catch(() => {})
+  }
+
+  /** Called once the legacy asset pack is known to be present. */
+  useLegacy(present: boolean) {
+    this.legacy = present
+    if (!present) return
+    for (const [file] of Object.values(RECORDED_SFX)) {
+      if (this.recordedSfx.has(file)) continue
+      const a = new Audio(`/legacy/se/${file}.mp3`)
+      a.preload = 'auto'
+      this.recordedSfx.set(file, a)
+    }
+  }
+
+  private playRecorded(name: Sfx) {
+    const rec = RECORDED_SFX[name]
+    const src = rec && this.recordedSfx.get(rec[0])
+    if (!rec || !src) return false
+    const a = src.cloneNode() as HTMLAudioElement
+    a.volume = rec[1]
+    a.play().catch(() => {})
+    return true
   }
 
   onMute(fn: (m: boolean) => void) {
@@ -290,7 +330,10 @@ class AudioEngine {
   // ---------------- effects ----------------
 
   play(name: Sfx, opt: { pitch?: number } = {}) {
-    if (!this.ctx || this.muted) return
+    if (this.muted) return
+    if (this.legacy && this.playRecorded(name)) return
+    if (!this.ctx) return
+    this.resume()
     const t = this.ctx.currentTime + 0.005
     const p = opt.pitch ?? 0
     switch (name) {
@@ -479,7 +522,7 @@ class AudioEngine {
     this.stopMusic()
     this.track = track
     if (!track) return
-    const recorded = this.legacyBgm ? ({ home: 'title', battle: 'battle' } as Partial<Record<Track, string>>)[track] : undefined
+    const recorded = this.legacy ? ({ home: 'title', battle: 'battle' } as Partial<Record<Track, string>>)[track] : undefined
     if (recorded) {
       const a = new Audio(`/legacy/bgm/${recorded}.mp3`)
       a.loop = true
@@ -548,3 +591,6 @@ function readMuted() {
 }
 
 export const audio = new AudioEngine()
+
+// Any later gesture also wakes a context the browser suspended mid-session.
+for (const ev of ['pointerdown', 'keydown'] as const) window.addEventListener(ev, () => audio.ctx && audio.unlock(), { capture: true, passive: true })
