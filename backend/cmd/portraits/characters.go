@@ -35,7 +35,10 @@ type design struct {
 	// Stage is the backdrop of the staged illustration high-rarity cards
 	// get for showcase screens: light, sky and effects painted around the
 	// finished portrait, which is laid back on top untouched. The one place
-	// effects are allowed, since they never touch the figure. Empty: none.
+	// effects are allowed, since they never touch the figure. It goes into
+	// an English instruction rather than a tag prompt, so short phrases work
+	// ("sun low on the horizon"). Keep the sky behind the head darker than
+	// a pale costume or the figure washes out. Empty: none.
 	Stage string
 }
 
@@ -102,7 +105,7 @@ var designs = map[string]design{
 		Item:   "holding polearm, spear, gold spear",
 		Pose:   "standing, holding polearm",
 		Check:  "blonde hair, polearm",
-		Stage:  "sun, sunrise, golden sky, clouds, light rays, sunlight, golden aura, light particles, sparkle, horizon, ocean",
+		Stage:  "sunrise, the sun low on the horizon behind her, deep blue sky above fading to gold, clouds lit from below, light rays, golden aura, light particles, sparkle, ocean",
 	},
 	"bb_susanoo": { // 須佐之男 嵐を統べる者 black, violet, gold
 		Hair:   "purple hair, very long hair, messy hair",

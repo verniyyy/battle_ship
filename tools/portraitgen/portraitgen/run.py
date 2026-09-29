@@ -6,7 +6,8 @@ explore: render cheap native-resolution candidates per card, reject bad ones
 finish:  take the chosen candidate of each card through the expensive passes
          (hires refine, tile repaint of the figure, face and hand detailing),
          check it is still clean, cut it out and export it.
-pack:    zip the finished portraits for `go run ./cmd/portraits import`.
+pack:    zip the finished portraits, with the staged illustrations of
+         high-rarity cards (stage.py), for `go run ./cmd/portraits import`.
 
 Everything is written under one work directory and skipped when already
 there, so a disconnected Colab session resumes where it stopped.
@@ -51,8 +52,6 @@ class Job:
     expect: list[str] = field(default_factory=list)  # tagger tags the design should show (the item)
     # The staged illustration (see stage.py); empty for cards without one.
     color: str = ""
-    stage_prompt: str = ""
-    stage_negative: str = ""
     stage_instruction: str = ""
 
     @classmethod
@@ -207,7 +206,10 @@ def export(card: str, img: Image.Image, seed: int, out: Path, log=print) -> dict
 
 
 def pack(work: str | Path, dest: str | Path | None = None) -> Path:
-    """Zip final/<card>.webp plus portraits.json (card -> metadata)."""
+    """Zip final/<card>.webp and staged/<card>.webp plus portraits.json (card -> metadata).
+
+    A card's staged illustration goes under its metadata as "staged".
+    """
     work = Path(work)
     out = work / "final"
     dest = Path(dest) if dest else work / "portraits.zip"
@@ -217,6 +219,10 @@ def pack(work: str | Path, dest: str | Path | None = None) -> Path:
             card = f.stem
             meta[card] = json.loads((out / f"{card}.json").read_text())
             z.write(f, f.name)
+            staged = out / "staged" / f.name
+            if staged.exists():
+                meta[card]["staged"] = json.loads(staged.with_suffix(".json").read_text())
+                z.write(staged, f"staged/{f.name}")
         z.writestr("portraits.json", json.dumps(meta, indent=2))
     return dest
 

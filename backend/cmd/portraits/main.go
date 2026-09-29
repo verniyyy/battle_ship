@@ -8,8 +8,9 @@
 //
 // kit bundles tools/portraitgen with jobs.json, the prompts built from each
 // card's character sheet (characters.go). import copies the finished
-// <card id>.webp files into frontend/public/portraits and records their
-// framing metadata in manifest.json there, which the frontend reads.
+// <card id>.webp files into frontend/public/portraits (and the staged
+// illustrations of high-rarity cards into its staged/ folder) and records
+// their framing metadata in manifest.json there, which the frontend reads.
 package main
 
 import (
@@ -76,13 +77,10 @@ type job struct {
 	// tags (the item, which the tagger may overlook) only lower its rank.
 	Require []string `json:"require"`
 	Expect  []string `json:"expect"`
-	// The staged illustration (design.Stage), for cards that have one. The
-	// card colour tints the guide the backdrop is painted from; the prompt
-	// drives Animagine repainting around the figure, the instruction drives
-	// FLUX.2 [klein] editing the whole picture.
+	// The staged illustration (design.Stage), for cards that have one: the
+	// card colour tints the guide FLUX.2 [klein] edits into the scene the
+	// instruction describes.
 	Color            string `json:"color"`
-	StagePrompt      string `json:"stage_prompt,omitempty"`
-	StageNegative    string `json:"stage_negative,omitempty"`
 	StageInstruction string `json:"stage_instruction,omitempty"`
 }
 
@@ -172,44 +170,23 @@ func buildJob(c meta.Card, d design) job {
 		Require:          require,
 		Expect:           expect,
 		Color:            c.Color,
-		StagePrompt:      stagePrompt(d),
-		StageNegative:    stageNegative(d),
 		StageInstruction: stageInstruction(d),
 	}
 }
 
-// The staged illustration shows the whole figure over its backdrop; the
-// prompt names the figure too, so the model paints a scene around a girl
-// rather than fighting the one it is given.
-func stagePrompt(d design) string {
-	if d.Stage == "" {
-		return ""
-	}
-	return tags(
-		"1girl, solo",
-		d.Hair, d.Outfit, d.Item,
-		"full body, standing, looking at viewer",
-		d.Stage,
-		"official art, key visual, dramatic lighting, detailed background",
-		quality,
-	)
-}
-
-// The usual flaws, minus the effects and scenery the backdrop is made of.
-func stageNegative(d design) string {
-	if d.Stage == "" {
-		return ""
-	}
-	return tags(flaws, "multiple girls, 2girls, multiple views, simple background, white background, grey background, cropped, out of frame")
-}
-
+// stageInstruction tells FLUX.2 [klein] to turn the guide around the
+// portrait into the card's scene. Only its backdrop is kept, so it is asked
+// to leave the girl alone (her silhouette then lines up with the cut-out
+// laid back on top) and to keep the scene darker than her, since a bright
+// sky behind a pale costume washes the figure out.
 func stageInstruction(d design) string {
 	if d.Stage == "" {
 		return ""
 	}
 	return "Turn the plain backdrop of this anime illustration into a dramatic scene around the girl: " + d.Stage + ". " +
 		"Keep the girl exactly as she is: the same face, hair, pose, outfit, colours and anime art style. " +
-		"Light from the scene may fall on her and effects may pass in front of her, but do not redraw or restyle her."
+		"Light from the scene may fall on her edges, but do not redraw or restyle her. " +
+		"Keep the backdrop a little darker than the girl, so she clearly stands out against it."
 }
 
 // similarHair lists the colours the tagger may name a hair colour by; a
@@ -367,6 +344,22 @@ type Portrait struct {
 	// Face box as fractions of the image (x0, y0, x1, y1), used to frame
 	// busts on cards and faces on map tokens.
 	Face []float64 `json:"face"`
+	// The portrait set in its scene, for showcase screens; high rarities only.
+	Staged *Staged `json:"staged,omitempty"`
+}
+
+// Staged is a staged illustration: the portrait over a painted backdrop,
+// with the face box as fractions of the illustration.
+type Staged struct {
+	File string    `json:"file"`
+	W    int       `json:"w"`
+	H    int       `json:"h"`
+	Face []float64 `json:"face"`
+}
+
+type frame struct {
+	W, H int
+	Face []float64
 }
 
 type manifest struct {
@@ -400,10 +393,10 @@ func install(zipPath, dir string) (int, error) {
 	defer zr.Close()
 
 	var info map[string]struct {
-		W, H int
-		Face []float64
+		frame
+		Staged *frame
 	}
-	files := map[string]*zip.File{}
+	files, staged := map[string]*zip.File{}, map[string]*zip.File{}
 	for _, f := range zr.File {
 		name := path.Base(f.Name)
 		if name == "portraits.json" {
@@ -411,7 +404,11 @@ func install(zipPath, dir string) (int, error) {
 				return 0, fmt.Errorf("portraits.json: %w", err)
 			}
 		} else if id, ok := strings.CutSuffix(name, ".webp"); ok {
-			files[id] = f
+			if path.Base(path.Dir(f.Name)) == "staged" {
+				staged[id] = f
+			} else {
+				files[id] = f
+			}
 		}
 	}
 	if info == nil {
@@ -437,7 +434,23 @@ func install(zipPath, dir string) (int, error) {
 		if err != nil {
 			return n, err
 		}
-		m.Portraits[id] = Portrait{File: id + ".webp?v=" + sum[:10], W: p.W, H: p.H, Face: p.Face}
+		entry := Portrait{File: id + ".webp?v=" + sum[:10], W: p.W, H: p.H, Face: p.Face}
+		// A new portrait makes the old staged illustration stale: it goes
+		// unless the zip brings a new one.
+		stagedFile := filepath.Join(dir, "staged", id+".webp")
+		if sf, ok := staged[id]; ok && p.Staged != nil {
+			if err := os.MkdirAll(filepath.Dir(stagedFile), 0o755); err != nil {
+				return n, err
+			}
+			sum, err := extract(sf, stagedFile)
+			if err != nil {
+				return n, err
+			}
+			entry.Staged = &Staged{File: "staged/" + id + ".webp?v=" + sum[:10], W: p.Staged.W, H: p.Staged.H, Face: p.Staged.Face}
+		} else {
+			os.Remove(stagedFile)
+		}
+		m.Portraits[id] = entry
 		n++
 	}
 	return n, writeManifest(dir, m)
@@ -461,11 +474,21 @@ func readManifest(dir string) manifest {
 		for id, p := range old.Portraits {
 			file, _, _ := strings.Cut(p.File, "?")
 			if _, err := os.Stat(filepath.Join(dir, file)); err == nil {
+				if p.Staged != nil {
+					if file, _, _ := strings.Cut(p.Staged.File, "?"); !exists(filepath.Join(dir, file)) {
+						p.Staged = nil
+					}
+				}
 				m.Portraits[id] = p
 			}
 		}
 	}
 	return m
+}
+
+func exists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 func writeManifest(dir string, m manifest) error {

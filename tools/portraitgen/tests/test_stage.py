@@ -1,9 +1,8 @@
-"""Staged illustrations: composition helpers, and both painters on tiny models.
+"""Staged illustrations: composition, export and packing, and klein on a tiny model.
 
-The inpaint painter runs on the tiny SDXL test pipe; the klein painter on a
-random-weight FLUX.2 [klein] built here with the real tokenizer (a few MB
-download on the first run). The images are noise; the tests check the
-wiring and that the figure always comes back untouched.
+The painter runs on a random-weight FLUX.2 [klein] built here with the real
+tokenizer (a few MB download on the first run). Its images are noise; the
+tests check the wiring and that the figure always comes back untouched.
 """
 
 import json
@@ -13,6 +12,7 @@ import numpy as np
 import pytest
 import torch
 from PIL import Image
+from scipy import ndimage
 
 from portraitgen import stage
 from portraitgen.run import Job
@@ -51,15 +51,17 @@ def test_guide_glows_in_the_card_colour_behind_the_upper_body():
     assert lit[0] > lit[2] + 60 and lit.sum() > corner.sum() + 150
 
 
-def test_paint_mask_leaves_the_figure_core_alone():
-    layer = stage.place(_cut(), SIZE)
-    m = np.asarray(stage.paint_mask(layer, inset=2, feather=0))
-    alpha = np.asarray(layer.getchannel("A"))
-    ys, xs = np.nonzero(alpha > 128)
-    cy, cx = int(ys.mean()), int(xs.mean())
-    assert m[cy, cx] == 0 and m[0, 0] == 255
-    # the band just inside the edge is painted too
-    assert m[cy, xs.max()] == 255
+def test_glow_moves_with_the_seed_but_stays_behind_the_upper_body():
+    centres = {stage.glow_center(s) for s in range(20)}
+    assert len(centres) == 20 and stage.glow_center(3) == stage.glow_center(3)
+    assert all(0.3 <= x <= 0.7 and 0.25 <= y <= 0.45 for x, y in centres)
+
+
+def test_vignette_dims_the_corners_most():
+    out = np.asarray(stage.vignette(Image.new("RGB", SIZE, (200, 200, 200)), 0.4)).astype(int)
+    assert 165 <= out[43, 32, 0] <= 175
+    assert 115 <= out[0, 0, 0] < 135
+    assert stage.vignette(Image.new("RGB", SIZE, (200, 200, 200)), 0).getpixel((0, 0)) == (200, 200, 200)
 
 
 def test_composite_puts_the_figure_back_exactly():
@@ -76,16 +78,15 @@ def _job(card, staged=True):
     j = Job(id=card, name=card, seed=10, prompt="1girl", negative="", face_prompt="", hand_prompt="", tile_prompt="", detail_negative="")
     if staged:
         j.color = "#ffcf4a"
-        j.stage_prompt = "1girl, solo, sun, light rays"
-        j.stage_negative = "lowres"
         j.stage_instruction = "Add a sunrise behind the girl. Keep the girl exactly as she is."
     return j
 
 
-def _final(work, card, size=(40, 80)):
+def _final(work, card, size=(40, 80), face=(0.25, 0.1, 0.75, 0.3)):
     d = work / "final"
     d.mkdir(parents=True, exist_ok=True)
     _cut(*size).save(d / f"{card}.webp", lossless=True)
+    (d / f"{card}.json").write_text(json.dumps({"seed": 1, "w": size[0] + 10, "h": size[1] + 10, "face": list(face)}))
 
 
 def test_only_cards_with_a_stage_are_painted():
@@ -94,37 +95,79 @@ def test_only_cards_with_a_stage_are_painted():
 
 def test_job_load_reads_the_stage(tmp_path):
     job = {k: "x" for k in ("id", "name", "prompt", "negative", "face_prompt", "hand_prompt", "tile_prompt", "detail_negative")}
-    job |= {"seed": 1, "color": "#fff", "stage_prompt": "sun", "stage_negative": "lowres", "stage_instruction": "Add a sun."}
+    job |= {"seed": 1, "color": "#fff", "stage_instruction": "Add a sun."}
     (tmp_path / "jobs.json").write_text(json.dumps({"jobs": [job]}))
     (loaded,) = Job.load(tmp_path / "jobs.json")
-    assert (loaded.color, loaded.stage_prompt, loaded.stage_instruction) == ("#fff", "sun", "Add a sun.")
+    assert (loaded.color, loaded.stage_instruction) == ("#fff", "Add a sun.")
 
 
-# ---- painters on tiny models ----
-
-
-def _figure_kept(out: Image.Image, work, card) -> bool:
+def _figure_kept(out: Image.Image, work, card, tolerance=0) -> bool:
     layer = stage.place(stage.portrait(work, card), out.size)
-    solid = np.asarray(layer.getchannel("A")) == 255
-    return (np.asarray(out)[solid] == np.asarray(layer.convert("RGB"))[solid]).all()
+    solid = ndimage.binary_erosion(np.asarray(layer.getchannel("A")) == 255, iterations=2 if tolerance else 0)
+    diff = np.abs(np.asarray(out).astype(int)[solid] - np.asarray(layer.convert("RGB")).astype(int)[solid])
+    return diff.mean() <= tolerance
 
 
-def test_inpaint_painter_keeps_the_figure_and_resumes(tmp_path):
-    from portraitgen.sdxl import Generator
+def _scenes(work, card, scores):
+    d = work / "stage" / card
+    d.mkdir(parents=True)
+    for seed, score in scores.items():
+        Image.new("RGB", SIZE, (0, 0, seed * 20)).save(d / f"{seed}.png")
+        (d / f"{seed}.json").write_text(json.dumps({"aesthetic": score}))
 
-    gen = Generator("hf-internal-testing/tiny-stable-diffusion-xl-pipe", vae_id=None, device="cpu", dtype=torch.float32, upscaler=False)
+
+def test_export_lays_the_portrait_over_the_best_scene(tmp_path):
     _final(tmp_path, "bb_amaterasu")
-    jobs = [_job("bb_amaterasu"), _job("bb_kurogane", staged=False)]
-    stage.paint_inpaint(gen, jobs, tmp_path, seeds=2, steps=2, size=SIZE, log=lambda *_: None)
-    files = stage.results(tmp_path, "bb_amaterasu")
-    assert [f.name for f in files] == ["inpaint-10.png", "inpaint-11.png"]
-    out = Image.open(files[0]).convert("RGB")
-    assert out.size == SIZE
-    assert _figure_kept(out, tmp_path, "bb_amaterasu")
-    assert not (tmp_path / "stage" / "bb_kurogane").exists()
-    before = files[0].stat().st_mtime_ns
-    stage.paint_inpaint(gen, jobs, tmp_path, seeds=2, steps=2, size=SIZE, log=lambda *_: None)
-    assert files[0].stat().st_mtime_ns == before  # already painted: skipped
+    _scenes(tmp_path, "bb_amaterasu", {10: 0.5, 11: 0.8, 12: 0.6})
+    (tmp_path / "stage" / "bb_amaterasu" / "klein-10.png").write_bytes(b"left over from the experiment")
+    assert [s for s, _ in stage.candidates(tmp_path, "bb_amaterasu")] == [11, 12, 10]
+    big = (SIZE[0] * 2, SIZE[1] * 2)
+    stage.export([_job("bb_amaterasu"), _job("bb_kurogane", staged=False)], tmp_path, size=big, dim=0, log=lambda *_: None)
+    out = tmp_path / "final" / "staged"
+    assert sorted(f.name for f in out.iterdir()) == ["bb_amaterasu.json", "bb_amaterasu.webp"]
+    img = Image.open(out / "bb_amaterasu.webp").convert("RGB")
+    assert img.size == big
+    assert abs(img.getpixel((0, 0))[2] - 220) <= 6  # seed 11's scene
+    meta = json.loads((out / "bb_amaterasu.json").read_text())
+    assert (meta["seed"], meta["w"], meta["h"]) == (11, *big)
+    # the face box follows the figure onto the canvas
+    x, y, fw, fh = stage.placement((50, 90), big)
+    assert meta["face"] == pytest.approx([(x + 0.25 * fw) / big[0], (y + 0.1 * fh) / big[1], (x + 0.75 * fw) / big[0], (y + 0.3 * fh) / big[1]], abs=1e-3)
+    assert stage.sheet(tmp_path, "bb_amaterasu") is not None
+
+
+def test_export_follows_the_pick_and_redoes_only_on_change(tmp_path):
+    _final(tmp_path, "bb_susanoo")
+    _scenes(tmp_path, "bb_susanoo", {10: 0.5, 11: 0.8})
+    calls = []
+
+    def up(img, size):
+        calls.append(size)
+        return img.resize(size)
+
+    f = tmp_path / "final" / "staged" / "bb_susanoo.webp"
+    stage.export([_job("bb_susanoo")], tmp_path, picks={"bb_susanoo": 10}, upscaler=up, size=SIZE, log=lambda *_: None)
+    assert calls == [SIZE] and json.loads(f.with_suffix(".json").read_text())["seed"] == 10
+    stage.export([_job("bb_susanoo")], tmp_path, picks={"bb_susanoo": 10}, upscaler=up, size=SIZE, log=lambda *_: None)
+    assert len(calls) == 1  # same pick and settings: skipped
+    stage.export([_job("bb_susanoo")], tmp_path, picks={"bb_susanoo": 10}, upscaler=up, dim=0.5, size=SIZE, log=lambda *_: None)
+    assert len(calls) == 2
+
+
+def test_pack_ships_the_staged_illustration_with_the_portrait(tmp_path):
+    from portraitgen import run
+
+    _final(tmp_path, "bb_susanoo")
+    _final(tmp_path, "bb_kurogane")
+    _scenes(tmp_path, "bb_susanoo", {10: 0.5})
+    stage.export([_job("bb_susanoo")], tmp_path, size=SIZE, log=lambda *_: None)
+    z = zipfile.ZipFile(run.pack(tmp_path, tmp_path / "p.zip"))
+    assert sorted(z.namelist()) == ["bb_kurogane.webp", "bb_susanoo.webp", "portraits.json", "staged/bb_susanoo.webp"]
+    meta = json.loads(z.read("portraits.json"))
+    assert meta["bb_susanoo"]["staged"]["w"] == SIZE[0] and "staged" not in meta["bb_kurogane"]
+
+
+# ---- klein on a tiny model ----
 
 
 @pytest.fixture(scope="module")
@@ -152,17 +195,21 @@ def tiny_klein(tmp_path_factory):
     return str(path)
 
 
-def test_klein_painter_keeps_the_figure_and_the_raw_edit(tmp_path, tiny_klein):
+def test_paint_keeps_the_figure_and_resumes(tmp_path, tiny_klein, monkeypatch):
     from portraitgen.klein import Klein
 
+    monkeypatch.setattr(stage.detect, "aesthetic", lambda img: 0.5)
     klein = Klein(tiny_klein, device="cpu", dtype=torch.float32)
     _final(tmp_path, "bb_susanoo")
-    stage.paint_klein(klein, [_job("bb_susanoo")], tmp_path, seeds=2, steps=2, size=SIZE, log=lambda *_: None)
-    names = [f.name for f in stage.results(tmp_path, "bb_susanoo")]
-    assert names == ["klein-10.png", "klein-10.raw.png", "klein-11.png", "klein-11.raw.png"]
-    out = Image.open(tmp_path / "stage" / "bb_susanoo" / "klein-10.png").convert("RGB")
-    raw = Image.open(tmp_path / "stage" / "bb_susanoo" / "klein-10.raw.png").convert("RGB")
-    assert out.size == raw.size == SIZE
-    assert _figure_kept(out, tmp_path, "bb_susanoo")
-    assert stage.sheet(tmp_path, "bb_susanoo") is not None
-    assert "bb_susanoo/klein-10.png" in zipfile.ZipFile(stage.pack(tmp_path, tmp_path / "s.zip")).namelist()
+    jobs = [_job("bb_susanoo"), _job("bb_kurogane", staged=False)]
+    stage.paint(klein, jobs, tmp_path, seeds=2, seed_offset=5, steps=2, size=SIZE, log=lambda *_: None)
+    assert sorted(s for s, _ in stage.candidates(tmp_path, "bb_susanoo")) == [15, 16]
+    assert not (tmp_path / "stage" / "bb_kurogane").exists()
+    scene = tmp_path / "stage" / "bb_susanoo" / "15.png"
+    assert Image.open(scene).size == SIZE
+    before = scene.stat().st_mtime_ns
+    stage.paint(klein, jobs, tmp_path, seeds=2, seed_offset=5, steps=2, size=SIZE, log=lambda *_: None)
+    assert scene.stat().st_mtime_ns == before  # already painted: skipped
+    stage.export(jobs, tmp_path, size=SIZE, log=lambda *_: None)
+    out = Image.open(tmp_path / "final" / "staged" / "bb_susanoo.webp").convert("RGB")
+    assert _figure_kept(out, tmp_path, "bb_susanoo", tolerance=8)  # lossy webp

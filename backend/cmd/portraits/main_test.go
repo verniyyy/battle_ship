@@ -184,6 +184,33 @@ func TestInstallWritesManifestAndKeepsEarlierImports(t *testing.T) {
 		t.Error("installed a file for an unknown card")
 	}
 
+	third := writeZip(t, map[string]string{
+		"bb_kurogane.webp":        "three",
+		"staged/bb_kurogane.webp": "scene",
+		"portraits.json":          `{"bb_kurogane": {"w": 900, "h": 1500, "face": [0.4, 0.1, 0.6, 0.2], "staged": {"w": 1248, "h": 1824, "face": [0.45, 0.2, 0.55, 0.28]}}}`,
+	})
+	if n, err := install(third, dir); err != nil || n != 1 {
+		t.Fatalf("install = %d, %v", n, err)
+	}
+	m = readManifest(dir)
+	st := m.Portraits["bb_kurogane"].Staged
+	if st == nil || !strings.HasPrefix(st.File, "staged/bb_kurogane.webp?v=") || st.W != 1248 || st.Face[1] != 0.2 {
+		t.Fatalf("staged = %+v", st)
+	}
+	if buf, _ := os.ReadFile(filepath.Join(dir, "staged", "bb_kurogane.webp")); string(buf) != "scene" {
+		t.Errorf("staged file = %q", buf)
+	}
+	if buf, _ := os.ReadFile(filepath.Join(dir, "bb_kurogane.webp")); string(buf) != "three" {
+		t.Errorf("portrait file = %q, the staged one must not overwrite it", buf)
+	}
+	// A new portrait without a staged illustration drops the stale one.
+	if _, err := install(first, dir); err != nil {
+		t.Fatal(err)
+	}
+	if m = readManifest(dir); m.Portraits["bb_kurogane"].Staged != nil || exists(filepath.Join(dir, "staged", "bb_kurogane.webp")) {
+		t.Errorf("stale staged illustration kept: %+v", m.Portraits["bb_kurogane"])
+	}
+
 	if _, err := install(writeZip(t, map[string]string{"a.webp": "x"}), dir); err == nil {
 		t.Error("zip without portraits.json accepted")
 	}
@@ -206,8 +233,8 @@ func writeZip(t *testing.T, files map[string]string) string {
 	return p
 }
 
-// Only high-rarity cards get a staged illustration, and its prompts must
-// allow the effects the portrait prompts forbid.
+// Only high-rarity cards get a staged illustration, and its instruction
+// carries the whole stage while holding on to the figure.
 func TestStageIsForHighRaritiesAndAllowsItsEffects(t *testing.T) {
 	jobs, err := buildJobs(nil)
 	if err != nil {
@@ -221,7 +248,7 @@ func TestStageIsForHighRaritiesAndAllowsItsEffects(t *testing.T) {
 			t.Errorf("%s: color %q", j.ID, j.Color)
 		}
 		if d.Stage == "" {
-			if j.StagePrompt != "" || j.StageNegative != "" || j.StageInstruction != "" {
+			if j.StageInstruction != "" {
 				t.Errorf("%s: stage prompts without a stage", j.ID)
 			}
 			continue
@@ -232,16 +259,11 @@ func TestStageIsForHighRaritiesAndAllowsItsEffects(t *testing.T) {
 		}
 		for tag := range strings.SplitSeq(d.Stage, ",") {
 			tag = strings.TrimSpace(tag)
-			if !strings.Contains(j.StagePrompt, tag) || !strings.Contains(j.StageInstruction, tag) {
-				t.Errorf("%s: stage tag %q missing from the stage prompts", j.ID, tag)
-			}
-			for neg := range strings.SplitSeq(j.StageNegative, ",") {
-				if strings.TrimSpace(neg) == tag {
-					t.Errorf("%s: stage negative forbids %q", j.ID, tag)
-				}
+			if !strings.Contains(j.StageInstruction, tag) {
+				t.Errorf("%s: stage tag %q missing from the instruction", j.ID, tag)
 			}
 		}
-		if !strings.Contains(j.StagePrompt, strings.Split(d.Hair, ",")[0]) || !strings.Contains(j.StageInstruction, "Keep the girl") {
+		if !strings.Contains(j.StageInstruction, "Keep the girl") {
 			t.Errorf("%s: stage prompts do not hold on to the figure", j.ID)
 		}
 	}
