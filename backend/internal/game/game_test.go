@@ -173,11 +173,11 @@ func TestWaterColumnsPinNearMisses(t *testing.T) {
 	if len(cpu.MoveTargets(0)) != 0 {
 		t.Fatal("pinned destroyer can still move")
 	}
-	st.endRound()
+	st.endRound(nil)
 	if len(cpu.MoveTargets(0)) != 0 {
 		t.Fatal("the column should hold through the next round")
 	}
-	st.endRound()
+	st.endRound(nil)
 	if len(cpu.MoveTargets(0)) == 0 {
 		t.Fatal("the column never settled")
 	}
@@ -530,5 +530,53 @@ func TestPlayerViewHidesEnemy(t *testing.T) {
 	st.Status = StatusFinished
 	if st.PlayerView().EnemyShips[0].Pos == nil {
 		t.Fatal("enemy position should be revealed after the game")
+	}
+}
+
+func TestShipUnderWayMovesLate(t *testing.T) {
+	st := fleetGame(t, []Spec{ca}, []Spec{dd}, []Pos{{0, 0}}, []Pos{{2, 2}})
+	// The faster destroyer slips away from the first shot...
+	out := st.Resolve(map[Side]Action{SidePlayer: {ActionAttack, 0, Pos{2, 2}}, SideCPU: {ActionMove, 0, Pos{2, 1}}}, rng())
+	if out[0].Side != SideCPU || out[1].Shots[0].HitShipID != nil {
+		t.Fatalf("a destroyer at rest should outrun the cruiser's guns: %+v", out)
+	}
+	// ...but still under way, it cannot dodge the next one.
+	out = st.Resolve(map[Side]Action{SidePlayer: {ActionAttack, 0, Pos{2, 1}}, SideCPU: {ActionMove, 0, Pos{2, 4}}}, rng())
+	if out[0].Side != SidePlayer || out[0].Shots[0].Damage == 0 || !out[1].Late {
+		t.Fatalf("a second move in a row must resolve after the shot: %+v", out)
+	}
+	// A round at rest lets it dodge again.
+	st.Resolve(map[Side]Action{SidePlayer: {ActionMove, 0, Pos{0, 1}}, SideCPU: {ActionAttack, 0, Pos{3, 4}}}, rng())
+	out = st.Resolve(map[Side]Action{SidePlayer: {ActionAttack, 0, Pos{2, 3}}, SideCPU: {ActionMove, 0, Pos{3, 4}}}, rng())
+	if out[0].Side != SideCPU || out[0].Late {
+		t.Fatalf("a rested destroyer moves at its own speed: %+v", out)
+	}
+}
+
+func TestScoutPlanesBreakAQuietSpell(t *testing.T) {
+	// The submarine is nearest but only sonar finds it; the battleship is next.
+	st := fleetGame(t, []Spec{bb}, []Spec{ss, dd, bb}, []Pos{{0, 0}}, []Pos{{1, 1}, {4, 4}, {2, 3}})
+	quiet := map[Side]Action{SidePlayer: {ActionAttack, 0, Pos{2, 0}}, SideCPU: {ActionAttack, 1, Pos{4, 3}}}
+	for round := 1; round <= 2; round++ {
+		if out := st.Resolve(quiet, rng()); len(out) != 2 {
+			t.Fatalf("round %d: scout planes flew too early: %+v", round, out)
+		}
+	}
+	out := st.Resolve(quiet, rng())
+	if len(out) != 4 || out[2].Type != ActionRecon || out[3].Type != ActionRecon {
+		t.Fatalf("no scout reports after three quiet rounds: %+v", out)
+	}
+	if seen, ok := st.Intel[SidePlayer]["2"]; !ok || seen.Pos != (Pos{2, 3}) || len(st.Intel[SidePlayer]) != 1 {
+		t.Fatalf("player intel %v, want the battleship only", st.Intel[SidePlayer])
+	}
+	if _, ok := st.Intel[SideCPU]["0"]; !ok {
+		t.Fatal("the CPU's scouts must find the player's battleship too")
+	}
+	// Tracked ships are not reported again: the next report finds the destroyer.
+	for round := 1; round <= 3; round++ {
+		st.Resolve(quiet, rng())
+	}
+	if _, ok := st.Intel[SidePlayer]["1"]; !ok {
+		t.Fatalf("player intel %v, want the destroyer found next", st.Intel[SidePlayer])
 	}
 }

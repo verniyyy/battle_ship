@@ -20,6 +20,8 @@ const (
 	airEvasionDiv = 4   // aircraft are hard to dodge
 	pointBlank    = 2   // torpedo hits this close always crit
 	pinRounds     = 2   // a water column holds for the rest of this round and the next
+	sailRounds    = 2   // a ship that moved is under way for the rest of this round and the next
+	reconAfter    = 3   // quiet rounds before scout planes report an enemy ship
 )
 
 // Gauge gains. Shooting gains are scaled by the running combo.
@@ -95,7 +97,7 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 	ship := st.Boards[side].Ships[a.ShipID]
 	sp := ship.Spec
 	t := a.Target
-	res := Result{Side: side, Type: a.Type, ShipID: a.ShipID, Round: st.Turn + 1, Speed: sp.Speed, Late: a.Late(sp)}
+	res := Result{Side: side, Type: a.Type, ShipID: a.ShipID, Round: st.Turn + 1, Speed: sp.Speed, Late: a.Late(ship)}
 	gun := func() strike {
 		return strike{power: sp.Firepower, crit: sp.Crit, evadeDiv: 1, antiSub: sp.Class == Destroyer}
 	}
@@ -139,6 +141,7 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 			res.Distance = ship.Pos.Dist(dest)
 		}
 		ship.Pos = dest
+		ship.Sailed = sailRounds
 
 	case ActionSkill:
 		ship.Skill--

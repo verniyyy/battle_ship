@@ -13,7 +13,9 @@
 //   - move: sail up to the class's move range along the ship's row or column
 //     (announced as ship + direction + distance, except for submarines). Two
 //     ships never share a cell: a move stops just short of an enemy ship in
-//     its way;
+//     its way. A ship that moved in the previous round is still under way:
+//     moving again resolves late, after the other side's action, so it cannot
+//     dodge a shot aimed at where it is;
 //   - skill: the ship's class skill, a limited number of times per battle;
 //   - ultimate: once the fleet gauge is full, a 3×3 all-fleet barrage anywhere.
 //
@@ -28,6 +30,8 @@
 // ship at most two cells away (point-blank torpedo).
 //
 // Enemy ships side by side along a row or column always spot each other.
+// When no ship has taken damage for three rounds in a row, each side's
+// scout planes find the untracked enemy surface ship nearest to its fleet.
 //
 // Hits and scouting give the shooter intel on where enemy ships are, which
 // then follows their announced moves. Only a submarine can shake off contact,
@@ -195,6 +199,8 @@ type Ship struct {
 	Skill int  `json:"skill"` // remaining skill uses
 	// Pinned counts the round ends left before a water column stops holding the ship in place.
 	Pinned int `json:"pinned,omitempty"`
+	// Sailed counts the round ends left during which another move resolves late.
+	Sailed int `json:"sailed,omitempty"`
 }
 
 func (s *Ship) Alive() bool { return s.HP > 0 }
@@ -243,6 +249,17 @@ func (b *Board) alive() int {
 		}
 	}
 	return n
+}
+
+// distance is how far p lies from the nearest living ship of the fleet.
+func (b *Board) distance(p Pos) int {
+	d := 2 * b.Size
+	for _, s := range b.Ships {
+		if s.Alive() {
+			d = min(d, s.Pos.Dist(p))
+		}
+	}
+	return d
 }
 
 // AA is the fleet's anti-air: the sum over its living ships.
@@ -510,6 +527,9 @@ const (
 	ActionMove     ActionType = "move"
 	ActionSkill    ActionType = "skill"
 	ActionUltimate ActionType = "ultimate"
+	// ActionRecon is not chosen by a player: it reports what scout planes
+	// found after a quiet spell. Its ShipID is -1.
+	ActionRecon ActionType = "recon"
 )
 
 type Action struct {
@@ -518,9 +538,18 @@ type Action struct {
 	Target Pos        `json:"target"`
 }
 
-// Late reports whether the action always resolves after the other side's.
-func (a Action) Late(sp Spec) bool {
-	return a.Type == ActionTorpedo || (a.Type == ActionSkill && sp.SkillKind() == SkillSpread)
+// Late reports whether the action resolves after the other side's: torpedo
+// launches, and a move by a ship still under way from the previous round.
+func (a Action) Late(s *Ship) bool {
+	switch a.Type {
+	case ActionTorpedo:
+		return true
+	case ActionSkill:
+		return s.Spec.SkillKind() == SkillSpread
+	case ActionMove:
+		return s.Sailed > 0
+	}
+	return false
 }
 
 type Direction string
@@ -570,7 +599,8 @@ type Result struct {
 	Skill  SkillKind  `json:"skill,omitempty"`
 	// Round is the 1-based round the action was played in.
 	Round int `json:"round"`
-	// Speed is the acting ship's speed; Late marks torpedoes, which always go last.
+	// Speed is the acting ship's speed; Late marks torpedoes and moves by a
+	// ship still under way, which go after the other side's action.
 	Speed int  `json:"speed"`
 	Late  bool `json:"late,omitempty"`
 	// Cancelled actions never happened: the ship was sunk earlier in the round.
@@ -699,6 +729,8 @@ type State struct {
 	MaxCombo  map[Side]int    `json:"maxCombo"`
 	// LastGun is where each side's previous action fired its guns, if it did.
 	LastGun map[Side]*Pos `json:"lastGun"`
+	// Quiet counts the rounds in a row in which no ship took damage.
+	Quiet int `json:"quiet,omitempty"`
 	// Intel[s] is what side s knows about the opponent's ship positions, keyed by ship ID.
 	Intel  map[Side]map[string]Sighting `json:"intel"`
 	Memory map[Side]*Memory             `json:"memory"`

@@ -334,6 +334,7 @@ func (st *State) Actions(side Side) []Action {
 
 // evade moves a ship the enemy is tracking when that is worth a turn:
 // submarines (which vanish when they move) and badly damaged surface ships.
+// Sharper CPUs know a ship still under way would move too late to dodge.
 func (st *State) evade(side Side, rng *rand.Rand, lvl int) (Action, bool) {
 	own := st.Boards[side]
 	for _, seen := range st.Intel[side.Opponent()] {
@@ -343,7 +344,7 @@ func (st *State) evade(side Side, rng *rand.Rand, lvl int) (Action, bool) {
 		}
 		sub := s.Spec.Class == Submarine
 		hurt := s.HP*100/s.Spec.HP < 35
-		if !sub && !hurt {
+		if (!sub && !hurt) || (s.Sailed > 0 && lvl >= 2) {
 			continue
 		}
 		chance := 0.25 + 0.15*float64(lvl)

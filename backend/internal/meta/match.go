@@ -127,7 +127,7 @@ func battleStats(st *game.State) (BattleStats, []int) {
 	var bs BattleStats
 	score := make([]int, len(st.Boards[game.SidePlayer].Ships))
 	for _, r := range st.History {
-		if r.Side != game.SidePlayer {
+		if r.Side != game.SidePlayer || r.Type == game.ActionRecon {
 			continue
 		}
 		bs.Shots += len(r.Shots)
