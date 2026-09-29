@@ -290,6 +290,61 @@ p {
   transform: scale(0.9);
 }
 
+.icon-btn.on {
+  border-color: var(--gold);
+}
+
+.sound-ctl {
+  position: relative;
+}
+
+.sound-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 80;
+  width: 260px;
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 2px solid rgba(244, 198, 90, 0.7);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+  animation: pop-in 0.2s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+.vol-row {
+  display: grid;
+  grid-template-columns: 38px 1fr 32px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.vol-row b {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold-hi);
+}
+
+.vol-row input {
+  width: 100%;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
+.vol-row input:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.sound-panel .mute {
+  justify-self: stretch;
+}
+
 .chip-btn {
   height: 34px;
   padding: 0 14px;

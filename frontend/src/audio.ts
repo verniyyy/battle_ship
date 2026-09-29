@@ -43,6 +43,14 @@ export type Sfx =
 export type Track = 'home' | 'battle' | 'boss' | 'gacha'
 
 const MUTE_KEY = 'muted'
+const VOLUME_KEY = 'volume'
+
+// Bus levels at a volume setting of 1; the player's BGM/SE settings scale these.
+const MUSIC_LEVEL = 0.28
+const SFX_LEVEL = 0.9
+const RECORDED_BGM_LEVEL = 0.3
+
+export type Channel = 'bgm' | 'se'
 
 // Recorded effects from the legacy pack: file name and volume. They play
 // through media elements, so they still sound if the Web Audio context stalls.
@@ -181,6 +189,7 @@ class AudioEngine {
   private musicBus?: GainNode
   private noiseBuf?: AudioBuffer
   muted = readMuted()
+  volume: Record<Channel, number> = readVolume()
   private legacy = false
   private recordedSfx = new Map<string, HTMLAudioElement>()
   private track: Track | null = null
@@ -188,7 +197,7 @@ class AudioEngine {
   private nextTime = 0
   private step = 0
   private recorded?: HTMLAudioElement
-  private listeners = new Set<(m: boolean) => void>()
+  private listeners = new Set<() => void>()
 
   /** Must be called from a user gesture to allow playback. */
   unlock() {
@@ -204,10 +213,10 @@ class AudioEngine {
       comp.ratio.value = 6
       this.master.connect(comp).connect(this.ctx.destination)
       this.sfxBus = this.ctx.createGain()
-      this.sfxBus.gain.value = 0.9
+      this.sfxBus.gain.value = SFX_LEVEL * this.volume.se
       this.sfxBus.connect(this.master)
       this.musicBus = this.ctx.createGain()
-      this.musicBus.gain.value = 0.28
+      this.musicBus.gain.value = MUSIC_LEVEL * this.volume.bgm
       this.musicBus.connect(this.master)
       const len = this.ctx.sampleRate * 2
       this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate)
@@ -244,12 +253,13 @@ class AudioEngine {
     const src = rec && this.recordedSfx.get(rec[0])
     if (!rec || !src) return false
     const a = src.cloneNode() as HTMLAudioElement
-    a.volume = rec[1]
+    a.volume = rec[1] * this.volume.se
     a.play().catch(() => {})
     return true
   }
 
-  onMute(fn: (m: boolean) => void) {
+  /** Subscribes to mute and volume changes. */
+  onChange(fn: () => void) {
     this.listeners.add(fn)
     return () => void this.listeners.delete(fn)
   }
@@ -263,7 +273,24 @@ class AudioEngine {
     } catch {
       /* storage unavailable */
     }
-    this.listeners.forEach((f) => f(m))
+    this.listeners.forEach((f) => f())
+  }
+
+  /** Sets the BGM or SE volume (0..1) and remembers it. */
+  setVolume(ch: Channel, v: number) {
+    this.volume = { ...this.volume, [ch]: Math.min(1, Math.max(0, v)) }
+    if (this.ctx) {
+      const now = this.ctx.currentTime
+      this.musicBus?.gain.setTargetAtTime(MUSIC_LEVEL * this.volume.bgm, now, 0.05)
+      this.sfxBus?.gain.setTargetAtTime(SFX_LEVEL * this.volume.se, now, 0.05)
+    }
+    if (this.recorded) this.recorded.volume = RECORDED_BGM_LEVEL * this.volume.bgm
+    try {
+      localStorage.setItem(VOLUME_KEY, JSON.stringify(this.volume))
+    } catch {
+      /* storage unavailable */
+    }
+    this.listeners.forEach((f) => f())
   }
 
   /** Short vibration on phones that support it. */
@@ -330,7 +357,7 @@ class AudioEngine {
   // ---------------- effects ----------------
 
   play(name: Sfx, opt: { pitch?: number } = {}) {
-    if (this.muted) return
+    if (this.muted || this.volume.se === 0) return
     if (this.legacy && this.playRecorded(name)) return
     if (!this.ctx) return
     this.resume()
@@ -526,7 +553,7 @@ class AudioEngine {
     if (recorded) {
       const a = new Audio(`/legacy/bgm/${recorded}.mp3`)
       a.loop = true
-      a.volume = 0.3
+      a.volume = RECORDED_BGM_LEVEL * this.volume.bgm
       a.muted = this.muted
       a.play().catch(() => {})
       this.recorded = a
@@ -588,6 +615,20 @@ function readMuted() {
   } catch {
     return false
   }
+}
+
+function readVolume(): Record<Channel, number> {
+  const v = { bgm: 1, se: 1 }
+  try {
+    const saved = JSON.parse(localStorage.getItem(VOLUME_KEY) ?? '{}') as Partial<Record<Channel, unknown>>
+    for (const ch of ['bgm', 'se'] as const) {
+      const n = saved[ch]
+      if (typeof n === 'number' && n >= 0 && n <= 1) v[ch] = n
+    }
+  } catch {
+    /* storage unavailable or corrupt */
+  }
+  return v
 }
 
 export const audio = new AudioEngine()

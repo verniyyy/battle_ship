@@ -235,13 +235,58 @@ export function Modal({ title, onClose, children, wide, className = '' }: { titl
   )
 }
 
+/** Speaker button that opens a small panel with BGM/SE volume sliders and a mute switch. */
 export function SoundToggle() {
-  const [muted, setMuted] = useState(audio.muted)
-  useEffect(() => audio.onMute(setMuted), [])
+  const [, rerender] = useState(0)
+  const [open, setOpen] = useState(false)
+  const wrap = useRef<HTMLDivElement>(null)
+  useEffect(() => audio.onChange(() => rerender((n) => n + 1)), [])
+  useEffect(() => {
+    if (!open) return
+    const away = (e: PointerEvent) => wrap.current?.contains(e.target as Node) || setOpen(false)
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    window.addEventListener('pointerdown', away)
+    window.addEventListener('keydown', esc)
+    return () => {
+      window.removeEventListener('pointerdown', away)
+      window.removeEventListener('keydown', esc)
+    }
+  }, [open])
+  const silent = audio.muted || (audio.volume.bgm === 0 && audio.volume.se === 0)
+  const channels = [
+    ['bgm', 'BGM'],
+    ['se', 'SE'],
+  ] as const
   return (
-    <button className="icon-btn sound" aria-label={muted ? 'サウンドをオンにする' : 'サウンドをオフにする'} onClick={() => audio.setMuted(!muted)}>
-      {muted ? '🔇' : '🔊'}
-    </button>
+    <div className="sound-ctl" ref={wrap}>
+      <button className={`icon-btn sound ${open ? 'on' : ''}`} aria-label="サウンド設定" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {silent ? '🔇' : '🔊'}
+      </button>
+      {open && (
+        <div className="sound-panel" role="dialog" aria-label="サウンド設定">
+          {channels.map(([ch, label]) => (
+            <label key={ch} className="vol-row">
+              <span>{label}</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={Math.round(audio.volume[ch] * 100)}
+                disabled={audio.muted}
+                onChange={(e) => audio.setVolume(ch, Number(e.target.value) / 100)}
+                onPointerUp={() => ch === 'se' && audio.play('tap')}
+                onKeyUp={() => ch === 'se' && audio.play('tap')}
+              />
+              <b>{Math.round(audio.volume[ch] * 100)}</b>
+            </label>
+          ))}
+          <button className={`chip-btn mute ${audio.muted ? 'on' : ''}`} onClick={() => audio.setMuted(!audio.muted)}>
+            {audio.muted ? '🔇 ミュート中' : '🔈 ミュート'}
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
