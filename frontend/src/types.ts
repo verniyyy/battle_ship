@@ -169,7 +169,11 @@ export interface Card extends Stats {
   intro: string
   attack: string
   home: string[]
+  fx?: FxPreset
 }
+
+// Motion effects over a card's art on showcase screens (see MotionFx).
+export type FxPreset = 'sun' | 'storm'
 
 export interface Gain {
   card: string

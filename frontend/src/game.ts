@@ -1,5 +1,5 @@
 // Pure helpers that turn API data into things the UI shows.
-import type { ActionType, Card, Catalog, GameView, Pos, Rarity, Result, ShipClass, ShipView, SkillKind, Special, Stage, Stats, Weather } from './types'
+import type { ActionType, Card, Catalog, FxPreset, GameView, Pos, Rarity, Result, ShipClass, ShipView, SkillKind, Special, Stage, Stats, Weather } from './types'
 import { posLabel } from './types'
 
 export const DIRECTION = { north: '北', south: '南', east: '東', west: '西' } as const
@@ -209,6 +209,7 @@ export interface Look {
   enemy?: boolean
   boss?: boolean
   cardId?: string
+  fx?: FxPreset
 }
 
 export function lookOfShip(cat: Catalog | null, s: ShipView, enemy: boolean): Look {
@@ -224,7 +225,7 @@ export function lookOfShip(cat: Catalog | null, s: ShipView, enemy: boolean): Lo
   }
 }
 
-export const lookOfCard = (c: Card): Look => ({ cls: c.class, name: c.name, rarity: c.rarity, color: c.color, cardId: c.id })
+export const lookOfCard = (c: Card): Look => ({ cls: c.class, name: c.name, rarity: c.rarity, color: c.color, cardId: c.id, fx: c.fx })
 
 export function stageLabel(s: Stage) {
   return s.floor ? `EX-${s.floor}` : s.id

@@ -281,7 +281,7 @@ function Spotlight({ gain, card, onNext }: { gain: Gain; card: Card; onNext: () 
     <div className={`spotlight r${card.rarity}`} onClick={onNext}>
       <div className="spot-rays" />
       <div className="spot-art">
-        <ShipArt look={lookOfCard(card)} showKanji={false} frame="full" />
+        <ShipArt look={lookOfCard(card)} showKanji={false} frame="full" motion />
       </div>
       <div className="spot-info">
         <span className={`spot-rarity r${card.rarity}`}>{rarityName(card.rarity)}</span>

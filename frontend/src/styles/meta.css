@@ -438,6 +438,69 @@
   }
 }
 
+/* ---------- motion effects (see MotionFx) ---------- */
+
+.fx-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* the preset's own particles and light replace the staging motes and the
+   UR sheen, which would tint the preset's light */
+.has-fx .art-mote,
+.has-fx .art-holo {
+  display: none;
+}
+
+/* light on the character: masked by the portrait, driven by the engine */
+.fx-light {
+  opacity: 0;
+  mix-blend-mode: screen;
+}
+.fx-light.fx-sun {
+  background:
+    linear-gradient(180deg, rgba(255, 214, 130, 0.5), rgba(255, 200, 90, 0.08) 45%, transparent 70%),
+    linear-gradient(115deg, transparent 43%, rgba(255, 246, 220, 0.85) 50%, transparent 57%);
+  background-size:
+    100% 100%,
+    300% 100%;
+  animation: fx-sheen 6s ease-in-out infinite;
+}
+.fx-light.fx-storm {
+  background: linear-gradient(var(--fx-angle, 100deg), rgba(242, 236, 255, 0.95), rgba(179, 136, 255, 0.5) 45%, rgba(120, 90, 200, 0.15) 80%);
+}
+
+@keyframes fx-sheen {
+  0%,
+  45% {
+    background-position:
+      0 0,
+      100% 0;
+  }
+  100% {
+    background-position:
+      0 0,
+      0% 0;
+  }
+}
+
+.fx-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
+}
+.fx-flash.fx-storm {
+  background: radial-gradient(ellipse at 50% 15%, rgba(226, 214, 255, 0.95), rgba(140, 110, 230, 0.45) 60%, rgba(60, 40, 120, 0.2));
+}
+.fx-flash.fx-sun {
+  display: none;
+}
+
 /* tiny cards keep just the aura and rim light */
 @container (max-width: 90px) {
   .art-staging {

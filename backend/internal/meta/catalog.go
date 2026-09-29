@@ -39,6 +39,9 @@ type Card struct {
 	Intro  string   `json:"intro"`
 	Attack string   `json:"attack"`
 	Home   []string `json:"home"`
+	// Fx names the motion effect played over the card's art on showcase
+	// screens (the frontend's MotionFx presets); empty for none.
+	Fx string `json:"fx,omitempty"`
 }
 
 var Cards = []Card{
@@ -58,11 +61,11 @@ var Cards = []Card{
 	{ID: "bb_amaterasu", Class: game.Battleship, Name: "天照", Title: "日輪の戦姫", Rarity: SSR, Color: "#ffcf4a",
 		Stats: st(720, 225, 0, 0, 55, 27, 13, 8, 0, 2, 11, 3),
 		Intro: "我は天照。この海に、夜明けをもたらしましょう。", Attack: "日輪よ、敵を灼け！",
-		Home: []string{"光ある限り、私たちは負けません。", "提督、あなたの采配を信じています。"}},
+		Home: []string{"光ある限り、私たちは負けません。", "提督、あなたの采配を信じています。"}, Fx: "sun"},
 	{ID: "bb_susanoo", Class: game.Battleship, Name: "須佐之男", Title: "嵐を統べる者", Rarity: UR, Color: "#b388ff",
 		Stats: st(740, 240, 0, 0, 50, 28, 14, 8, 0, 2, 13, 3),
 		Intro: "嵐と共に来たれり。須佐之男、推参！", Attack: "荒ぶる嵐よ、全てを呑め！",
-		Home: []string{"退屈だ。もっと強い敵はいないのか？", "俺を使いこなせるか、提督。"}},
+		Home: []string{"退屈だ。もっと強い敵はいないのか？", "俺を使いこなせるか、提督。"}, Fx: "storm"},
 
 	// ---- cruisers: flare ----
 	{ID: "ca_shirasagi", Class: game.Cruiser, Name: "白鷺", Title: "夜を照らす翼", Rarity: N, Color: "#cfe8ff",

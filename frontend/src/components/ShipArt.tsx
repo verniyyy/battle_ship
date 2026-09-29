@@ -10,6 +10,7 @@
 import { useId, type CSSProperties, type ReactNode } from 'react'
 import { CLASS_INFO, type Look } from '../game'
 import { portraitOf, useAssets, type Portrait } from '../theme'
+import { FxBack, FxFront, useMotionFx } from './MotionFx'
 import type { ShipClass } from '../types'
 
 // How a portrait sits in its box:
@@ -154,17 +155,32 @@ function palette(look: Look) {
   return { sky1: look.color, sky2: '#07101f', sea1: '#0e3a66', sea2: '#040b18', orb: look.color }
 }
 
-export function ShipArt({ look, className = '', showKanji = true, frame = 'bust' }: { look: Look; className?: string; showKanji?: boolean; frame?: Frame }) {
+// motion plays the card's motion effect (Card.fx) over the art; for the
+// large showcases only, where it is worth the frames.
+export function ShipArt({
+  look,
+  className = '',
+  showKanji = true,
+  frame = 'bust',
+  motion = false,
+}: {
+  look: Look
+  className?: string
+  showKanji?: boolean
+  frame?: Frame
+  motion?: boolean
+}) {
   const id = useId().replace(/:/g, '')
   const portrait = portraitOf(look, useAssets())
   const hull = HULLS[look.cls]
   const pal = palette(look)
   const tier = look.enemy ? 0 : look.rarity
+  const fx = useMotionFx(motion ? look.fx : undefined)
   const k = 176 / Math.max(hull.len, 150)
   const x0 = 100 - (hull.len * k) / 2
 
   return (
-    <div className={`ship-art r${look.rarity} tier${tier} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${portrait ? 'has-portrait' : ''} ${className}`}>
+    <div className={`ship-art r${look.rarity} tier${tier} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${portrait ? 'has-portrait' : ''} ${fx.on ? 'has-fx' : ''} ${className}`}>
       <svg viewBox="0 0 200 280" preserveAspectRatio="xMidYMid slice" aria-hidden>
         <defs>
           <linearGradient id={`sky${id}`} x1="0" y1="0" x2="0" y2="1">
@@ -224,8 +240,10 @@ export function ShipArt({ look, className = '', showKanji = true, frame = 'bust'
         <path className="art-wave" d="M-20,214 Q0,208 20,214 T60,214 T100,214 T140,214 T180,214 T220,214 T260,214" stroke="#9fe0ff" strokeOpacity="0.45" strokeWidth="1.5" fill="none" />
         <path className="art-wave slow" d="M-20,232 Q0,226 20,232 T60,232 T100,232 T140,232 T180,232 T220,232 T260,232" stroke="#9fe0ff" strokeOpacity="0.2" strokeWidth="1.2" fill="none" />
       </svg>
+      {fx.on && <FxBack fx={fx} />}
       {portrait && <PortraitImg portrait={portrait} frame={frame} className="art-portrait" />}
       {tier >= 2 && <Staging tier={tier} floor={frame === 'full' && !!portrait} />}
+      {fx.on && look.fx && <FxFront fx={fx} preset={look.fx} portrait={portrait} frame={frame} />}
     </div>
   )
 }
