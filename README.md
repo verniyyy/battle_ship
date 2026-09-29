@@ -9,14 +9,23 @@
 | `backend/` | Go (標準 `net/http` + `pgx`)。`game`: 戦闘ルールと CPU 思考、`meta`: 艦カード・ガチャ・海域・報酬・任務、`api`: REST API |
 | `frontend/` | React + TypeScript + Vite。本番は nginx で配信し `/api` を backend へプロキシ |
 | `docker-compose.yml` | PostgreSQL / backend / frontend |
+| `flake.nix` / `justfile` | 開発シェル（`just` を提供）とタスク定義 |
 
 プレイヤーはブラウザが生成した UUID（`X-Player-Id` ヘッダ）で識別し、プロフィールと対局を PostgreSQL に JSONB で保存します（サーバーはステートレス）。決着の一手と報酬の支払いは同じトランザクションで確定します。マイグレーションは backend 起動時に自動適用されます。
 
 ## 起動
 
+タスクは [just](https://github.com/casey/just) で管理しています。`just` は Nix flake の開発シェルに入っています（Docker は OS 側のものを使います）。
+
 ```sh
-docker compose up --build
+nix develop      # just が使えるシェルに入る
+just up          # イメージをビルドしてバックグラウンドで起動（docker compose up -d --build）
+just logs        # ログを追う（just logs backend のようにサービスも指定可）
+just down        # 停止
+just             # レシピ一覧
 ```
+
+Nix を使わない場合は `docker compose up -d --build` でも同じです。
 
 - アプリ: http://localhost:8080
 - API: http://localhost:8081 （例: `curl localhost:8081/api/catalog`）
