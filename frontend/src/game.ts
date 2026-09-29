@@ -143,8 +143,13 @@ export function describe(r: Result, game: GameView): LogLine {
     const sunk = (mine ? game.playerShips : game.enemyShips)[r.shipId]?.hp <= 0
     return line(`${actor}は${sunk ? '行動前に撃沈された' : '水柱に阻まれ動けなかった'}`, mine ? 'bad' : 'good')
   }
+  if (r.type === 'recon') {
+    const seen = r.revealed ?? []
+    if (!mine) return line(`敵の索敵機に${seen.map((v) => game.playerShips[v.shipId]?.name).join('・')}が発見された`, 'bad')
+    return line(`索敵機が${seen.map((v) => game.enemyShips[v.shipId]?.name).join('・')}を発見！（${seen.map((v) => posLabel(v.pos)).join('・')}）`, 'great')
+  }
   if (r.type === 'move') {
-    const contact = r.contact ? '　敵艦と接触！' : ''
+    const contact = (r.late ? '（航行中のため後手）' : '') + (r.contact ? '　敵艦と接触！' : '')
     if (r.hidden) return line(`${actor}、潜航して移動（${r.blocked ? '敵艦に阻まれ停止' : '位置不明'}）${contact}`, 'info')
     if (r.blocked)
       return line(

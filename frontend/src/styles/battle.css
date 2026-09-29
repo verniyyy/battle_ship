@@ -2204,6 +2204,14 @@
   animation: blink 1s infinite;
 }
 
+.sail-tag {
+  font-style: normal;
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: #6b5a1d;
+}
+
 .weather-chip {
   padding: 4px 10px;
   border-radius: 6px;

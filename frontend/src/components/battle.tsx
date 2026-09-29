@@ -38,6 +38,11 @@ export function ShipPlate({
           {dmg !== 'none' && dmg !== 'sunk' && <em className={`dmg-tag ${dmg}`}>{DAMAGE_LABEL[dmg]}</em>}
           {enemy && ship.spotted && ship.hp > 0 && <em className="spot-tag">追跡</em>}
           {ship.pinned && ship.hp > 0 && <em className="pin-tag">水柱</em>}
+          {ship.underWay && !ship.pinned && ship.hp > 0 && (
+            <em className="sail-tag" title="前のターンに移動した。続けて移動すると後攻になる">
+              航行中
+            </em>
+          )}
         </span>
         <span className={`hp-bar ${hpPct <= 34 ? 'low' : ''}`}>
           <i style={{ width: `${hpPct}%` }} />

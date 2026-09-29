@@ -64,6 +64,8 @@ export interface ShipView {
   gunRange: number
   moveRange: number
   pinned?: boolean
+  /** Moved last round: moving again resolves late. */
+  underWay?: boolean
   pos?: Pos
   spotted?: boolean
   spottedTurn?: number
@@ -91,7 +93,8 @@ export interface Sighting {
 
 export interface Result {
   side: Side
-  type: ActionType
+  /** 'recon' is a scout-plane report after a quiet spell; its shipId is -1. */
+  type: ActionType | 'recon'
   shipId: number
   skill?: SkillKind
   round: number

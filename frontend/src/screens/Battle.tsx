@@ -393,6 +393,20 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       await show({ kind: 'notice', side: r.side, text: line.text }, 900)
       return
     }
+    if (r.type === 'recon') {
+      audio.play(mine ? 'reveal' : 'alarm')
+      setLog((l) => [line, ...l])
+      for (const v of r.revealed ?? []) {
+        float(v.pos, mine ? '発見！' : '発見された！', mine ? 'found' : 'hurt')
+        if (mine) {
+          const p = cellPt(v.pos)
+          fx.sparkle(p.x, p.y, '#ff6b6b', 14, 90)
+        }
+      }
+      setGame((g) => patchMeta(g, r))
+      await show({ kind: 'notice', side: r.side, text: line.text }, 1100)
+      return
+    }
     if (r.type === 'move') {
       audio.play(r.hidden ? 'dive' : 'move')
       if (r.hidden && r.side === 'player' && from) fx.bubbles(from.x, from.y, 10)
@@ -792,7 +806,11 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
                   )}
                   <button className={`cmd-btn move ${mode === 'move' ? 'on' : ''}`} disabled={busy || !ship.moveTargets?.length} onClick={() => chooseMode('move')}>
                     <b>移動</b>
-                    <small>{ship.pinned ? '水柱で足止め中' : ship.class === 'submarine' ? `潜航 ${ship.moveRange}マス` : `縦横 ${ship.moveRange}マス`}</small>
+                    <small>
+                      {ship.pinned
+                        ? '水柱で足止め中'
+                        : `${ship.class === 'submarine' ? '潜航' : '縦横'} ${ship.moveRange}マス${ship.underWay ? '・後攻' : ''}`}
+                    </small>
                   </button>
                   <button
                     className={`cmd-btn skill ${mode === 'skill' ? 'on' : ''}`}
