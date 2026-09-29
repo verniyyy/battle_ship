@@ -32,12 +32,24 @@ export interface Portrait {
   h: number
   // Face box as fractions of the image: x0, y0, x1, y1. Frames busts and map tokens.
   face?: [number, number, number, number]
+  // The staged illustration (SR and up, where one has been painted): the
+  // same figure over a painted background with its effects, opaque.
+  staged?: Portrait
+}
+
+interface ManifestArt {
+  file: string
+  w: number
+  h: number
+  face?: [number, number, number, number] | null
 }
 
 interface PortraitManifest {
   version: 2
-  portraits: Record<string, { file: string; w: number; h: number; face?: [number, number, number, number] | null }>
+  portraits: Record<string, ManifestArt & { staged?: ManifestArt }>
 }
+
+const artOf = (p: ManifestArt): Portrait => ({ src: `${PORTRAITS}/${p.file}`, w: p.w, h: p.h, face: p.face ?? undefined })
 
 export interface Packs {
   legacy: boolean
@@ -82,7 +94,7 @@ export function AssetProvider({ children }: { children: ReactNode }) {
       audio.legacyBgm = !!legacy
       const art = new Map<string, Portrait>()
       for (const [id, p] of Object.entries(portraits?.portraits ?? {})) {
-        art.set(id, { src: `${PORTRAITS}/${p.file}`, w: p.w, h: p.h, face: p.face ?? undefined })
+        art.set(id, { ...artOf(p), staged: p.staged && artOf(p.staged) })
       }
       setPacks({ legacy: !!legacy, ui: !!ui, portraits: art, ready: true })
     })

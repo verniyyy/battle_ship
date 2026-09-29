@@ -156,22 +156,61 @@ function palette(look: Look) {
 }
 
 // motion plays the card's motion effect (Card.fx) over the art; for the
-// large showcases only, where it is worth the frames.
+// large showcases only, where it is worth the frames. staged shows the
+// card's staged illustration instead, where one exists (also showcases).
 export function ShipArt({
   look,
   className = '',
   showKanji = true,
   frame = 'bust',
   motion = false,
+  staged = false,
 }: {
   look: Look
   className?: string
   showKanji?: boolean
   frame?: Frame
   motion?: boolean
+  staged?: boolean
+}) {
+  const portrait = portraitOf(look, useAssets())
+  if (staged && portrait?.staged) return <StagedArt look={look} art={portrait.staged} motion={motion} className={className} />
+  return <SceneArt look={look} portrait={portrait} className={className} showKanji={showKanji} frame={frame} motion={motion} />
+}
+
+// A staged illustration fills the box on its own: its background and
+// effects are painted in, so none of the drawn seascape or rarity staging
+// goes with it. Motion effects play only in front (the back layer is
+// hidden under the opaque art), without light on the figure: the mask
+// would be the whole picture, not her.
+function StagedArt({ look, art, motion, className }: { look: Look; art: Portrait; motion: boolean; className: string }) {
+  const fx = useMotionFx(motion ? look.fx : undefined)
+  const style = art.face ? { objectPosition: `${((art.face[0] + art.face[2]) / 2) * 100}% ${art.face[1] * 100}%` } : undefined
+  return (
+    <div className={`ship-art staged r${look.rarity} ${fx.on ? 'has-fx' : ''} ${className}`}>
+      {fx.on && <FxBack fx={fx} />}
+      <img className="portrait-img staged-img" src={art.src} alt="" draggable={false} decoding="async" style={style} />
+      {fx.on && look.fx && <FxFront fx={fx} preset={look.fx} frame="full" />}
+    </div>
+  )
+}
+
+function SceneArt({
+  look,
+  portrait,
+  className,
+  showKanji,
+  frame,
+  motion,
+}: {
+  look: Look
+  portrait: Portrait | undefined
+  className: string
+  showKanji: boolean
+  frame: Frame
+  motion: boolean
 }) {
   const id = useId().replace(/:/g, '')
-  const portrait = portraitOf(look, useAssets())
   const hull = HULLS[look.cls]
   const pal = palette(look)
   const tier = look.enemy ? 0 : look.rarity
