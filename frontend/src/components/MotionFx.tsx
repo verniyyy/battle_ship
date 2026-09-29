@@ -354,7 +354,9 @@ export function jagged(a: [number, number], b: [number, number], spread: number,
   return [...jagged(a, mid, spread / 2, depth - 1), ...jagged(mid, b, spread / 2, depth - 1).slice(1)]
 }
 
-const WIND = 0.28 // horizontal drift of the rain per unit fall
+// Horizontal drift of the rain per unit fall. Negative: it slants down to
+// the left, the same way as the rain painted in the staged illustration.
+const WIND = -0.22
 
 class Storm implements Scene {
   private drops: Drop[] = []
@@ -368,7 +370,9 @@ class Storm implements Scene {
 
   private drop(v: View, y: number, front: boolean): Drop {
     const unit = v.h / 100
-    return { x: rand(-v.w * WIND, v.w), y, len: front ? rand(7, 12) * unit : rand(3, 6) * unit, v: front ? rand(150, 190) * unit : rand(90, 120) * unit, front }
+    // Spawn upwind far enough that the drift still covers the whole width.
+    const drift = v.h * WIND
+    return { x: rand(Math.min(0, -drift), v.w + Math.max(0, -drift)), y, len: front ? rand(7, 12) * unit : rand(3, 6) * unit, v: front ? rand(150, 190) * unit : rand(90, 120) * unit, front }
   }
 
   private strike(v: View, t: number) {
