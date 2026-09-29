@@ -13,7 +13,10 @@ const PORTRAITS = '/portraits'
 
 async function manifest<T>(url: string, version: number): Promise<T | undefined> {
   try {
-    const res = await fetch(url)
+    // Revalidate every time: re-importing art changes the manifest (and the
+    // ?v= of each file in it), and a heuristically cached copy would keep
+    // pointing at the old images.
+    const res = await fetch(url, { cache: 'no-cache' })
     // Dev servers answer unknown paths with index.html, so insist on real JSON.
     const json = res.ok ? await res.json() : undefined
     return json?.version === version ? json : undefined
