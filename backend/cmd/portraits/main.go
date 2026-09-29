@@ -79,14 +79,15 @@ type job struct {
 }
 
 const (
-	// Quality tags as the Illustrious family (WAI in particular) expects them.
-	quality = "masterpiece, best quality, amazing quality, very aesthetic, absurdres, newest"
+	// Quality tags as Animagine XL 4.0 expects them: score tags rather than
+	// the aesthetic ones, placed last after the content tags.
+	quality = "masterpiece, best quality, high score, great score, absurdres"
 	// The look of official gacha character art: clean lines and soft, even
 	// light, instead of the model's default dramatic contrast.
 	// Kept free of body parts: it goes into the hand and tile prompts too.
 	style = "official art, clean lineart, soft shading, soft lighting, even lighting"
 
-	flaws = "nsfw, nude, lowres, bad quality, worst quality, worst detail, sketch, censor, jpeg artifacts, blurry, " +
+	flaws = "nsfw, nude, lowres, worst quality, low quality, low score, bad score, average score, sketch, censor, jpeg artifacts, blurry, " +
 		"bad anatomy, bad hands, extra fingers, missing fingers, fused fingers, extra digits, bad feet, " +
 		"extra arms, extra legs, deformed, mutated, disfigured, long neck, " +
 		"broken weapon, bent weapon, extra weapon, multiple weapons, dual wielding, floating weapon, " +
@@ -128,37 +129,37 @@ func buildJob(c meta.Card, d design) job {
 		Name: c.Name,
 		Seed: cardSeed(c.ID),
 		Prompt: tags(
-			quality,
 			"1girl, solo, original",
 			d.Hair, d.Eyes, d.Face, d.Head, d.Outfit, d.Trim, rarityFinish[c.Rarity], d.Hands, d.Legs, d.Item,
 			pose, "full body, looking at viewer",
 			"beautiful detailed eyes, detailed clothes",
 			style,
 			background(d),
+			quality,
 		),
 		Negative:       negative,
 		DetailNegative: detailNegative,
 		FacePrompt: tags(
-			quality,
 			"1girl, solo, face focus",
 			d.Hair, d.Eyes, d.Face, d.Head,
 			"beautiful detailed eyes, detailed face, perfect face",
 			style,
+			quality,
 		),
 		HandPrompt: tags(
-			quality,
 			"hand focus",
 			d.Hands, d.Item, d.Outfit,
 			"detailed hands, perfect hands, five fingers",
 			style,
+			quality,
 		),
 		// A tile shows a piece of the costume or the weapon, rarely the face:
 		// no "1girl", which would invite a face into every tile.
 		TilePrompt: tags(
-			quality,
 			d.Outfit, d.Trim, rarityFinish[c.Rarity], d.Hands, d.Legs, d.Item, d.Hair,
 			"detailed clothes",
 			style,
+			quality,
 		),
 		Require: require,
 		Expect:  expect,

@@ -43,7 +43,7 @@ docker compose up --build
 
 絵はキャラクターデザインそのものに専念します。艤装（砲塔や機械）は崩れやすいので描かせず、艦種らしさは軍服・セーラー襟・錨の紋章などの衣装で表現し、武器は剣・槍・弓・傘など形の崩れにくいものを 1 人 1 つだけ持たせます。エフェクト（雷・炎・キラキラ）や背景（月・空）も描かせず、描かれてしまった候補は自動で落とします。
 
-GPU は [Google Colab](https://colab.research.google.com) の無料枠（T4）を使います。モデルは Illustrious 系の [WAI-illustrious v15](https://huggingface.co/John6666/wai-nsfw-illustrious-sdxl-v150-sdxl)（SDXL。ライセンスは FAIPL-1.0-SD で、生成画像の利用に制限はありません）。手元に必要なのは Go だけです。
+GPU は [Google Colab](https://colab.research.google.com) の無料枠（T4）を使います。モデルはアニメ系 SDXL の [Animagine XL 4.0](https://huggingface.co/cagliostrolab/animagine-xl-4.0)（ライセンスは CreativeML Open RAIL++-M）。手元に必要なのは Go だけです。
 
 1. キットを作る（`tools/portraitgen` の Python パッケージと、`backend/cmd/portraits/characters.go` のキャラ設定から組み立てたプロンプト）
 

@@ -1,7 +1,7 @@
 package main
 
-// design is a character sheet written in Danbooru tags, the vocabulary the
-// Illustrious family of anime models is trained on. Each field is a group of
+// design is a character sheet written in Danbooru tags, the vocabulary anime
+// SDXL models such as Animagine are trained on. Each field is a group of
 // comma-separated tags; they are split so the detail passes (face, hands,
 // clothing tiles) can be prompted with just what is visible in their crops.
 //

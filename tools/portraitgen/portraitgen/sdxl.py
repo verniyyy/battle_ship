@@ -33,11 +33,11 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from .detect import Box
 
-DEFAULT_MODEL = "John6666/wai-nsfw-illustrious-sdxl-v150-sdxl"
+DEFAULT_MODEL = "cagliostrolab/animagine-xl-4.0"
 # The stock SDXL VAE overflows in fp16 and decodes to black/NaN images.
 FP16_VAE = "madebyollin/sdxl-vae-fp16-fix"
-# Illustrious models burn in contrast and saturation above ~5.5; lower keeps
-# the soft, even rendering of official character art.
+# Animagine's recommended CFG; higher burns in contrast and saturation, lower
+# keeps the soft, even rendering of official character art.
 CFG = 5.0
 
 
@@ -78,7 +78,7 @@ class Generator:
         if vae_id:
             extra["vae"] = AutoencoderKL.from_pretrained(vae_id, torch_dtype=dtype)
         self.txt2img = StableDiffusionXLPipeline.from_pretrained(model_id, torch_dtype=dtype, add_watermarker=False, **extra)
-        # Euler a is what Illustrious-family models are tuned and sampled with.
+        # Euler a is the sampler Animagine is tuned and sampled with.
         self.txt2img.scheduler = EulerAncestralDiscreteScheduler.from_config(self.txt2img.scheduler.config)
         self.txt2img.vae.enable_tiling()  # hires decode would not fit a T4 otherwise
         self.txt2img.set_progress_bar_config(disable=True)
