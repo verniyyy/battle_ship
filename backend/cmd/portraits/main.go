@@ -71,8 +71,11 @@ type job struct {
 	TilePrompt string `json:"tile_prompt"`
 	// The detail passes see a crop, so they must not be told to avoid close-ups.
 	DetailNegative string `json:"detail_negative"`
-	// Tagger tags (underscored, as the tagger names them) a good render shows.
-	Expect []string `json:"expect"`
+	// Tagger tags (underscored, as the tagger names them) a good render shows:
+	// one of Require (the hair colour) or it is rejected; missing Expect
+	// tags (the item, which the tagger may overlook) only lower its rank.
+	Require []string `json:"require"`
+	Expect  []string `json:"expect"`
 }
 
 const (
@@ -109,10 +112,15 @@ func buildJob(c meta.Card, d design) job {
 	if !strings.Contains(pose, "standing") {
 		pose = "standing, " + pose
 	}
-	var expect []string
+	var require, expect []string
 	for t := range strings.SplitSeq(d.Check, ",") {
-		if t = strings.TrimSpace(t); t != "" {
-			expect = append(expect, strings.ReplaceAll(t, " ", "_"))
+		t = strings.ReplaceAll(strings.TrimSpace(t), " ", "_")
+		switch {
+		case t == "":
+		case strings.HasSuffix(t, "_hair"):
+			require = append(append(require, t), similarHair[t]...)
+		default:
+			expect = append(expect, t)
 		}
 	}
 	return job{
@@ -152,8 +160,26 @@ func buildJob(c meta.Card, d design) job {
 			"detailed clothes",
 			style,
 		),
-		Expect: expect,
+		Require: require,
+		Expect:  expect,
 	}
+}
+
+// similarHair lists the colours the tagger may name a hair colour by; a
+// render is only rejected for hair of a clearly different colour.
+var similarHair = map[string][]string{
+	"white_hair":      {"grey_hair"},
+	"grey_hair":       {"white_hair"},
+	"blue_hair":       {"light_blue_hair"},
+	"light_blue_hair": {"blue_hair", "white_hair"},
+	"aqua_hair":       {"green_hair", "blue_hair"},
+	"green_hair":      {"aqua_hair"},
+	"red_hair":        {"orange_hair"},
+	"orange_hair":     {"red_hair"},
+	"brown_hair":      {"light_brown_hair", "orange_hair"},
+	"blonde_hair":     {"light_brown_hair"},
+	"pink_hair":       {"red_hair"},
+	"purple_hair":     {"blue_hair"},
 }
 
 // background picks a plain background the figure stands out from, so the

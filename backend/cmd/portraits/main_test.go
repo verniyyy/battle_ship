@@ -55,8 +55,8 @@ func TestJobsAskForAFullBodyOnAPlainBackground(t *testing.T) {
 		if strings.Contains(j.TilePrompt, "1girl") {
 			t.Errorf("%s: tile prompt invites a face into every tile", j.ID)
 		}
-		if len(j.Expect) == 0 || strings.Contains(strings.Join(j.Expect, ","), " ") {
-			t.Errorf("%s: expect = %q", j.ID, j.Expect)
+		if len(j.Require) == 0 || !strings.HasSuffix(j.Require[0], "_hair") || strings.Contains(strings.Join(j.Expect, ","), " ") {
+			t.Errorf("%s: require = %q, expect = %q", j.ID, j.Require, j.Expect)
 		}
 		if strings.Contains(j.Prompt, ", ,") || strings.Contains(j.Prompt, "standing, standing") {
 			t.Errorf("%s: malformed prompt %q", j.ID, j.Prompt)

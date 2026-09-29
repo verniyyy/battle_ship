@@ -47,7 +47,8 @@ class Job:
     hand_prompt: str
     tile_prompt: str
     detail_negative: str
-    expect: list[str] = field(default_factory=list)  # tagger tags the design must show
+    require: list[str] = field(default_factory=list)  # tagger tags, one of which must show (hair colour)
+    expect: list[str] = field(default_factory=list)  # tagger tags the design should show (the item)
 
     @classmethod
     def load(cls, path: str | Path) -> list[Job]:
@@ -83,7 +84,7 @@ def explore(gen, jobs: list[Job], work: str | Path, want: int = 4, max_tries: in
     work = Path(work)
 
     def check(job: Job, seed: int, img: Image.Image, took: float) -> None:
-        report = qa.inspect(img, job.expect)
+        report = qa.inspect(img, job.expect, job.require)
         d = _cand_dir(work, job.id)
         img.save(d / f"{seed}.png")
         (d / f"{seed}.json").write_text(json.dumps(report.to_json()))

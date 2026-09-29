@@ -10,8 +10,9 @@ background, nothing else. Everything here enforces that:
   sky and the like, the background must be a flat colour, and nothing may
   float free of the figure (the segmenter keeps such bits and they end up
   in the cut-out)
-- design adherence: the tags the character sheet promises (hair colour,
-  weapon) are seen; this only ranks, as the tagger misses small props
+- design adherence: the hair colour the character sheet asks for is seen
+  (a wrong colour is rejected: the tagger reads hair reliably), and so is
+  the item (this only ranks, as the tagger misses small props)
 
 Candidates that pass are ranked by aesthetic score plus adherence, minus a
 penalty for crushed shadows (the harsh, high-contrast look).
@@ -235,7 +236,14 @@ def cleanliness_issues(image: Image.Image, mask: np.ndarray, tags: dict[str, flo
     return issues
 
 
-def inspect(image: Image.Image, expect: list[str] | None = None) -> Report:
+def require_issues(tags: dict[str, float], require: list[str]) -> list[str]:
+    """require holds alternatives (a hair colour and its near names); one must be seen."""
+    if not require or max(tags.get(t, 0) for t in require) >= EXPECT_THRESHOLD:
+        return []
+    return [f"not {require[0].replace('_', ' ')}"]
+
+
+def inspect(image: Image.Image, expect: list[str] | None = None, require: list[str] | None = None) -> Report:
     mask = detect.character_mask(image)
     body = mask_box(mask)
     issues = framing_issues(body, image.size)
@@ -246,6 +254,7 @@ def inspect(image: Image.Image, expect: list[str] | None = None) -> Report:
         issues.append("more than one character")
     tags = detect.tags(image)
     issues += cleanliness_issues(image, mask, tags)
+    issues += require_issues(tags, require or [])
 
     adh, missing = adherence(tags, expect or [])
     crushed = crushed_shadows(np.asarray(image.convert("RGB"), dtype=np.float32), mask)

@@ -171,3 +171,10 @@ def test_crushed_shadows_counts_the_figure_only():
     rgb[mask > 0] = 200
     rgb[50:150, 150:250] = 5
     assert qa.crushed_shadows(rgb, mask) == pytest.approx(0.2)
+
+
+def test_require_accepts_any_alternative():
+    tags = {"black_hair": 0.95, "grey_hair": 0.5}
+    assert qa.require_issues(tags, ["white_hair", "grey_hair"]) == []
+    assert qa.require_issues(tags, ["white_hair"]) == ["not white hair"]
+    assert qa.require_issues(tags, []) == []

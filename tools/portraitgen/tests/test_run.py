@@ -27,7 +27,7 @@ def test_best_ranks_accepted_candidates_and_takes_str_paths(tmp_path):
 
 def test_job_load_reads_expectations(tmp_path):
     job = {k: "x" for k in ("id", "name", "prompt", "negative", "face_prompt", "hand_prompt", "tile_prompt", "detail_negative")}
-    job |= {"seed": 1, "expect": ["blue_hair", "sword"], "unknown": 1}
+    job |= {"seed": 1, "require": ["blue_hair"], "expect": ["sword"], "unknown": 1}
     (tmp_path / "jobs.json").write_text(json.dumps({"jobs": [job]}))
     (loaded,) = run.Job.load(tmp_path / "jobs.json")
-    assert loaded.expect == ["blue_hair", "sword"]
+    assert (loaded.require, loaded.expect) == (["blue_hair"], ["sword"])
