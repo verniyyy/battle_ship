@@ -103,7 +103,7 @@ export function Dock({ onBack }: { onBack: () => void }) {
         )}
       </section>
 
-      <aside className="dock-detail">{selShip && selCard ? <ShipDetail ship={selShip} card={selCard} /> : <p className="panel-hint">艦を選択</p>}</aside>
+      <aside className="dock-detail">{selShip && selCard ? <ShipDetail key={selShip.uid} ship={selShip} card={selCard} /> : <p className="panel-hint">艦を選択</p>}</aside>
     </div>
   )
 }
