@@ -11,7 +11,9 @@
 //     the sea and hits the first surface ship in its path (1 torpedo). The wake
 //     gives the launcher's position away;
 //   - move: sail up to the class's move range along the ship's row or column
-//     (announced as ship + direction + distance, except for submarines);
+//     (announced as ship + direction + distance, except for submarines). Two
+//     ships never share a cell: a move stops just short of an enemy ship in
+//     its way;
 //   - skill: the ship's class skill, a limited number of times per battle;
 //   - ultimate: once the fleet gauge is full, a 3×3 all-fleet barrage anywhere.
 //
@@ -24,6 +26,8 @@
 // firing the main guns at the cell the fleet just shelled (spotting fire),
 // bombing a ship the fleet is tracking (precision bombing), and torpedoing a
 // ship at most two cells away (point-blank torpedo).
+//
+// Enemy ships side by side along a row or column always spot each other.
 //
 // Hits and scouting give the shooter intel on where enemy ships are, which
 // then follows their announced moves. Only a submarine can shake off contact,
@@ -160,6 +164,11 @@ func (p Pos) InBounds(size int) bool {
 // Adjacent reports whether q is one of the 8 cells surrounding p.
 func (p Pos) Adjacent(q Pos) bool {
 	return p.Dist(q) == 1
+}
+
+// Beside reports whether q is next to p along its row or column.
+func (p Pos) Beside(q Pos) bool {
+	return abs(p.Row-q.Row)+abs(p.Col-q.Col) == 1
 }
 
 // Dist is the Chebyshev (king-move) distance.
@@ -583,9 +592,16 @@ type Result struct {
 	Revealed []Sighting `json:"revealed,omitempty"`
 
 	// Move fields. Hidden moves (submarines) carry no direction or distance.
+	// Distance is how far the ship actually sailed: Blocked moves stop short
+	// of the enemy ship in the way, possibly without leaving their cell.
 	Direction Direction `json:"direction,omitempty"`
 	Distance  int       `json:"distance,omitempty"`
 	Hidden    bool      `json:"hidden,omitempty"`
+	Blocked   bool      `json:"blocked,omitempty"`
+
+	// Contact marks that the action left enemy ships side by side, which
+	// spots them to each other.
+	Contact bool `json:"contact,omitempty"`
 
 	// The acting side's combo and gauge after the action.
 	Combo int `json:"combo"`
@@ -710,6 +726,7 @@ func NewState(player, cpu *Board, maxTurns int, ai AI, weather Weather) *State {
 		AI:       ai,
 	}
 	st.syncWeather()
+	st.sense(0)
 	return st
 }
 

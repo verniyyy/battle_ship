@@ -2,6 +2,7 @@ package game
 
 import (
 	"math/rand/v2"
+	"slices"
 )
 
 // Hint says at least one enemy ship was within R cells of Pos.
@@ -424,12 +425,14 @@ func (st *State) randomMove(side Side, rng *rand.Rand) (Action, bool) {
 	return Action{ActionMove, id, ts[rng.IntN(len(ts))]}, true
 }
 
-// RandomPlacement places n ships on distinct random cells of a size×size sea.
-func RandomPlacement(rng *rand.Rand, size, n int) []Pos {
-	cells := rng.Perm(size * size)[:n]
-	out := make([]Pos, n)
-	for i, c := range cells {
-		out[i] = Pos{c / size, c % size}
+// RandomPlacement places n ships on distinct random cells of a size×size sea,
+// keeping clear of the cells in avoid (the other fleet).
+func RandomPlacement(rng *rand.Rand, size, n int, avoid ...Pos) []Pos {
+	var free []Pos
+	for _, c := range rng.Perm(size * size) {
+		if p := (Pos{c / size, c % size}); !slices.Contains(avoid, p) {
+			free = append(free, p)
+		}
 	}
-	return out
+	return free[:min(n, len(free))]
 }

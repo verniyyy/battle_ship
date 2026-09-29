@@ -3,6 +3,7 @@ package game
 import (
 	"errors"
 	"math/rand/v2"
+	"slices"
 	"testing"
 )
 
@@ -283,6 +284,83 @@ func TestIntelFollowsMovesUntilASubDives(t *testing.T) {
 	}
 }
 
+func TestMoveStopsShortOfAnEnemyShip(t *testing.T) {
+	// The destroyer sails east from (2,0) toward (2,3); an enemy sits on (2,2).
+	st := fleetGame(t, []Spec{dd}, []Spec{bb}, []Pos{{2, 0}}, []Pos{{2, 2}})
+	res := apply(t, st, SidePlayer, Action{ActionMove, 0, Pos{2, 3}})
+	if got := st.Boards[SidePlayer].Ships[0].Pos; got != (Pos{2, 1}) {
+		t.Fatalf("destroyer ended on %v, want (2,1) just short of the enemy", got)
+	}
+	if !res.Blocked || res.Direction != East || res.Distance != 1 {
+		t.Fatalf("result %+v, want a blocked 1-cell move east", res)
+	}
+	if seen, ok := st.Intel[SidePlayer]["0"]; !ok || seen.Pos != (Pos{2, 2}) || !res.Contact {
+		t.Fatal("running into the enemy must spot it")
+	}
+	if seen, ok := st.Intel[SideCPU]["0"]; !ok || seen.Pos != (Pos{2, 1}) {
+		t.Fatalf("the enemy must spot the destroyer beside it, got %v", seen)
+	}
+}
+
+func TestBlockedMoveStaysOffFriendlyShips(t *testing.T) {
+	// A friendly battleship on (2,1) and an enemy on (2,2): nowhere to stop.
+	st := fleetGame(t, []Spec{dd, bb}, []Spec{ss}, []Pos{{2, 0}, {2, 1}}, []Pos{{2, 2}})
+	res := apply(t, st, SidePlayer, Action{ActionMove, 0, Pos{2, 3}})
+	if got := st.Boards[SidePlayer].Ships[0].Pos; got != (Pos{2, 0}) || !res.Blocked || res.Distance != 0 {
+		t.Fatalf("destroyer on %v (%+v), want it held at (2,0)", got, res)
+	}
+}
+
+func TestMoveIntoAnEnemyThatArrivedFirst(t *testing.T) {
+	st := fleetGame(t, []Spec{dd}, []Spec{bb}, []Pos{{0, 2}}, []Pos{{3, 0}})
+	st.Resolve(map[Side]Action{SidePlayer: {ActionMove, 0, Pos{3, 2}}, SideCPU: {ActionMove, 0, Pos{3, 1}}}, rng())
+	p, c := st.Boards[SidePlayer].Ships[0].Pos, st.Boards[SideCPU].Ships[0].Pos
+	if p == c || p != (Pos{3, 2}) || c != (Pos{3, 1}) {
+		t.Fatalf("player %v cpu %v", p, c)
+	}
+	st.Resolve(map[Side]Action{SidePlayer: {ActionMove, 0, Pos{3, 0}}, SideCPU: {ActionAttack, 0, Pos{1, 1}}}, rng())
+	if p := st.Boards[SidePlayer].Ships[0].Pos; p != (Pos{3, 2}) {
+		t.Fatalf("destroyer passed through the battleship to %v", p)
+	}
+}
+
+func TestShipsSideBySideSpotEachOther(t *testing.T) {
+	st := fleetGame(t, []Spec{dd, bb}, []Spec{ss, bb}, []Pos{{0, 0}, {4, 4}}, []Pos{{1, 0}, {3, 3}})
+	if seen, ok := st.Intel[SidePlayer]["0"]; !ok || seen.Pos != (Pos{1, 0}) {
+		t.Fatal("a submarine right beside the destroyer must be spotted from the start")
+	}
+	if _, ok := st.Intel[SidePlayer]["1"]; ok {
+		t.Fatal("a diagonal neighbour is not beside the ship")
+	}
+	if len(st.PlayerView().EnemyShips) != 2 || st.PlayerView().EnemyShips[0].Pos == nil {
+		t.Fatal("the spotted submarine must show in the player view")
+	}
+	// Diving to a cell no enemy is beside shakes off contact again.
+	apply(t, st, SideCPU, Action{ActionMove, 0, Pos{1, 1}})
+	if _, ok := st.Intel[SidePlayer]["0"]; ok {
+		t.Fatal("diving clear of the destroyer must shake off contact")
+	}
+	res := apply(t, st, SideCPU, Action{ActionMove, 1, Pos{3, 4}})
+	if !res.Contact {
+		t.Fatal("sailing beside an enemy ship is a contact")
+	}
+	if seen := st.Intel[SidePlayer]["1"]; seen.Pos != (Pos{3, 4}) {
+		t.Fatalf("intel %v, want the battleship beside (4,4)", seen)
+	}
+}
+
+func TestRandomPlacementAvoidsTheOtherFleet(t *testing.T) {
+	r := rng()
+	taken := RandomPlacement(r, 5, 20)
+	for i := 0; i < 50; i++ {
+		for _, p := range RandomPlacement(r, 5, 5, taken...) {
+			if slices.Contains(taken, p) {
+				t.Fatalf("placed on the other fleet's cell %v", p)
+			}
+		}
+	}
+}
+
 func TestInitiativeFasterFirstTorpedoesLast(t *testing.T) {
 	st := newGame(t, []Pos{{0, 0}, {4, 4}, {0, 4}}, []Pos{{2, 2}, {3, 3}, {4, 0}})
 	r := rng()
@@ -392,11 +470,12 @@ func TestAIAlwaysLegalAndGamesEnd(t *testing.T) {
 	for i := 0; i < 300; i++ {
 		size := 5 + i%3
 		pf, cf := fleets[i%len(fleets)], fleets[(i+1)%len(fleets)]
-		p, err := NewBoard(size, pf, RandomPlacement(r, size, len(pf)))
+		pp := RandomPlacement(r, size, len(pf))
+		p, err := NewBoard(size, pf, pp)
 		if err != nil {
 			t.Fatal(err)
 		}
-		c, err := NewBoard(size, cf, RandomPlacement(r, size, len(cf)))
+		c, err := NewBoard(size, cf, RandomPlacement(r, size, len(cf), pp...))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -414,6 +493,13 @@ func TestAIAlwaysLegalAndGamesEnd(t *testing.T) {
 				acts[side] = a
 			}
 			st.Resolve(acts, r)
+			for _, a := range st.Boards[SidePlayer].Ships {
+				for _, b := range st.Boards[SideCPU].Ships {
+					if a.Alive() && b.Alive() && a.Pos == b.Pos {
+						t.Fatalf("game %d round %d: ships share %v", i, round, a.Pos)
+					}
+				}
+			}
 		}
 	}
 }

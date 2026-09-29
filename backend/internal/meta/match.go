@@ -34,7 +34,7 @@ func NewMatch(p *Profile, stageID string, placements []game.Pos, rng *rand.Rand)
 		return nil, err
 	}
 	enemies := stage.EnemySpecs()
-	cpu, err := game.NewBoard(stage.Size, enemies, game.RandomPlacement(rng, stage.Size, len(enemies)))
+	cpu, err := game.NewBoard(stage.Size, enemies, game.RandomPlacement(rng, stage.Size, len(enemies), placements...))
 	if err != nil {
 		return nil, err
 	}

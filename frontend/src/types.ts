@@ -109,6 +109,8 @@ export interface Result {
   direction?: Direction
   distance?: number
   hidden?: boolean
+  blocked?: boolean
+  contact?: boolean
   combo: number
   gauge: number
 }

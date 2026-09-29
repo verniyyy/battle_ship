@@ -144,8 +144,14 @@ export function describe(r: Result, game: GameView): LogLine {
     return line(`${actor}は${sunk ? '行動前に撃沈された' : '水柱に阻まれ動けなかった'}`, mine ? 'bad' : 'good')
   }
   if (r.type === 'move') {
-    if (r.hidden) return line(`${actor}、潜航して移動（位置不明）`, 'info')
-    return line(`${actor}、${DIRECTION[r.direction!]}へ${r.distance}マス航行`, 'info')
+    const contact = r.contact ? '　敵艦と接触！' : ''
+    if (r.hidden) return line(`${actor}、潜航して移動（${r.blocked ? '敵艦に阻まれ停止' : '位置不明'}）${contact}`, 'info')
+    if (r.blocked)
+      return line(
+        `${actor}、${DIRECTION[r.direction!]}へ${r.distance ? `${r.distance}マス進み` : '進めず'}敵艦の手前で停止${contact}`,
+        'info',
+      )
+    return line(`${actor}、${DIRECTION[r.direction!]}へ${r.distance}マス航行${contact}`, 'info')
   }
   if (r.revealed !== undefined || r.scanned) {
     const n = r.revealed?.length ?? 0

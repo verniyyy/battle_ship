@@ -45,9 +45,10 @@ func simulate(stage Stage, n int, kite bool, seed uint64) simResult {
 	res := simResult{specials: map[game.Special]int{}}
 	for i := 0; i < n; i++ {
 		fleet := simFleet(stage)
-		p, _ := game.NewBoard(stage.Size, fleet, game.RandomPlacement(r, stage.Size, len(fleet)))
+		placements := game.RandomPlacement(r, stage.Size, len(fleet))
+		p, _ := game.NewBoard(stage.Size, fleet, placements)
 		enemies := stage.EnemySpecs()
-		c, _ := game.NewBoard(stage.Size, enemies, game.RandomPlacement(r, stage.Size, len(enemies)))
+		c, _ := game.NewBoard(stage.Size, enemies, game.RandomPlacement(r, stage.Size, len(enemies), placements...))
 		st := game.NewState(p, c, stage.MaxTurns, game.AI{Level: stage.AI}, rollWeather(r))
 		for st.Status == game.StatusInProgress {
 			a := st.Decide(game.SidePlayer, r)

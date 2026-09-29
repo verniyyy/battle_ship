@@ -65,7 +65,8 @@ function patchMeta(g: GameView, r: Result): GameView {
   // A torpedo wake gives the launcher away.
   if (!mine && r.origin) own((s) => ({ ...s, pos: r.origin, spotted: true }))
   if (r.type === 'move') {
-    if (mine) own((s) => ({ ...s, pos: r.target }))
+    // The server settles where a blocked move stopped; a dive shows up with the round's final state.
+    if (mine) own((s) => (r.hidden || !s.pos ? s : { ...s, pos: shift(s.pos, r.direction, r.distance ?? 0) }))
     else
       own((s) =>
         r.hidden ? { ...s, pos: undefined, spotted: false } : s.pos && s.spotted ? { ...s, pos: shift(s.pos, r.direction, r.distance ?? 0) } : s,

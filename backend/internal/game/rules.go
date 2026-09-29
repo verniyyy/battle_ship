@@ -130,12 +130,15 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 		st.launch(side, ship, &res, ActionTorpedo, "", t, torpedo(100), rng)
 
 	case ActionMove:
+		dest, blocked := st.sail(side, ship, t)
+		res.Blocked = blocked
 		if sp.Class == Submarine {
 			res.Hidden = true
 		} else {
-			res.Direction, res.Distance = direction(ship.Pos, t)
+			res.Direction, _ = direction(ship.Pos, t)
+			res.Distance = ship.Pos.Dist(dest)
 		}
-		ship.Pos = t
+		ship.Pos = dest
 
 	case ActionSkill:
 		ship.Skill--
@@ -187,6 +190,7 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 	st.LastGun[side] = lastGun
 	st.score(side, &res)
 	st.learn(res)
+	res.Contact = st.sense(res.Round)
 	st.History = append(st.History, res)
 	st.observe(res)
 	st.checkEnd(side)
@@ -225,6 +229,47 @@ func (st *State) launch(side Side, ship *Ship, res *Result, t ActionType, kind S
 		}
 		res.Paths = append(res.Paths, path)
 	}
+}
+
+// sail steers ship toward t one cell at a time. Two ships never share a
+// cell, so it stops short of the first enemy ship in its way, on the last
+// cell no friendly ship holds, and reports that it was blocked.
+func (st *State) sail(side Side, ship *Ship, t Pos) (Pos, bool) {
+	own, enemy := st.Boards[side], st.Boards[side.Opponent()]
+	d, n := direction(ship.Pos, t)
+	stop := ship.Pos
+	for i := 1; i <= n; i++ {
+		c := shift(ship.Pos, d, i)
+		if enemy.shipAt(c) != nil {
+			return stop, true
+		}
+		if own.shipAt(c) == nil {
+			stop = c
+		}
+	}
+	return stop, false
+}
+
+// sense lets enemy ships side by side along a row or column spot each other.
+// It reports whether either side made a new contact.
+func (st *State) sense(turn int) bool {
+	found := false
+	spot := func(side Side, s *Ship) {
+		k := key(s.ID)
+		if seen, ok := st.Intel[side][k]; !ok || seen.Pos != s.Pos {
+			found = true
+		}
+		st.Intel[side][k] = Sighting{ShipID: s.ID, Pos: s.Pos, Turn: turn}
+	}
+	for _, a := range st.Boards[SidePlayer].Ships {
+		for _, b := range st.Boards[SideCPU].Ships {
+			if a.Alive() && b.Alive() && a.Pos.Beside(b.Pos) {
+				spot(SidePlayer, b)
+				spot(SideCPU, a)
+			}
+		}
+	}
+	return found
 }
 
 // waterColumns pins every surface ship next to a battleship shell that missed.
