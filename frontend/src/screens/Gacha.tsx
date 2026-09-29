@@ -157,7 +157,7 @@ export function Gacha({ onBack }: { onBack: () => void }) {
           <section className="banner-art">
             {feat && (
               <div className="banner-feature" key={feat.id}>
-                <ShipArt look={lookOfCard(feat)} showKanji={false} frame="full" />
+                <ShipArt look={lookOfCard(feat)} showKanji={false} frame="full" motion staged />
                 <div className="banner-copy">
                   <RarityBadge r={feat.rarity} />
                   <b>{feat.name}</b>

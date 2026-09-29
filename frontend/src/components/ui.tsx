@@ -64,6 +64,7 @@ export function CardView({
   stars,
   size = 'md',
   fresh,
+  motion,
   className = '',
   onClick,
   children,
@@ -73,6 +74,8 @@ export function CardView({
   stars?: number
   size?: 'xs' | 'sm' | 'md' | 'lg'
   fresh?: boolean
+  // Plays the card's motion effect; see ShipArt.
+  motion?: boolean
   className?: string
   onClick?: (e: MouseEvent<HTMLElement>) => void
   children?: ReactNode
@@ -80,7 +83,7 @@ export function CardView({
   const Tag = onClick ? 'button' : 'div'
   return (
     <Tag className={`card card-${size} r${look.rarity} ${className}`} onClick={onClick} type={onClick ? 'button' : undefined}>
-      <ShipArt look={look} />
+      <ShipArt look={look} motion={motion} />
       <span className="card-shine" />
       <span className="card-top">
         <RarityBadge r={look.rarity} />

@@ -50,6 +50,7 @@ export function Dock({ onBack }: { onBack: () => void }) {
                   level={s.level}
                   stars={s.stars}
                   size="sm"
+                  motion
                   className={s.uid === sel ? 'picked' : ''}
                   onClick={() => {
                     audio.play('tap')
