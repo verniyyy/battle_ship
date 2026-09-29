@@ -27,7 +27,20 @@ export function Home({ go, onResume }: { go: (s: Scene) => void; onResume?: () =
   const sec = profile ? profile.ships.find((s) => s.uid === profile.secretary) ?? profile.ships[0] : undefined
   const secCard = sec ? card(sec.card) : undefined
 
+  // A one-off gesture on the figure, layered over its CSS breathing on the
+  // translate property, which the idle animation leaves free.
+  const gesture = (kind: 'hop' | 'nod') => {
+    const img = artRef.current?.querySelector<HTMLElement>('.art-portrait')
+    if (!img?.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const frames: Keyframe[] =
+      kind === 'hop'
+        ? [{ translate: '0 0' }, { translate: '0 -4%', offset: 0.35 }, { translate: '0 0.6%', offset: 0.7 }, { translate: '0 0' }]
+        : [{ translate: '0 0' }, { translate: '0 1.2%', offset: 0.4 }, { translate: '0 0' }]
+    img.animate(frames, { duration: kind === 'hop' ? 520 : 600, easing: 'ease-out' })
+  }
+
   const say = (text: string) => {
+    gesture('nod')
     setLine(text)
     clearTimeout(lineTimer.current)
     lineTimer.current = window.setTimeout(() => setLine(null), 4200)
@@ -65,6 +78,7 @@ export function Home({ go, onResume }: { go: (s: Scene) => void; onResume?: () =
     if (!secCard) return
     const lines = [...secCard.home, secCard.intro]
     say(lines[Math.floor(Math.random() * lines.length)])
+    gesture('hop')
     audio.play('heart')
     const c = fx.center(artRef.current)
     fx.sparkle(c.x, c.y - 80, '#ff9ad5', 10, 90)

@@ -893,6 +893,40 @@ button.card:active {
   }
 }
 
+/* The figure itself breathes and sways from the feet. Breath and sway use
+   the separate scale and rotate properties on unrelated periods so they never
+   line up into a loop; translate is left free for the reactions Home plays
+   with the Web Animations API (a hop when poked, a nod when she speaks). */
+.secretary .art-portrait {
+  transform-origin: 50% 100%;
+  animation:
+    secretary-breathe 3.6s ease-in-out infinite,
+    secretary-sway 7.3s ease-in-out infinite;
+}
+
+@keyframes secretary-breathe {
+  50% {
+    scale: 1.006 1.014;
+  }
+}
+
+@keyframes secretary-sway {
+  0%,
+  100% {
+    rotate: -0.6deg;
+  }
+  50% {
+    rotate: 0.6deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .secretary,
+  .secretary .art-portrait {
+    animation: none;
+  }
+}
+
 .secretary-plate {
   position: absolute;
   left: 0;
