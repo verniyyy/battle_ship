@@ -267,6 +267,196 @@
   filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.55));
 }
 
+/* ---------- rarity staging (see ShipArt) ----------
+   --fx is the main light of a tier, --fx2 its accent. */
+
+.ship-art.tier1 {
+  --fx: var(--r1);
+  --fx2: var(--r1);
+}
+.ship-art.tier2 {
+  --fx: var(--r2);
+  --fx2: #fff3c4;
+}
+.ship-art.tier3 {
+  --fx: #ffd76a;
+  --fx2: var(--r3);
+}
+.ship-art.tier4 {
+  --fx: #fff6de;
+  --fx2: var(--r4);
+}
+
+.art-aura-core {
+  stop-color: var(--fx);
+  stop-opacity: 0.55;
+}
+.art-aura-mid {
+  stop-color: var(--fx);
+  stop-opacity: 0.18;
+}
+.art-aura-edge {
+  stop-color: var(--fx);
+  stop-opacity: 0;
+}
+.tier1 .art-aura-core {
+  stop-opacity: 0.35;
+}
+.tier1 .art-aura-mid {
+  stop-opacity: 0.1;
+}
+
+.art-halo-rays {
+  fill: var(--fx);
+  opacity: 0.16;
+  transform-origin: 100px 112px;
+  animation: spin 40s linear infinite;
+}
+.tier3 .art-halo-rays,
+.tier4 .art-halo-rays {
+  opacity: 0.24;
+}
+
+.art-ring {
+  fill: none;
+  stroke: var(--fx);
+  stroke-width: 1.4;
+  opacity: 0.55;
+  transform-origin: 100px 112px;
+  animation: spin 90s linear infinite;
+}
+.art-ring.outer {
+  stroke: var(--fx2);
+  stroke-width: 1;
+  opacity: 0.45;
+  animation-direction: reverse;
+  animation-duration: 140s;
+}
+.art-ring-point {
+  fill: var(--fx);
+  stroke: none;
+}
+.art-ring.outer .art-ring-point {
+  fill: var(--fx2);
+}
+
+/* rim light that follows the cut-out's edge */
+.tier2 .art-portrait {
+  filter: drop-shadow(0 0 1.2cqw color-mix(in srgb, var(--fx) 70%, transparent)) drop-shadow(0 0 10px rgba(0, 0, 0, 0.5));
+}
+.tier3 .art-portrait,
+.tier4 .art-portrait {
+  filter: drop-shadow(0 0 0.8cqw var(--fx2)) drop-shadow(0 0 2.5cqw color-mix(in srgb, var(--fx) 80%, transparent))
+    drop-shadow(0 0 10px rgba(0, 0, 0, 0.45));
+}
+
+.art-staging {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.art-floor {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: -4%;
+  height: 14%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--fx) 65%, transparent), transparent);
+  mix-blend-mode: screen;
+}
+
+.art-mote {
+  position: absolute;
+  width: calc(3.2cqw * var(--s) + 3px);
+  aspect-ratio: 1;
+  margin: -1cqw 0 0 -1cqw;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, #fff, var(--fx) 45%, transparent);
+  opacity: 0;
+  animation: mote-rise 4.2s ease-in-out infinite;
+}
+.art-mote.alt {
+  background: radial-gradient(closest-side, #fff, var(--fx2) 45%, transparent);
+}
+.art-mote.star {
+  width: calc(6cqw * var(--s) + 5px);
+  border-radius: 0;
+  background: #fff;
+  clip-path: polygon(50% 0, 58% 42%, 100% 50%, 58% 58%, 50% 100%, 42% 58%, 0 50%, 42% 42%);
+  filter: drop-shadow(0 0 3px var(--fx));
+  animation-name: mote-twinkle;
+  animation-duration: 3.4s;
+}
+
+@keyframes mote-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(4cqh) scale(0.6);
+  }
+  30%,
+  60% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10cqh) scale(1);
+  }
+}
+
+@keyframes mote-twinkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.3) rotate(0deg);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1) rotate(45deg);
+  }
+}
+
+/* UR: a prismatic sheen drifting across the whole art, figure included */
+.art-holo {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(125deg, transparent 25%, #ff7ae0 36%, #4fd5ff 46%, #fff35c 55%, #5cff8a 63%, transparent 74%);
+  background-size: 300% 300%;
+  mix-blend-mode: overlay;
+  opacity: 0.6;
+  animation: holo-drift 6s ease-in-out infinite alternate;
+}
+
+@keyframes holo-drift {
+  from {
+    background-position: 100% 100%;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+/* tiny cards keep just the aura and rim light */
+@container (max-width: 90px) {
+  .art-staging {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .art-halo-rays,
+  .art-ring,
+  .art-mote,
+  .art-holo {
+    animation: none;
+  }
+  .art-mote {
+    opacity: 0.8;
+  }
+}
+
 /* small cards show little more than the face */
 .card-xs .ship-art {
   --face-h: 0.3;

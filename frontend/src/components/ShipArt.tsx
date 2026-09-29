@@ -1,6 +1,12 @@
 // Card art: a themed seascape with, in front of it, the card's generated
 // character portrait (see theme.portraitOf) or, failing that, a procedural
 // ship silhouette, so every card has art without an asset pack.
+//
+// Rarity shows in the staging around the figure rather than in the portrait,
+// which is generated without effects (they come out mangled): from R up an
+// aura behind the figure, from SR light rays, rim light and rising motes,
+// from SSR a compass-rose halo, and at UR a second halo and a holographic
+// sheen.
 import { useId, type CSSProperties, type ReactNode } from 'react'
 import { CLASS_INFO, type Look } from '../game'
 import { portraitOf, useAssets, type Portrait } from '../theme'
@@ -153,12 +159,12 @@ export function ShipArt({ look, className = '', showKanji = true, frame = 'bust'
   const portrait = portraitOf(look, useAssets())
   const hull = HULLS[look.cls]
   const pal = palette(look)
-  const rays = look.rarity >= 3 || look.boss
+  const tier = look.enemy ? 0 : look.rarity
   const k = 176 / Math.max(hull.len, 150)
   const x0 = 100 - (hull.len * k) / 2
 
   return (
-    <div className={`ship-art r${look.rarity} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${portrait ? 'has-portrait' : ''} ${className}`}>
+    <div className={`ship-art r${look.rarity} tier${tier} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${portrait ? 'has-portrait' : ''} ${className}`}>
       <svg viewBox="0 0 200 280" preserveAspectRatio="xMidYMid slice" aria-hidden>
         <defs>
           <linearGradient id={`sky${id}`} x1="0" y1="0" x2="0" y2="1">
@@ -174,12 +180,17 @@ export function ShipArt({ look, className = '', showKanji = true, frame = 'bust'
             <stop offset="0" stopColor={pal.sea1} />
             <stop offset="1" stopColor={pal.sea2} />
           </linearGradient>
+          <radialGradient id={`aura${id}`}>
+            <stop offset="0" className="art-aura-core" />
+            <stop offset="0.45" className="art-aura-mid" />
+            <stop offset="1" className="art-aura-edge" />
+          </radialGradient>
           <filter id={`glow${id}`} x="-20%" y="-50%" width="140%" height="200%">
             <feGaussianBlur stdDeviation="3" />
           </filter>
         </defs>
         <rect width="200" height="280" fill={`url(#sky${id})`} />
-        {rays && (
+        {look.boss && (
           <g className="art-rays" style={{ transformOrigin: '140px 96px' }}>
             {Array.from({ length: 12 }, (_, i) => (
               <path key={i} d="M140,96 L260,80 L260,112 Z" fill={pal.orb} opacity="0.13" transform={`rotate(${i * 30} 140 96)`} />
@@ -187,6 +198,10 @@ export function ShipArt({ look, className = '', showKanji = true, frame = 'bust'
           </g>
         )}
         <circle cx="140" cy="96" r="64" fill={`url(#orb${id})`} className="art-orb" />
+        {tier >= 1 && <ellipse cx="100" cy="112" rx="96" ry="120" fill={`url(#aura${id})`} className="art-aura" />}
+        {tier >= 2 && <Rays n={tier >= 3 ? 16 : 10} />}
+        {tier >= 3 && <Compass r={74} className="art-ring" />}
+        {tier >= 4 && <Compass r={92} className="art-ring outer" />}
         {showKanji && (
           <text x="16" y="120" className="art-kanji" fill="#fff" opacity="0.1" fontSize="110">
             {look.enemy ? '敵' : CLASS_INFO[look.cls].kanji}
@@ -210,6 +225,79 @@ export function ShipArt({ look, className = '', showKanji = true, frame = 'bust'
         <path className="art-wave slow" d="M-20,232 Q0,226 20,232 T60,232 T100,232 T140,232 T180,232 T220,232 T260,232" stroke="#9fe0ff" strokeOpacity="0.2" strokeWidth="1.2" fill="none" />
       </svg>
       {portrait && <PortraitImg portrait={portrait} frame={frame} className="art-portrait" />}
+      {tier >= 2 && <Staging tier={tier} floor={frame === 'full' && !!portrait} />}
+    </div>
+  )
+}
+
+// Light rays fanning out from behind the figure.
+function Rays({ n }: { n: number }) {
+  const w = 180 / n
+  return (
+    <g className="art-halo-rays">
+      {Array.from({ length: n }, (_, i) => (
+        <path key={i} d={`M100,112 L300,${112 - w} L300,${112 + w} Z`} transform={`rotate(${(i * 360) / n} 100 112)`} />
+      ))}
+    </g>
+  )
+}
+
+// A compass rose ring, the naval stand-in for a saint's halo.
+function Compass({ r, className }: { r: number; className: string }) {
+  const ticks = Array.from({ length: 32 }, (_, i) => {
+    const a = (i * Math.PI) / 16
+    const len = i % 4 === 0 ? 9 : i % 2 === 0 ? 5 : 3
+    const [c, s] = [Math.cos(a), Math.sin(a)]
+    return <path key={i} d={`M${100 + c * r},${112 + s * r} L${100 + c * (r - len)},${112 + s * (r - len)}`} />
+  })
+  const points = [0, 1, 2, 3].map((i) => {
+    const a = (i * Math.PI) / 2 - Math.PI / 2
+    const [c, s] = [Math.cos(a), Math.sin(a)]
+    const [pc, ps] = [Math.cos(a + Math.PI / 2), Math.sin(a + Math.PI / 2)]
+    const tip = r + 12
+    return <path key={i} className="art-ring-point" d={`M${100 + c * tip},${112 + s * tip} L${100 + c * r + pc * 5},${112 + s * r + ps * 5} L${100 + c * r - pc * 5},${112 + s * r - ps * 5} Z`} />
+  })
+  return (
+    <g className={className}>
+      <circle cx="100" cy="112" r={r} />
+      <circle cx="100" cy="112" r={r - 12} strokeDasharray="2 4" />
+      {ticks}
+      {points}
+    </g>
+  )
+}
+
+// Motes spread along both sides, mostly clear of the face; fixed so a card
+// looks the same on every render.
+const MOTES: [number, number, number, number][] = [
+  // left %, top %, delay s, size (relative)
+  [8, 70, 0, 1],
+  [88, 58, 1.1, 0.8],
+  [16, 38, 2.3, 0.7],
+  [80, 82, 0.6, 1.1],
+  [92, 30, 3.0, 0.9],
+  [5, 50, 1.7, 0.6],
+  [70, 92, 2.7, 0.7],
+  [24, 88, 0.3, 0.9],
+  [95, 70, 3.6, 0.6],
+  [12, 18, 1.4, 0.8],
+  [84, 12, 2.0, 0.7],
+  [30, 62, 3.3, 0.5],
+  [74, 45, 0.9, 0.5],
+  [2, 84, 2.5, 1.0],
+]
+
+// The layer in front of the figure: motes, a lit floor under a full figure
+// and, at UR, a holographic sheen.
+function Staging({ tier, floor }: { tier: number; floor: boolean }) {
+  const n = tier >= 4 ? 14 : tier >= 3 ? 10 : 6
+  return (
+    <div className="art-staging" aria-hidden>
+      {floor && <i className="art-floor" />}
+      {tier >= 4 && <i className="art-holo" />}
+      {MOTES.slice(0, n).map(([x, y, d, s], i) => (
+        <i key={i} className={`art-mote ${i % 3 === 0 ? 'star' : ''} ${i % 2 ? 'alt' : ''}`} style={{ left: `${x}%`, top: `${y}%`, animationDelay: `${d}s`, ['--s' as string]: s }} />
+      ))}
     </div>
   )
 }
