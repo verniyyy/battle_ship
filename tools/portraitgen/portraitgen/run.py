@@ -77,6 +77,8 @@ def best(work: str | Path, card: str) -> int | None:
 def explore(gen, jobs: list[Job], work: str | Path, want: int = 4, max_tries: int = 16, seed_offset: int = 0, steps: int = 28, cfg: float = CFG, log=print) -> None:
     """Render until each card has want accepted candidates (or max_tries renders).
 
+    Only candidates in this run's seed range count, so a new seed_offset
+    renders new candidates even when earlier ones were already accepted.
     Inspection (CPU) of one render overlaps the next render (GPU); the count
     of accepted candidates therefore lags by one, which costs at most one
     extra candidate per card.
@@ -100,10 +102,12 @@ def explore(gen, jobs: list[Job], work: str | Path, want: int = 4, max_tries: in
             d = _cand_dir(work, job.id)
             d.mkdir(parents=True, exist_ok=True)
             emb = gen.embed(job.prompt, job.negative)
-            for i in range(max_tries):
-                if sum(r["ok"] for _, r in candidates(work, job.id)) >= want:
+            # Only this run's seeds count towards want: candidates kept from
+            # an earlier seed_offset must not stop a new offset from rendering.
+            seeds = range(job.seed + seed_offset, job.seed + seed_offset + max_tries)
+            for seed in seeds:
+                if sum(r["ok"] for s, r in candidates(work, job.id) if s in seeds) >= want:
                     break
-                seed = job.seed + seed_offset + i
                 if (d / f"{seed}.json").exists():
                     continue
                 t = time.time()

@@ -31,3 +31,34 @@ def test_job_load_reads_expectations(tmp_path):
     (tmp_path / "jobs.json").write_text(json.dumps({"jobs": [job]}))
     (loaded,) = run.Job.load(tmp_path / "jobs.json")
     assert (loaded.require, loaded.expect) == (["blue_hair"], ["sword"])
+
+
+class _FakeGen:
+    def __init__(self):
+        self.seeds = []
+
+    def embed(self, prompt, negative):
+        return None
+
+    def render(self, emb, seed, width, height, steps=28, cfg=5.0):
+        self.seeds.append(seed)
+        return Image.new("RGB", (8, 8))
+
+
+class _Report:
+    ok, score, aesthetic, notes, issues = True, 0.5, 0.5, [], []
+
+    def to_json(self):
+        return {"ok": True, "issues": [], "notes": [], "aesthetic": 0.5, "score": 0.5}
+
+
+def test_explore_with_new_seed_offset_renders_despite_earlier_accepts(tmp_path, monkeypatch):
+    monkeypatch.setattr(run.qa, "inspect", lambda img, expect, require: _Report())
+    job = run.Job("bb_guren", "x", 100, *["x"] * 6)
+    for seed in (100, 101):
+        _candidate(tmp_path, "bb_guren", seed, True, 0.9)
+    gen = _FakeGen()
+    run.explore(gen, [job], tmp_path, want=2, max_tries=4, log=lambda *_: None)
+    assert gen.seeds == []  # this range already has enough
+    run.explore(gen, [job], tmp_path, want=2, max_tries=4, seed_offset=50, log=lambda *_: None)
+    assert gen.seeds == [150, 151, 152]  # one extra: inspection lags a render
