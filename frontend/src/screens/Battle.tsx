@@ -185,7 +185,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
   const float = (at: Pos, text: string, kind: Float['kind'], tier = 0) => {
     const id = ++floatSeq.current
     setFloats((f) => [...f, { id, at, text, kind, tier }])
-    window.setTimeout(() => mounted.current && setFloats((f) => f.filter((x) => x.id !== id)), 1400)
+    window.setTimeout(() => mounted.current && setFloats((f) => f.filter((x) => x.id !== id)), kind === 'sunk' ? 2400 : 1400)
   }
 
   useEffect(() => {
@@ -530,11 +530,11 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       await wait(350)
       if (mine) {
         fx.confetti(40, ['#ffd24a', '#fff', '#ff9a3c'])
-        await show({ kind: 'banner', text: '撃沈！！', sub: names, tone: 'gold' }, 1000)
+        await show({ kind: 'banner', text: '撃沈！！', sub: names, tone: 'gold' }, 1700)
         const left = after.enemyShips.filter((s) => s.hp > 0).length
         if (left === 1 && after.status !== 'finished') await show({ kind: 'banner', text: '敵艦 残り1隻！', sub: '一気に畳みかけろ！', tone: 'blue' }, 900)
       } else {
-        await show({ kind: 'banner', text: '轟沈…', sub: names, tone: 'red' }, 1000)
+        await show({ kind: 'banner', text: '轟沈…', sub: names, tone: 'red' }, 1600)
       }
     }
     if (mine && r.gauge >= 100 && game.gauge < 100 && r.type !== 'ultimate') {

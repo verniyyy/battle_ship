@@ -821,14 +821,13 @@
 
 .float-text.sunk {
   font-family: var(--serif);
-  font-size: 44px;
-  color: #fff;
-  padding: 0 12px;
-  background: linear-gradient(180deg, #ff5a4e, #9c1a10);
-  border: 3px solid #fff;
-  border-radius: 8px;
-  text-shadow: 0 2px 4px #000;
-  animation: float-sunk 1.4s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+  font-size: 48px;
+  color: #ff6048;
+  -webkit-text-stroke: 1px rgba(0, 0, 0, 0.6);
+  text-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.6),
+    0 0 12px rgba(0, 0, 0, 0.8);
+  animation: float-sunk 2.4s cubic-bezier(0.2, 1.4, 0.4, 1) both;
 }
 
 .float-text.dmg.t1 {
@@ -1048,18 +1047,19 @@
 @keyframes float-sunk {
   0% {
     opacity: 0;
-    transform: scale(2.5) rotate(12deg);
+    transform: translateY(20px) scale(0.5);
   }
-  25% {
+  12% {
     opacity: 1;
-    transform: scale(1) rotate(-8deg);
+    transform: translateY(-10px) scale(1.15);
   }
   85% {
     opacity: 1;
+    transform: translateY(-30px) scale(1);
   }
   100% {
     opacity: 0;
-    transform: scale(1.1) rotate(-8deg);
+    transform: translateY(-36px) scale(1);
   }
 }
 
