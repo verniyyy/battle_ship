@@ -196,6 +196,23 @@ export function ShipArt({
             <stop offset="0" stopColor={pal.sea1} />
             <stop offset="1" stopColor={pal.sea2} />
           </linearGradient>
+          <linearGradient id={`skyglass${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor={pal.sky1} stopOpacity="0.55" />
+            <stop offset="0.55" stopColor={pal.sky1} stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id={`haze${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor={pal.orb} stopOpacity="0" />
+            <stop offset="1" stopColor={pal.orb} stopOpacity="0.28" />
+          </linearGradient>
+          <radialGradient id={`column${id}`}>
+            <stop offset="0" stopColor="#fff" stopOpacity="0.55" />
+            <stop offset="0.3" stopColor={pal.orb} stopOpacity="0.35" />
+            <stop offset="1" stopColor={pal.orb} stopOpacity="0" />
+          </radialGradient>
+          <linearGradient id={`deep${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#02060e" stopOpacity="0" />
+            <stop offset="1" stopColor="#02060e" stopOpacity="0.7" />
+          </linearGradient>
           <radialGradient id={`aura${id}`}>
             <stop offset="0" className="art-aura-core" />
             <stop offset="0.45" className="art-aura-mid" />
@@ -236,15 +253,47 @@ export function ShipArt({
             ))}
           </g>
         )}
-        <rect y="212" width="200" height="68" fill={`url(#sea${id})`} opacity="0.92" />
-        <path className="art-wave" d="M-20,214 Q0,208 20,214 T60,214 T100,214 T140,214 T180,214 T220,214 T260,214" stroke="#9fe0ff" strokeOpacity="0.45" strokeWidth="1.5" fill="none" />
-        <path className="art-wave slow" d="M-20,232 Q0,226 20,232 T60,232 T100,232 T140,232 T180,232 T220,232 T260,232" stroke="#9fe0ff" strokeOpacity="0.2" strokeWidth="1.2" fill="none" />
+        <Sea id={id} pal={pal} />
       </svg>
       {fx.on && <FxBack fx={fx} />}
       {portrait && <PortraitImg portrait={portrait} frame={frame} className="art-portrait" />}
       {tier >= 2 && <Staging tier={tier} floor={frame === 'full' && !!portrait} />}
       {fx.on && look.fx && <FxFront fx={fx} preset={look.fx} portrait={portrait} frame={frame} />}
     </div>
+  )
+}
+
+// Glints on the water: short streaks, longer and sparser towards the
+// viewer, gathered under the orb whose light the water reflects. Fixed so
+// every render of a card looks the same.
+const GLINTS: [number, number, number, number][] = (() => {
+  let seed = 7
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+  return Array.from({ length: 26 }, () => {
+    const depth = rnd() ** 1.6 // most glints far away, near the horizon
+    const y = 214 + depth * 60
+    const w = 2 + depth * 9
+    const x = rnd() < 0.55 ? 140 + (rnd() - 0.5) * (18 + depth * 40) : rnd() * 200
+    return [x - w / 2, y, w, rnd() * 3.2]
+  })
+})()
+
+// Water that reflects its sky: the sky's colour at the horizon deepening to
+// navy, a haze softening the horizon, the orb's light as a column on the
+// water and glints twinkling in perspective.
+function Sea({ id, pal }: { id: string; pal: ReturnType<typeof palette> }) {
+  return (
+    <g className="art-sea">
+      <rect y="186" width="200" height="27" fill={`url(#haze${id})`} />
+      <rect y="212" width="200" height="68" fill={`url(#sea${id})`} />
+      <rect y="212" width="200" height="68" fill={`url(#skyglass${id})`} />
+      <ellipse cx="140" cy="226" rx="24" ry="44" fill={`url(#column${id})`} className="art-column" />
+      <rect y="211.6" width="200" height="0.8" fill={pal.orb} opacity="0.45" />
+      {GLINTS.map(([x, y, w, d], i) => (
+        <rect key={i} className="art-glint" x={x} y={y} width={w} height={0.35 + (y - 212) / 120} rx="0.3" style={{ animationDelay: `${d}s` }} />
+      ))}
+      <rect y="236" width="200" height="44" fill={`url(#deep${id})`} />
+    </g>
   )
 }
 

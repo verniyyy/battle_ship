@@ -218,17 +218,29 @@
   animation: blink 2.4s ease-in-out infinite;
 }
 
-.art-wave {
-  animation: wave-slide 3s linear infinite;
+.art-glint {
+  fill: #fff;
+  opacity: 0;
+  animation: glint 3.2s ease-in-out infinite;
 }
 
-.art-wave.slow {
-  animation-duration: 5s;
+@keyframes glint {
+  0%,
+  100% {
+    opacity: 0.08;
+  }
+  50% {
+    opacity: 0.55;
+  }
 }
 
-@keyframes wave-slide {
-  to {
-    transform: translateX(-40px);
+.art-column {
+  animation: column-shimmer 4s ease-in-out infinite;
+}
+
+@keyframes column-shimmer {
+  50% {
+    opacity: 0.75;
   }
 }
 
@@ -515,11 +527,16 @@
   .art-halo-rays,
   .art-ring,
   .art-mote,
-  .art-holo {
+  .art-holo,
+  .art-glint,
+  .art-column {
     animation: none;
   }
   .art-mote {
     opacity: 0.8;
+  }
+  .art-glint {
+    opacity: 0.4;
   }
 }
 
