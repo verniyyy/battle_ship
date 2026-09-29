@@ -342,12 +342,12 @@
 
 /* rim light that follows the cut-out's edge */
 .tier2 .art-portrait {
-  filter: drop-shadow(0 0 1.2cqw color-mix(in srgb, var(--fx) 70%, transparent)) drop-shadow(0 0 10px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 0 1.2cqw color-mix(in srgb, var(--fx) 50%, transparent)) drop-shadow(0 0 10px rgba(0, 0, 0, 0.5));
 }
 .tier3 .art-portrait,
 .tier4 .art-portrait {
-  filter: drop-shadow(0 0 0.8cqw var(--fx2)) drop-shadow(0 0 2.5cqw color-mix(in srgb, var(--fx) 80%, transparent))
-    drop-shadow(0 0 10px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 0 0.6cqw color-mix(in srgb, var(--fx2) 55%, transparent))
+    drop-shadow(0 0 2cqw color-mix(in srgb, var(--fx) 45%, transparent)) drop-shadow(0 0 10px rgba(0, 0, 0, 0.5));
 }
 
 .art-staging {
@@ -461,16 +461,19 @@
   mix-blend-mode: screen;
 }
 .fx-light.fx-sun {
+  /* soft-light warms and brightens midtones only, so the figure keeps its
+     contrast instead of washing out */
+  mix-blend-mode: soft-light;
   background:
-    linear-gradient(180deg, rgba(255, 214, 130, 0.5), rgba(255, 200, 90, 0.08) 45%, transparent 70%),
-    linear-gradient(115deg, transparent 43%, rgba(255, 246, 220, 0.85) 50%, transparent 57%);
+    linear-gradient(180deg, rgba(255, 200, 110, 0.35), transparent 50%),
+    linear-gradient(115deg, transparent 44%, rgba(255, 240, 200, 0.9) 50%, transparent 56%);
   background-size:
     100% 100%,
     300% 100%;
   animation: fx-sheen 6s ease-in-out infinite;
 }
 .fx-light.fx-storm {
-  background: linear-gradient(var(--fx-angle, 100deg), rgba(242, 236, 255, 0.95), rgba(179, 136, 255, 0.5) 45%, rgba(120, 90, 200, 0.15) 80%);
+  background: linear-gradient(var(--fx-angle, 100deg), rgba(236, 226, 255, 0.8), rgba(179, 136, 255, 0.45) 45%, rgba(120, 90, 200, 0.12) 80%);
 }
 
 @keyframes fx-sheen {

@@ -235,10 +235,10 @@ class Sun implements Scene {
   private glints: Glint[] = []
   private nextGlint = 0.5
   private gold = glowSprite('rgba(255,207,74,0.85)')
-  private white = glowSprite('rgba(255,244,214,0.9)')
+  private pale = glowSprite('rgba(255,222,140,0.7)')
 
   resize(v: View) {
-    const n = Math.round((v.w * v.h) / 2600)
+    const n = Math.round((v.w * v.h) / 4000)
     this.motes = Array.from({ length: n }, (_, i) => this.mote(v, Math.random() * v.h, i % 4 === 0))
   }
 
@@ -262,8 +262,8 @@ class Sun implements Scene {
     const sy = v.h * 0.3
     const sr = Math.max(v.w, v.h) * (0.55 + 0.05 * pulse)
     const sun = back.createRadialGradient(sx, sy, 0, sx, sy, sr)
-    sun.addColorStop(0, `rgba(255,236,170,${0.42 + 0.14 * pulse})`)
-    sun.addColorStop(0.35, `rgba(255,190,70,${0.16 + 0.06 * pulse})`)
+    sun.addColorStop(0, `rgba(255,214,120,${0.2 + 0.08 * pulse})`)
+    sun.addColorStop(0.35, `rgba(255,180,60,${0.09 + 0.04 * pulse})`)
     sun.addColorStop(1, 'rgba(255,160,40,0)')
     back.globalCompositeOperation = 'lighter'
     back.fillStyle = sun
@@ -278,9 +278,9 @@ class Sun implements Scene {
       // Motes fade in from the bottom and out near the top.
       const life = Math.min(1, (v.h - m.y) / (v.h * 0.25), m.y / (v.h * 0.2))
       const ctx = m.front ? front : back
-      ctx.globalAlpha = Math.max(0, tw * life * (m.front ? 0.75 : 0.9))
+      ctx.globalAlpha = Math.max(0, tw * life * (m.front ? 0.45 : 0.7))
       const s = m.r * (m.front ? 5 : 4)
-      ctx.drawImage(m.front ? this.white : this.gold, x - s / 2, m.y - s / 2, s, s)
+      ctx.drawImage(m.front ? this.pale : this.gold, x - s / 2, m.y - s / 2, s, s)
     }
     front.globalAlpha = back.globalAlpha = 1
 
@@ -300,7 +300,7 @@ class Sun implements Scene {
 
   light(t: number) {
     // A warm light on her that swells with the sun; the sheen is CSS.
-    return { on: 0.35 + 0.12 * Math.sin(t * 1.3), flash: 0 }
+    return { on: 0.6 + 0.2 * Math.sin(t * 1.3), flash: 0 }
   }
 }
 
@@ -434,7 +434,7 @@ class Storm implements Scene {
   light(t: number) {
     const level = this.bolt ? strikeLevel(t - this.bolt.born) : 0
     // Light comes from the bolt's side of her.
-    return { on: level, flash: level * 0.35, angle: this.bolt && this.bolt.side < 0 ? 100 : 260 }
+    return { on: level * 0.85, flash: level * 0.28, angle: this.bolt && this.bolt.side < 0 ? 100 : 260 }
   }
 }
 
