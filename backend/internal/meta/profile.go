@@ -101,6 +101,7 @@ type Profile struct {
 	ID           string          `json:"id"`
 	Name         string          `json:"name"`
 	Comment      string          `json:"comment,omitempty"` // one line shown on the admiral's card
+	Unnamed      bool            `json:"unnamed,omitempty"` // a new admiral who has yet to choose a name
 	Level        int             `json:"level"`
 	Exp          int             `json:"exp"`
 	Coins        int             `json:"coins"`
@@ -126,7 +127,7 @@ const (
 
 func NewProfile(id string, now time.Time) *Profile {
 	p := &Profile{
-		ID: id, Name: "提督", Level: 1, Coins: StartCoins, Gems: StartGems,
+		ID: id, Name: "提督", Unnamed: true, Level: 1, Coins: StartCoins, Gems: StartGems,
 		Stages: map[string]int{}, Achievements: map[string]bool{}, Created: now,
 	}
 	for _, c := range StarterCards {
@@ -297,7 +298,7 @@ func (p *Profile) Rename(name, comment string) error {
 	case !printable(name) || !printable(comment):
 		return fmt.Errorf("%w: control characters are not allowed", ErrInvalid)
 	}
-	p.Name, p.Comment = name, comment
+	p.Name, p.Comment, p.Unnamed = name, comment, false
 	return nil
 }
 

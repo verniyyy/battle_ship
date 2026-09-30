@@ -28,6 +28,7 @@ type ProfileView struct {
 	ID           string          `json:"id"`
 	Name         string          `json:"name"`
 	Comment      string          `json:"comment"`
+	Unnamed      bool            `json:"unnamed"`
 	Level        int             `json:"level"`
 	Exp          int             `json:"exp"`
 	NextExp      int             `json:"nextExp"`
@@ -54,7 +55,7 @@ type ProfileView struct {
 func (p *Profile) View(now time.Time) ProfileView {
 	p.rollDaily(now)
 	v := ProfileView{
-		ID: p.ID, Name: p.Name, Comment: p.Comment, Level: p.Level, Exp: p.Exp, NextExp: ExpToNext(p.Level),
+		ID: p.ID, Name: p.Name, Comment: p.Comment, Unnamed: p.Unnamed, Level: p.Level, Exp: p.Exp, NextExp: ExpToNext(p.Level),
 		Coins: p.Coins, Gems: p.Gems, Fleet: p.Fleet, FleetSlots: FleetSlots(p.Level),
 		Secretary: p.Secretary, Stages: p.Stages, TotalStars: p.TotalStars(), Endless: p.Endless,
 		Gacha: p.Gacha, PityLeft: PityPulls - p.Gacha.Pity, Login: p.Login, Daily: p.Daily,

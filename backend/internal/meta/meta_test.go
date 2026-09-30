@@ -143,8 +143,17 @@ func TestFleetAndTraining(t *testing.T) {
 
 func TestRename(t *testing.T) {
 	p := NewProfile("p", t0)
+	if !p.Unnamed {
+		t.Fatal("a new admiral should be asked for a name")
+	}
+	if err := p.Rename("   ", ""); !errors.Is(err, ErrInvalid) || !p.Unnamed {
+		t.Fatalf("a rejected first name registered the admiral: %v", err)
+	}
 	if err := p.Rename("  蒼海の提督  ", " よろしく "); err != nil || p.Name != "蒼海の提督" || p.Comment != "よろしく" {
 		t.Fatalf("rename: %v %q %q", err, p.Name, p.Comment)
+	}
+	if p.Unnamed {
+		t.Fatal("naming the admiral should register them")
 	}
 	for _, c := range []struct{ name, comment string }{
 		{"   ", ""},

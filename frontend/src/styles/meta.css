@@ -2811,3 +2811,31 @@ button.card:active {
   line-height: 1.6;
   opacity: 0.85;
 }
+
+/* ---------- enlistment (first name) ---------- */
+
+.enlist-screen {
+  display: grid;
+  place-items: center;
+}
+
+.enlist-card {
+  position: relative;
+  width: 640px;
+}
+
+.enlist-greet {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.enlist-greet b {
+  color: var(--gold-hi);
+}
+
+.enlist-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}

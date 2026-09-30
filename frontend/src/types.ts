@@ -287,6 +287,8 @@ export interface Profile {
   id: string
   name: string
   comment: string
+  /** A new admiral who has yet to register a name. */
+  unnamed: boolean
   level: number
   exp: number
   nextExp: number

@@ -288,9 +288,9 @@ function LoginDialog({
   )
 }
 
-const NAME_MAX = 12
+export const NAME_MAX = 12
 const COMMENT_MAX = 40
-const chars = (s: string) => [...s].length
+export const chars = (s: string) => [...s].length
 
 /** The admiral's card: name and one-line comment to edit, and a few facts. */
 function ProfileDialog({ profile, onClose }: { profile: Profile; onClose: () => void }) {

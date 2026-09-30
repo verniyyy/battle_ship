@@ -5,6 +5,7 @@ import { Stage } from './components/Stage'
 import { ResumeChoice, Toasts } from './components/ui'
 import { Battle } from './screens/Battle'
 import { Dock } from './screens/Dock'
+import { Enlist } from './screens/Enlist'
 import { Formation } from './screens/Formation'
 import { Gacha } from './screens/Gacha'
 import { Home } from './screens/Home'
@@ -17,6 +18,8 @@ import type { MatchResponse, Stage as StageT } from './types'
 
 export type Scene =
   | { name: 'title' }
+  // A new admiral registers a name before reaching the harbour.
+  | { name: 'enlist' }
   | { name: 'home' }
   | { name: 'map'; area?: number }
   // Opened from the sortie screen, the formation screen returns there.
@@ -35,7 +38,7 @@ export function App() {
   const [resumable, setResumable] = useState<MatchResponse | null>(null)
   const [choosing, setChoosing] = useState(false)
   const timers = useRef<number[]>([])
-  const { refresh, session, setProfile, notify } = useGame()
+  const { refresh, session, profile, setProfile, notify } = useGame()
 
   // Every scene change goes through a closing/opening shutter.
   const go = useCallback((next: Scene) => {
@@ -102,7 +105,8 @@ export function App() {
 
   return (
     <Stage>
-      {scene.name === 'title' && <Title onStart={() => go({ name: 'home' })} />}
+      {scene.name === 'title' && <Title onStart={() => go({ name: profile?.unnamed ? 'enlist' : 'home' })} />}
+      {scene.name === 'enlist' && <Enlist onDone={() => go({ name: 'home' })} />}
       {scene.name === 'home' && <Home go={go} resumable={resumable} onResume={onResume} />}
       {scene.name === 'map' && <StageMap area={scene.area} go={go} resumable={resumable} onResume={onResume} />}
       {scene.name === 'formation' && (
