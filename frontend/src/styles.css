@@ -819,6 +819,12 @@ p {
   transition: background 0.15s;
 }
 
+/* Tokens sharing a cell (a ship over a wreck) stack in place instead of
+   taking a grid row each. */
+.cell > * {
+  grid-area: 1 / 1;
+}
+
 .cell:hover {
   background: rgba(255, 255, 255, 0.06);
 }
