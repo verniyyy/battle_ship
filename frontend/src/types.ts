@@ -272,6 +272,9 @@ export interface OwnedShip {
   maxLevel: number
   nextExp: number
   trainCost: number
+  /** How far the current coins can train the ship, and what that costs. */
+  maxTrainLevel: number
+  maxTrainCost: number
 }
 
 export interface Mission {

@@ -115,12 +115,15 @@ function ShipDetail({ ship, card }: { ship: OwnedShip; card: Card }) {
   const [busy, setBusy] = useState(false)
   const artRef = useRef<HTMLDivElement>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
+  const maxRef = useRef<HTMLButtonElement>(null)
   if (!profile) return null
   const sk = SKILL_INFO[skillOf(card.class)]
   const capped = ship.level >= ship.maxLevel
   const afford = profile.coins >= ship.trainCost
+  // Worth a separate button only when it buys more than the one-level one does.
+  const maxGain = ship.maxTrainLevel - ship.level
 
-  const train = async () => {
+  const train = async (max: boolean) => {
     if (busy || capped) return
     if (!afford) {
       notify('資金（💰）が足りません', 'error')
@@ -128,15 +131,16 @@ function ShipDetail({ ship, card }: { ship: OwnedShip; card: Card }) {
     }
     setBusy(true)
     try {
-      const r = await api.train(ship.uid)
+      const r = await api.train(ship.uid, max)
       setProfile(r.profile)
       audio.play('coin', { pitch: 2 })
-      window.setTimeout(() => audio.play('star', { pitch: Math.min(ship.level, 20) / 2 }), 60)
+      window.setTimeout(() => audio.play('star', { pitch: Math.min(ship.level + r.levels, 20) / 2 }), 60)
       const c = fx.center(artRef.current)
-      fx.sparkle(c.x, c.y, card.color, 26, 160)
+      fx.sparkle(c.x, c.y, card.color, r.levels > 1 ? 44 : 26, 160)
       fx.ring(c.x, c.y, card.color, 180, 0.5)
-      const b = fx.center(btnRef.current)
+      const b = fx.center((max ? maxRef : btnRef).current)
       fx.sparkle(b.x, b.y, '#ffd24a', 10, 60)
+      if (r.levels > 1) notify(`${card.name} Lv.${ship.level} → Lv.${ship.level + r.levels}`, 'good')
     } catch (e) {
       notify((e as Error).message, 'error')
     } finally {
@@ -212,7 +216,7 @@ function ShipDetail({ ship, card }: { ship: OwnedShip; card: Card }) {
         <em>{CLASS_INFO[card.class].role}</em>
       </p>
       <div className="detail-actions">
-        <button ref={btnRef} className={`train-btn ${capped ? 'capped' : ''} ${afford ? '' : 'poor'}`} disabled={busy || capped} onClick={() => void train()}>
+        <button ref={btnRef} className={`train-btn ${capped ? 'capped' : ''} ${afford ? '' : 'poor'}`} disabled={busy || capped} onClick={() => void train(false)}>
           {capped ? (
             <>
               <b>レベル上限</b>
@@ -225,6 +229,17 @@ function ShipDetail({ ship, card }: { ship: OwnedShip; card: Card }) {
             </>
           )}
         </button>
+        {!capped && (
+          <button
+            ref={maxRef}
+            className={`train-btn train-max ${maxGain > 1 ? '' : 'poor'}`}
+            disabled={busy || maxGain <= 1}
+            onClick={() => void train(true)}
+          >
+            <b>最大強化{maxGain > 1 && ` Lv.${ship.maxTrainLevel}`}</b>
+            <small>{maxGain > 1 ? `💰 ${ship.maxTrainCost.toLocaleString()}` : ship.maxTrainLevel < ship.maxLevel ? '資金不足' : '―'}</small>
+          </button>
+        )}
         <button className="pill-btn ghost" disabled={profile.secretary === ship.uid} onClick={() => void makeSecretary()}>
           {profile.secretary === ship.uid ? '秘書艦' : '秘書艦に任命'}
         </button>

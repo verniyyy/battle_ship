@@ -77,7 +77,8 @@ export const api = {
   setFleet: (uids: string[]) => post<WithProfile>('/profile/fleet', { uids }),
   rename: (name: string, comment: string) => post<WithProfile>('/profile/name', { name, comment }),
   setSecretary: (uid: string) => post<WithProfile>('/profile/secretary', { uid }),
-  train: (uid: string) => post<WithProfile>(`/ships/${uid}/train`),
+  /** Buys one level, or with max as many as the coins allow. */
+  train: (uid: string, max = false) => post<WithProfile<{ levels: number }>>(`/ships/${uid}/train${max ? '?max=1' : ''}`),
   pull: (count: 1 | 10) => post<WithProfile<{ gains: Gain[] }>>('/gacha', { count }),
   claimMission: (id: string) => post<WithProfile<{ grant: Grant }>>(`/missions/${id}/claim`),
   claimAchievement: (id: string) => post<WithProfile<{ grant: Grant }>>(`/achievements/${id}/claim`),

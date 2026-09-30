@@ -2555,6 +2555,22 @@ button.card:active {
   font-size: 18px;
 }
 
+.train-max {
+  flex: 0.8;
+  color: #062a3a;
+  background: linear-gradient(180deg, #c9f6ff, var(--cyan) 45%, #1a8fb8);
+  border-color: #e6fbff;
+  box-shadow: 0 4px 0 #0b4a63;
+}
+
+.train-max b {
+  font-size: 15px;
+}
+
+.train-max:active:not(:disabled) {
+  box-shadow: 0 1px 0 #0b4a63;
+}
+
 .train-btn:active:not(:disabled) {
   transform: translateY(3px);
   box-shadow: 0 1px 0 #7a4f06;

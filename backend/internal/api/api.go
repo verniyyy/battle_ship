@@ -150,9 +150,15 @@ func (s *Server) rename(w http.ResponseWriter, r *http.Request, pid string) {
 	})
 }
 
+// train buys one level, or with ?max=1 as many as the coins allow.
 func (s *Server) train(w http.ResponseWriter, r *http.Request, pid string) {
+	levels := 1
+	if r.URL.Query().Get("max") == "1" {
+		levels = 0
+	}
 	s.updateProfile(w, r, pid, func(p *meta.Profile) (map[string]any, error) {
-		return map[string]any{}, p.Train(r.PathValue("uid"), s.now())
+		n, err := p.Train(r.PathValue("uid"), levels, s.now())
+		return map[string]any{"levels": n}, err
 	})
 }
 
