@@ -3,6 +3,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+# The build context has no .git, so the version comes from compose (see the justfile).
+ARG APP_VERSION
 RUN npm run build
 
 FROM nginx:1.29-alpine

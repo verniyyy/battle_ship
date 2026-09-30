@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { auth } from '../api'
+import { api, auth } from '../api'
 import { audio } from '../audio'
 import { Backdrop } from '../components/ui'
 import { fx } from '../fx'
@@ -28,12 +28,20 @@ export function Title({ onStart }: { onStart: () => void }) {
   const { session, profile, error, signOut, reloadSession } = useGame()
   const [problem] = useState(takeLoginProblem)
   const [busy, setBusy] = useState(false)
+  const [apiVersion, setApiVersion] = useState('…')
   const signedIn = !!session?.signedIn
   const loaded = ready && signedIn && (!!profile || !!error)
 
   useEffect(() => {
     const t = window.setInterval(() => fx.sparkle(200 + Math.random() * 880, 180 + Math.random() * 200, '#bfe9ff', 3, 40), 700)
     return () => clearInterval(t)
+  }, [])
+
+  useEffect(() => {
+    api.version().then(
+      (v) => setApiVersion(v.version),
+      () => setApiVersion('?'),
+    )
   }, [])
 
   const devLogin = async () => {
@@ -96,6 +104,9 @@ export function Title({ onStart }: { onStart: () => void }) {
         <a href="/privacy.html" target="_blank" rel="noopener" onClick={(e) => e.stopPropagation()}>
           プライバシーポリシー
         </a>
+        <span className="title-version">
+          web {__APP_VERSION__} ・ api {apiVersion}
+        </span>
       </footer>
     </div>
   )

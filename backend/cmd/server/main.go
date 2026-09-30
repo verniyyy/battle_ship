@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"math/rand/v2"
@@ -60,6 +61,9 @@ func run(log *slog.Logger) error {
 	}
 	log.Info("migrations applied")
 
+	ver := version()
+	log.Info("starting", "version", ver)
+
 	mux := http.NewServeMux()
 	authn := auth.New(authCfg, sessions, pg, log)
 	mux.Handle("/", api.New(pg, authn, log, rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())), time.Now).Handler())
@@ -72,6 +76,12 @@ func run(log *slog.Logger) error {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(map[string]string{"version": ver})
 	})
 
 	srv := &http.Server{
