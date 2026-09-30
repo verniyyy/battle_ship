@@ -499,12 +499,13 @@ class AudioEngine {
 
     // A single hall shared by everything gives the game one acoustic space.
     const reverb = ctx.createConvolver()
-    reverb.buffer = this.impulse(2, 2.2)
+    reverb.buffer = this.impulse(1.6, 2.6)
     const reverbHp = ctx.createBiquadFilter()
     reverbHp.type = 'highpass'
     reverbHp.frequency.value = 180
     const reverbOut = ctx.createGain()
-    reverbOut.gain.value = 0.9
+    // Kept well under the dry sound: a wetter hall smeared salvos into one long wash.
+    reverbOut.gain.value = 0.55
     // Summed to mono before the (stereo) hall: two convolutions instead of four.
     this.reverbIn = ctx.createGain()
     this.reverbIn.channelCount = 1
@@ -1962,7 +1963,11 @@ function seaEcho(ctx: BaseAudioContext, dest: AudioNode) {
   const input = ctx.createGain()
   input.channelCount = 1
   input.channelCountMode = 'explicit'
-  for (const [time, pan, fb] of [[0.19, -0.6, 0.42], [0.33, 0.6, 0.36]]) {
+  // Quiet, short-lived repeats: with more feedback a barrage's echoes piled up and droned on.
+  const ret = ctx.createGain()
+  ret.gain.value = 0.6
+  ret.connect(dest)
+  for (const [time, pan, fb] of [[0.19, -0.6, 0.22], [0.33, 0.6, 0.16]]) {
     const dl = ctx.createDelay(1)
     dl.delayTime.value = time
     const lp = ctx.createBiquadFilter()
@@ -1974,7 +1979,7 @@ function seaEcho(ctx: BaseAudioContext, dest: AudioNode) {
     p.pan.value = pan
     input.connect(dl)
     dl.connect(lp).connect(g).connect(dl)
-    lp.connect(p).connect(dest)
+    lp.connect(p).connect(ret)
   }
   return input
 }
