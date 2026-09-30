@@ -12,7 +12,7 @@
 | `docker-compose.yml` | PostgreSQL / backend / frontend |
 | `flake.nix` / `justfile` | 開発シェル（`just`・デプロイ用 CLI を提供）とタスク定義 |
 
-プレイヤーはブラウザが生成した UUID（`X-Player-Id` ヘッダ）で識別し、プロフィールと対局を PostgreSQL に JSONB で保存します（サーバーはステートレス）。決着の一手と報酬の支払いは同じトランザクションで確定します。マイグレーションは backend 起動時に自動適用されます。
+プレイヤーは Google アカウントでログインし（OpenID Connect）、署名付きのセッション Cookie で識別します。プロフィールと対局は PostgreSQL に JSONB で保存します（サーバーはステートレス）。決着の一手と報酬の支払いは同じトランザクションで確定します。マイグレーションは backend 起動時に自動適用されます。
 
 ## 起動
 
@@ -28,11 +28,13 @@ just             # レシピ一覧
 
 Nix を使わない場合は `docker compose up -d --build` でも同じです。
 
-- アプリ: http://localhost:8080
+- アプリ: http://localhost:8080 （タイトル画面の「開発用ログイン」で入れます）
 - API: http://localhost:8081 （例: `curl localhost:8081/api/catalog`）
 - PostgreSQL: `localhost:5432`（user / password / db はすべて `battleship`）
 
 データを消して最初からやり直す場合は `docker compose down -v`。
+
+ローカルでも Google ログインを試す場合は、下記「Google ログインの設定」で作った OAuth クライアントの承認済みリダイレクト URI に `http://localhost:8080/api/auth/google/callback` を追加し、リポジトリ直下の `.env`（git 管理外）に `GOOGLE_CLIENT_ID=...` と `GOOGLE_CLIENT_SECRET=...` を書いてから `just up` します。
 
 効果音と BGM は Web Audio で合成しているので、素材なしでも音が鳴ります。キャラ絵がない艦カードは SVG で描いた艦影を表示します。
 
@@ -109,10 +111,15 @@ cd backend && SIM=1 go test ./internal/meta -run Simulate -v
 
 ## API
 
-`/api/catalog` 以外はすべて `X-Player-Id: <UUID>` ヘッダが必要です。
+`/api/catalog` と `/api/auth/*` 以外はすべてログインが必要です（セッション Cookie がなければ 401）。
 
 | メソッド | パス | 説明 |
 | --- | --- | --- |
+| GET | `/api/auth/session` | ログイン状態 `{"signedIn":true,"email":"...","google":true,"dev":false}`（`google` / `dev` は使えるログイン方法） |
+| GET | `/api/auth/google/login?guest=<UUID>` | Google のログイン画面へリダイレクト。`guest` はログイン機能より前にこのブラウザで遊んでいたプレイヤー ID で、そのアカウントの初回ログイン時に進行状況を引き継ぐ |
+| GET | `/api/auth/google/callback` | Google からの戻り先。セッション Cookie を発行して `/` へ（失敗時は `/?login=cancelled\|expired\|failed`） |
+| POST | `/api/auth/logout` | ログアウト |
+| POST | `/api/auth/dev` | 開発用ログイン `{"guest":"<UUID>"}`（`DEV_LOGIN=1` のときだけ存在） |
 | GET | `/api/catalog` | 艦カード・敵・海域・ガチャ・任務などの静的データ |
 | GET | `/api/profile` | プロフィール（初回アクセスで作成） |
 | POST | `/api/profile/login` | ログインボーナス受取 |
@@ -166,10 +173,36 @@ just deploy-web      # frontend と Worker だけ
 | 設定 | 場所 |
 | --- | --- |
 | `DATABASE_URL`（Supabase Session pooler の URI + `?sslmode=require&pool_max_conns=3`） | Vercel の環境変数（Production, Secret） |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`（Google OAuth クライアント） | Vercel の環境変数（Production, Secret） |
+| `SESSION_SECRET`（セッション Cookie の署名鍵。32 文字以上のランダム値） | Vercel の環境変数（Production, Secret） |
+| `PUBLIC_URL`（`https://battleship.verniyyy.workers.dev`。Google からの戻り先と Cookie の `Secure` 判定に使う） | Vercel の環境変数（Production） |
 | `ORIGIN_SECRET`（Worker と Vercel の共有シークレット） | Vercel の環境変数、Cloudflare の Worker シークレット、Vercel WAF のカスタムルール「Only via edge proxy」の 3 か所 |
 | 転送先 URL・1 日の上限・レート制限 | `edge/wrangler.jsonc` |
 
-シークレットを入れ替えるときは 3 か所すべてを同じ値に更新します（`vercel env add ORIGIN_SECRET production --force`、`wrangler secret put ORIGIN_SECRET`、`vercel firewall rules` でルールを作り直して `vercel firewall publish`）。その後 `just deploy-api` で Vercel に反映します。
+`SESSION_SECRET` を入れ替えると全員がログアウトされます（進行状況は消えません）。
+
+`ORIGIN_SECRET` を入れ替えるときは 3 か所すべてを同じ値に更新します（`vercel env add ORIGIN_SECRET production --force`、`wrangler secret put ORIGIN_SECRET`、`vercel firewall rules` でルールを作り直して `vercel firewall publish`）。その後 `just deploy-api` で Vercel に反映します。
+
+### Google ログインの設定
+
+初回だけ [Google Cloud Console](https://console.cloud.google.com/) で OAuth クライアントを作ります（無料。請求先アカウントは不要）。
+
+1. プロジェクトを作成し、「Google Auth Platform」→「ブランディング」でアプリ名・サポートメールを設定（対象は「外部」）。スコープは既定の `openid` / `email` だけなので審査は不要です。「対象」でアプリを「本番環境」に公開すると、テストユーザー以外もログインできます
+2. 「クライアント」→「クライアントを作成」→ 種類「ウェブ アプリケーション」
+   - 承認済みの JavaScript 生成元: `https://battleship.verniyyy.workers.dev`
+   - 承認済みのリダイレクト URI: `https://battleship.verniyyy.workers.dev/api/auth/google/callback`（ローカルでも試すなら `http://localhost:8080/api/auth/google/callback` も）
+3. 表示されたクライアント ID とシークレット、新しい `SESSION_SECRET` を Vercel に登録して反映
+
+   ```sh
+   cd backend
+   vercel env add GOOGLE_CLIENT_ID production
+   vercel env add GOOGLE_CLIENT_SECRET production --sensitive
+   openssl rand -base64 48 | vercel env add SESSION_SECRET production --sensitive
+   echo https://battleship.verniyyy.workers.dev | vercel env add PUBLIC_URL production
+   cd .. && just deploy
+   ```
+
+ログインの仕組み: Authorization Code フロー（PKCE・state・nonce 付き）で Google から ID トークンを受け取り、Google の公開鍵で検証して `sub` をアカウントのキーにします（`accounts` テーブル）。セッションは DB を使わない HMAC 署名付き Cookie（30 日、使っていれば自動延長）です。Google アカウントの初回ログインでは、ログイン機能より前にそのブラウザで遊んでいた進行状況を引き継ぎます（ほかのアカウントに引き継がれていない場合のみ）。
 
 ## ローカル開発
 
@@ -179,7 +212,8 @@ docker compose up -d db
 
 # backend
 cd backend
-DATABASE_URL='postgres://battleship:battleship@localhost:5432/battleship?sslmode=disable' go run ./cmd/server
+DATABASE_URL='postgres://battleship:battleship@localhost:5432/battleship?sslmode=disable' \
+  SESSION_SECRET=local-dev-session-secret-not-for-production DEV_LOGIN=1 go run ./cmd/server
 go test ./...
 # ストアの結合テストは使い捨ての DB を指定したときだけ動く
 TEST_DATABASE_URL='postgres://...' go test ./internal/store
