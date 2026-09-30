@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { audio } from '../audio'
-import { CLASS_INFO, KANJI, rarityName, type Look } from '../game'
+import { CLASS_INFO, KANJI, rarityName, stageLabel, type Look } from '../game'
 import { anchors, useGame } from '../state'
 import { backdropUrl, portraitOf, useAssets, type Backdrop as BackdropName } from '../theme'
-import type { ShipClass } from '../types'
+import type { MatchResponse, ShipClass } from '../types'
 import { Scenery, type SceneryName } from './Scenery'
 import { PortraitImg, ShipArt } from './ShipArt'
 
@@ -217,6 +217,25 @@ export function TopBar({ title, en, onBack, right }: { title?: string; en?: stri
         <SoundToggle />
       </div>
     </header>
+  )
+}
+
+/** Tappable notice that an unfinished battle is waiting, and a way back into it. */
+export function ResumeBanner({ match, onResume, className = '' }: { match: MatchResponse | null; onResume?: () => void; className?: string }) {
+  if (!match || !onResume) return null
+  return (
+    <button
+      className={`resume-banner ${className}`}
+      onClick={() => {
+        audio.play('select')
+        onResume()
+      }}
+    >
+      <b>⚔ 交戦中の海域があります</b>
+      <span>
+        {stageLabel(match.stage)} {match.stage.name} ／ ターン {match.game.turn + 1} ― タップで戦闘に戻る
+      </span>
+    </button>
   )
 }
 

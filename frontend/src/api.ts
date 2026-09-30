@@ -82,6 +82,12 @@ export const api = {
 
   createGame: (stageId: string, placements: Pos[]) => post<MatchResponse>('/games', { stageId, placements }),
   getGame: (id: string) => request<MatchResponse>(`/games/${id}`),
+  /** The unfinished battle to go back to, or null when there is none. */
+  currentGame: () =>
+    request<MatchResponse>('/games/current').catch((e) => {
+      if (e instanceof ApiError && e.status === 404) return null
+      throw e
+    }),
   act: (id: string, type: ActionType, shipId: number, target: Pos) =>
     post<ActionResponse>(`/games/${id}/actions`, { type, shipId, target }),
   openChest: (id: string, index: number) => post<WithProfile<{ chest: Chest; reward: Reward }>>(`/games/${id}/chest`, { index }),

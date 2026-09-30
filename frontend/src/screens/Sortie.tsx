@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../api'
 import { audio } from '../audio'
 import { Board } from '../components/Board'
-import { Backdrop, CardView, ShipToken, TopBar } from '../components/ui'
+import { Backdrop, CardView, ResumeBanner, ShipToken, TopBar } from '../components/ui'
 import { fx } from '../fx'
 import { lookOfCard, stageLabel, usesLine } from '../game'
 import { useGame } from '../state'
@@ -10,11 +10,15 @@ import { posLabel, samePos, type MatchResponse, type Pos, type Stage } from '../
 
 export function Sortie({
   stage,
+  resumable,
+  onResume,
   onDeploy,
   onBack,
   onFormation,
 }: {
   stage: Stage
+  resumable: MatchResponse | null
+  onResume?: () => void
   onDeploy: (m: MatchResponse) => void
   onBack: () => void
   onFormation: () => void
@@ -84,6 +88,7 @@ export function Sortie({
     <div className="screen sortie-screen">
       <Backdrop scene="standby" />
       <TopBar title="出撃準備" en="DEPLOYMENT" onBack={onBack} />
+      <ResumeBanner match={resumable} onResume={onResume} className="floating" />
 
       <section className="fleet-list">
         <h2 className="panel-title">

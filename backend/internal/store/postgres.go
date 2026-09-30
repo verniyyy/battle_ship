@@ -190,6 +190,30 @@ func (p *Postgres) ListFinished(ctx context.Context, playerID string, limit int)
 	})
 }
 
+func (p *Postgres) CurrentMatch(ctx context.Context, playerID string) (string, *meta.Match, error) {
+	var (
+		id   string
+		data []byte
+	)
+	err := p.pool.QueryRow(ctx, `
+		SELECT id::text, state FROM games WHERE status = 'in_progress' AND player_id = $1
+		ORDER BY updated_at DESC LIMIT 1`, playerID).Scan(&id, &data)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil, ErrNotFound
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	var m meta.Match
+	if err := json.Unmarshal(data, &m); err != nil {
+		return "", nil, err
+	}
+	if !Usable(&m) {
+		return "", nil, ErrNotFound
+	}
+	return id, &m, nil
+}
+
 func scanMatch(row pgx.Row) (*meta.Match, error) {
 	var m meta.Match
 	if err := scanJSON(row, &m); err != nil {

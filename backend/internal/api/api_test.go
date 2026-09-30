@@ -97,6 +97,20 @@ func (m *memStore) ListFinished(context.Context, string, int) ([]store.Summary, 
 	return nil, nil
 }
 
+func (m *memStore) CurrentMatch(_ context.Context, pid string) (string, *meta.Match, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Games are numbered in creation order, which is good enough for "latest" here.
+	for n := m.n; n > 0; n-- {
+		id := fmt.Sprintf("g%d", n)
+		mt, err := m.load(id)
+		if err == nil && mt.PlayerID == pid && mt.Game.Status == game.StatusInProgress {
+			return id, mt, nil
+		}
+	}
+	return "", nil, store.ErrNotFound
+}
+
 func (m *memStore) Resolve(context.Context, auth.Identity, string) (string, error) {
 	return auth.NewPlayerID(), nil
 }
@@ -183,6 +197,22 @@ func TestGameFlow(t *testing.T) {
 	// Another admiral cannot see or play this match.
 	if code := do(t, ts, bob, "GET", "/api/games/"+created.ID, nil, nil); code != http.StatusNotFound {
 		t.Fatalf("foreign match: got %d", code)
+	}
+}
+
+// TestCurrentGame finds the battle to resume after a retreat, per admiral.
+func TestCurrentGame(t *testing.T) {
+	ts := newTestServer(t)
+	if code := do(t, ts, alice, "GET", "/api/games/current", nil, nil); code != http.StatusNotFound {
+		t.Fatalf("no battle yet: got %d", code)
+	}
+	var created, current matchResponse
+	do(t, ts, alice, "POST", "/api/games", createGameRequest{StageID: "1-1", Placements: placements}, &created)
+	if code := do(t, ts, alice, "GET", "/api/games/current", nil, &current); code != http.StatusOK || current.ID != created.ID {
+		t.Fatalf("current: status %d, id %q, want %q", code, current.ID, created.ID)
+	}
+	if code := do(t, ts, bob, "GET", "/api/games/current", nil, nil); code != http.StatusNotFound {
+		t.Fatalf("another admiral's battle: got %d", code)
 	}
 }
 

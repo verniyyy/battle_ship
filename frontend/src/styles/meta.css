@@ -1069,6 +1069,25 @@ button.card:active {
   opacity: 0.8;
 }
 
+/* On the sortie screens a compact banner sits in the top bar, beside 戻る. */
+.resume-banner.floating {
+  position: absolute;
+  top: 8px;
+  left: 124px;
+  max-width: 420px;
+  padding: 6px 14px;
+  z-index: 20;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+.resume-banner.floating b {
+  font-size: 14px;
+}
+
+.resume-banner.floating span {
+  font-size: 11px;
+}
+
 .sortie-btn {
   position: relative;
   height: 190px;

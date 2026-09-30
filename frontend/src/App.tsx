@@ -26,25 +26,6 @@ export type Scene =
   | { name: 'dock' }
   | { name: 'missions' }
 
-const SAVE_KEY = 'currentGameId'
-
-function saveGameId(id: string | null) {
-  try {
-    if (id) localStorage.setItem(SAVE_KEY, id)
-    else localStorage.removeItem(SAVE_KEY)
-  } catch {
-    /* storage unavailable */
-  }
-}
-
-function loadGameId() {
-  try {
-    return localStorage.getItem(SAVE_KEY)
-  } catch {
-    return null
-  }
-}
-
 const CURTAIN_MS = 380
 
 export function App() {
@@ -79,42 +60,42 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.signedIn])
 
+  // The server remembers the battle retreated from, so it can be resumed from
+  // the harbour or the sortie screens, on this device or another.
   useEffect(() => {
-    if (scene.name !== 'home') return
-    void refresh()
-    const id = loadGameId()
-    if (!id) return
+    if (scene.name === 'home') void refresh()
+    if (scene.name !== 'home' && scene.name !== 'map') return
     api
-      .getGame(id)
-      .then((m) => {
-        if (m.game.status === 'in_progress') setResumable(m)
-        else saveGameId(null)
-      })
-      .catch(() => saveGameId(null))
+      .currentGame()
+      .then(setResumable)
+      .catch(() => setResumable(null))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene.name])
 
   const startBattle = (match: MatchResponse, resumed = false) => {
-    saveGameId(match.id)
     setResumable(null)
     go({ name: 'battle', match, resumed })
   }
+  const onResume = resumable ? () => startBattle(resumable, true) : undefined
 
   return (
     <Stage>
       {scene.name === 'title' && <Title onStart={() => go({ name: 'home' })} />}
-      {scene.name === 'home' && <Home go={go} onResume={resumable ? () => startBattle(resumable, true) : undefined} />}
-      {scene.name === 'map' && <StageMap area={scene.area} go={go} />}
+      {scene.name === 'home' && <Home go={go} resumable={resumable} onResume={onResume} />}
+      {scene.name === 'map' && <StageMap area={scene.area} go={go} resumable={resumable} onResume={onResume} />}
       {scene.name === 'formation' && <Formation onBack={() => go({ name: 'home' })} />}
       {scene.name === 'sortie' && (
-        <Sortie stage={scene.stage} onDeploy={(m) => startBattle(m)} onBack={() => go({ name: 'map', area: scene.stage.area })} onFormation={() => go({ name: 'formation' })} />
+        <Sortie
+          stage={scene.stage}
+          resumable={resumable}
+          onResume={onResume}
+          onDeploy={(m) => startBattle(m)} onBack={() => go({ name: 'map', area: scene.stage.area })} onFormation={() => go({ name: 'formation' })} />
       )}
       {scene.name === 'battle' && (
         <Battle
           key={scene.match.id}
           initial={scene.match}
           resumed={scene.resumed}
-          onFinished={() => saveGameId(null)}
           go={go}
         />
       )}

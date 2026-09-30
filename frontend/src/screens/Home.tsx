@@ -3,11 +3,11 @@ import type { Scene } from '../App'
 import { api } from '../api'
 import { audio } from '../audio'
 import { ShipArt } from '../components/ShipArt'
-import { Backdrop, Badge, Modal, TopBar } from '../components/ui'
+import { Backdrop, Badge, Modal, ResumeBanner, TopBar } from '../components/ui'
 import { fx } from '../fx'
 import { lookOfCard, SKILL_INFO, SPECIAL_INFO, CLASS_INFO, TIPS, TORPEDO_INFO } from '../game'
 import { celebrateGrant, useGame } from '../state'
-import type { Catalog, GameSummary, Grant, Profile } from '../types'
+import type { Catalog, GameSummary, Grant, MatchResponse, Profile } from '../types'
 
 type Dialog = 'record' | 'rules' | 'login' | null
 
@@ -16,7 +16,7 @@ export function nextStage(cat: Catalog, p: Profile) {
   return open ?? null
 }
 
-export function Home({ go, onResume }: { go: (s: Scene) => void; onResume?: () => void }) {
+export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resumable: MatchResponse | null; onResume?: () => void }) {
   const { profile, catalog, card, setProfile, error, notify } = useGame()
   const [line, setLine] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
@@ -142,18 +142,7 @@ export function Home({ go, onResume }: { go: (s: Scene) => void; onResume?: () =
 
       {/* ---- main menu ---- */}
       <nav className="home-menu">
-        {onResume && (
-          <button
-            className="resume-banner"
-            onClick={() => {
-              audio.play('select')
-              onResume()
-            }}
-          >
-            <b>⚔ 交戦中の海域があります</b>
-            <span>タップで戦闘に戻る</span>
-          </button>
-        )}
+        <ResumeBanner match={resumable} onResume={onResume} />
         <button className="sortie-btn" onClick={() => nav({ name: 'map', area: next?.area })}>
           <span className="sortie-glow" />
           <span className="sortie-en">SORTIE</span>

@@ -121,7 +121,7 @@ function loadSpeed() {
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a)
 
-export function Battle({ initial, resumed, onFinished, go }: { initial: MatchResponse; resumed?: boolean; onFinished: () => void; go: (s: Scene) => void }) {
+export function Battle({ initial, resumed, go }: { initial: MatchResponse; resumed?: boolean; go: (s: Scene) => void }) {
   const { catalog, card, setProfile } = useGame()
   const gameId = initial.id
   const stage = initial.stage
@@ -632,7 +632,6 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       if (!mounted.current) return
       setGame(res.game)
       if (res.game.status === 'finished') {
-        onFinished()
         if (res.profile) setProfile(res.profile)
         setReward(res.reward)
         const win = res.game.winner === 'player'

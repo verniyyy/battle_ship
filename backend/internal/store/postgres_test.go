@@ -68,6 +68,10 @@ func TestPostgresRoundTrip(t *testing.T) {
 		t.Fatalf("get: %v %+v", err, got)
 	}
 
+	if cur, _, err := pg.CurrentMatch(ctx, pid); err != nil || cur != id {
+		t.Fatalf("current: %v %q, want %q", err, cur, id)
+	}
+
 	// Finish the battle and settle it in one transaction.
 	_, prof, err := pg.UpdateMatch(ctx, id, func(m *meta.Match, p *meta.Profile) error {
 		m.Game.Status, m.Game.Winner, m.Game.EndReason = game.StatusFinished, game.SidePlayer, game.EndAnnihilated
@@ -76,6 +80,9 @@ func TestPostgresRoundTrip(t *testing.T) {
 	})
 	if err != nil || prof.Stats.Wins != 1 {
 		t.Fatalf("update: %v", err)
+	}
+	if _, _, err := pg.CurrentMatch(ctx, pid); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("finished battle is still current: %v", err)
 	}
 	list, err := pg.ListFinished(ctx, pid, 10)
 	if err != nil || len(list) != 1 || list[0].Rank == "" || list[0].StageID != "1-1" {

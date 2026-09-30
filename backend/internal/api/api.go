@@ -52,6 +52,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("POST /api/games", s.player(s.createGame))
 	mux.HandleFunc("GET /api/games", s.player(s.listGames))
+	mux.HandleFunc("GET /api/games/current", s.player(s.currentGame))
 	mux.HandleFunc("GET /api/games/{id}", s.player(s.getGame))
 	mux.HandleFunc("POST /api/games/{id}/actions", s.player(s.act))
 	mux.HandleFunc("POST /api/games/{id}/chest", s.player(s.openChest))
@@ -229,6 +230,16 @@ func (s *Server) getGame(w http.ResponseWriter, r *http.Request, pid string) {
 		return
 	}
 	writeJSON(w, http.StatusOK, matchView(r.PathValue("id"), m))
+}
+
+// currentGame finds the battle the admiral retreated from, on any device.
+func (s *Server) currentGame(w http.ResponseWriter, r *http.Request, pid string) {
+	id, m, err := s.store.CurrentMatch(r.Context(), pid)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, matchView(id, m))
 }
 
 type actionResponse struct {

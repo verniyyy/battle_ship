@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import type { Scene } from '../App'
 import { audio } from '../audio'
-import { Backdrop, RarityBadge, ShipToken, TopBar } from '../components/ui'
+import { Backdrop, RarityBadge, ResumeBanner, ShipToken, TopBar } from '../components/ui'
 import { fx } from '../fx'
 import { CLASS_INFO } from '../game'
 import { useGame } from '../state'
-import type { Catalog, Profile, Stage } from '../types'
+import type { Catalog, MatchResponse, Profile, Stage } from '../types'
 import { nextStage } from './Home'
 
 // Node positions on the chart (percent of the map box), zig-zagging to the boss.
@@ -39,7 +39,17 @@ export function endlessStage(p: Profile): Stage {
   }
 }
 
-export function StageMap({ area: initialArea, go }: { area?: number; go: (s: Scene) => void }) {
+export function StageMap({
+  area: initialArea,
+  go,
+  resumable,
+  onResume,
+}: {
+  area?: number
+  go: (s: Scene) => void
+  resumable: MatchResponse | null
+  onResume?: () => void
+}) {
   const { profile, catalog } = useGame()
   const next = profile && catalog ? nextStage(catalog, profile) : null
   const [area, setArea] = useState(initialArea ?? next?.area ?? 1)
@@ -69,6 +79,7 @@ export function StageMap({ area: initialArea, go }: { area?: number; go: (s: Sce
     <div className={`screen map-screen theme-${area === 5 ? 'endless' : areaInfo?.theme}`}>
       <Backdrop scene="standby" />
       <TopBar title="出撃" en="SORTIE" onBack={() => go({ name: 'home' })} />
+      <ResumeBanner match={resumable} onResume={onResume} className="floating" />
 
       <nav className="area-tabs">
         {catalog.areas.map((a) => {

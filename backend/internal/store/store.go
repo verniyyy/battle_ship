@@ -31,6 +31,8 @@ type Store interface {
 	// UpdateMatch locks the match and its player's profile, applies fn and saves both atomically.
 	UpdateMatch(ctx context.Context, id string, fn func(*meta.Match, *meta.Profile) error) (*meta.Match, *meta.Profile, error)
 	ListFinished(ctx context.Context, playerID string, limit int) ([]Summary, error)
+	// CurrentMatch returns the player's most recently played unfinished match.
+	CurrentMatch(ctx context.Context, playerID string) (string, *meta.Match, error)
 	auth.Accounts
 }
 
