@@ -4,7 +4,7 @@
 // The graph is mixed like a small game soundtrack rather than a set of beeps:
 //
 //   effects ─┐                            ┌─> hall reverb ─┐
-//   ui ──────┼─> (per sound: pan + send) ─┤                ├─> muffle ─> glue comp ─> limiter ─> out
+//   ui ──────┼─> (per sound: pan + send) ─┤                ├─> muffle ─> glue comp ─> limiter ─> volume ─> out
 //   music ───┴─> duck ────────────────────┘                │
 //   ambience ─────────────────────────────────────────────┘
 //   guns, blasts ─> sea echo (two dark slap-backs off the horizon) ─> effects
@@ -89,6 +89,11 @@ const MUSIC_LEVEL = 0.22
 const SFX_LEVEL = 0.8
 const AMBIENCE_LEVEL = 0.25
 const MASTER_LEVEL = 0.9
+// Headroom after the limiter: its output sits near full scale, which is loud next to other tabs.
+const OUTPUT_LEVEL = 0.6
+
+/** Slider position (0..1) to gain: squared so the slider moves evenly in loudness, not amplitude. */
+const loudness = (v: number) => v * v
 
 // Sounds fired in bursts (salvos, the full barrage) are rendered once offline and
 // replayed as samples: a barrage of synthesised voices can outrun the audio thread
@@ -404,6 +409,7 @@ class AudioEngine {
   private uiBus?: GainNode
   private musicBus?: GainNode
   private duckGain?: GainNode
+  private volOut?: GainNode
   private ambBus?: GainNode
   private reverbIn?: GainNode
   private echoIn?: GainNode
@@ -476,12 +482,15 @@ class AudioEngine {
     this.muffle.frequency.value = 20000
     this.muffle.Q.value = 0.5
     this.master = ctx.createGain()
-    this.master.gain.value = this.muted ? 0 : MASTER_LEVEL
+    this.master.gain.value = MASTER_LEVEL
     // A soft clipper after the limiter rounds off the few transients (gun cracks)
     // that get through its attack, instead of letting them hard-clip.
     const clip = ctx.createWaveShaper()
     clip.curve = softClip()
-    this.master.connect(this.muffle).connect(glue).connect(limiter).connect(clip).connect(ctx.destination)
+    // The player's volume is applied after the dynamics: in front of them it would just
+    // be compressed and made up again, so turning it down barely made a difference.
+    this.volOut = ctx.createGain()
+    this.master.connect(this.muffle).connect(glue).connect(limiter).connect(clip).connect(this.volOut).connect(ctx.destination)
 
     // A single hall shared by everything gives the game one acoustic space.
     const reverb = ctx.createConvolver()
@@ -498,19 +507,16 @@ class AudioEngine {
     this.reverbIn.connect(reverbHp).connect(reverb).connect(reverbOut).connect(this.master)
 
     this.sfxBus = ctx.createGain()
-    this.sfxBus.gain.value = SFX_LEVEL * this.volume.se
     this.sfxBus.connect(this.master)
     this.uiBus = ctx.createGain()
-    this.uiBus.gain.value = SFX_LEVEL * this.volume.se
     this.uiBus.connect(this.master)
     this.duckGain = ctx.createGain()
     this.duckGain.connect(this.master)
     this.musicBus = ctx.createGain()
-    this.musicBus.gain.value = MUSIC_LEVEL * this.volume.bgm
     this.musicBus.connect(this.duckGain)
     this.ambBus = ctx.createGain()
-    this.ambBus.gain.value = AMBIENCE_LEVEL * this.volume.se
     this.ambBus.connect(this.master)
+    this.applyLevels(0)
 
     this.echoIn = seaEcho(ctx, this.sfxBus)
 
@@ -530,7 +536,7 @@ class AudioEngine {
 
   setMuted(m: boolean) {
     this.muted = m
-    if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : MASTER_LEVEL, this.ctx.currentTime, 0.05)
+    this.applyLevels(0.05)
     try {
       localStorage.setItem(MUTE_KEY, m ? '1' : '0')
     } catch {
@@ -539,16 +545,30 @@ class AudioEngine {
     this.listeners.forEach((f) => f())
   }
 
+  /**
+   * Sets the bus and output gains from the volume settings. The louder channel's volume
+   * is applied after the limiter; the buses only carry the balance between BGM and SE,
+   * so the dynamics always see the mix at the same level.
+   */
+  private applyLevels(glide: number) {
+    if (!this.ctx || !this.volOut) return
+    const bgm = loudness(this.volume.bgm)
+    const se = loudness(this.volume.se)
+    const top = Math.max(bgm, se)
+    const rel = (g: number) => (top > 0 ? g / top : 0)
+    const now = this.ctx.currentTime
+    const set = (p: AudioParam, v: number) => (glide > 0 ? p.setTargetAtTime(v, now, glide) : (p.value = v))
+    set(this.volOut.gain, this.muted ? 0 : OUTPUT_LEVEL * top)
+    set(this.musicBus!.gain, MUSIC_LEVEL * rel(bgm))
+    set(this.sfxBus!.gain, SFX_LEVEL * rel(se))
+    set(this.uiBus!.gain, SFX_LEVEL * rel(se))
+    set(this.ambBus!.gain, AMBIENCE_LEVEL * rel(se))
+  }
+
   /** Sets the BGM or SE volume (0..1) and remembers it. */
   setVolume(ch: Channel, v: number) {
     this.volume = { ...this.volume, [ch]: clamp(v, 0, 1) }
-    if (this.ctx) {
-      const now = this.ctx.currentTime
-      this.musicBus?.gain.setTargetAtTime(MUSIC_LEVEL * this.volume.bgm, now, 0.05)
-      this.sfxBus?.gain.setTargetAtTime(SFX_LEVEL * this.volume.se, now, 0.05)
-      this.uiBus?.gain.setTargetAtTime(SFX_LEVEL * this.volume.se, now, 0.05)
-      this.ambBus?.gain.setTargetAtTime(AMBIENCE_LEVEL * this.volume.se, now, 0.05)
-    }
+    this.applyLevels(0.05)
     try {
       localStorage.setItem(VOLUME_KEY, JSON.stringify(this.volume))
     } catch {
