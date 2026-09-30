@@ -92,6 +92,11 @@ const MASTER_LEVEL = 0.9
 // Headroom after the limiter: its output sits near full scale, which is loud next to other tabs.
 const OUTPUT_LEVEL = 0.6
 
+// Gunfire and impacts sit this far under the rest of the SE: at the same level as the
+// interface sounds, a salvo drowned the music and was reported as too loud.
+const COMBAT_LEVEL = 0.5
+const COMBAT = new Set<Sfx>(['cannon', 'shell', 'boom', 'bigboom', 'crit', 'splash', 'miss', 'founder', 'torpedo', 'airstrike', 'dive', 'shellshock'])
+
 /** Slider position (0..1) to gain: squared so the slider moves evenly in loudness, not amplitude. */
 const loudness = (v: number) => v * v
 
@@ -932,7 +937,7 @@ class AudioEngine {
     if (this.muted || this.volume.se === 0 || !this.ctx) return
     this.resume()
     const now = this.ctx.currentTime
-    const level = this.density(name, now)
+    const level = this.density(name, now) * (COMBAT.has(name) ? COMBAT_LEVEL : 1)
     if (!level) return
     const key = this.keyOf(name, opt)
     const takes = key && this.takes.get(key)
