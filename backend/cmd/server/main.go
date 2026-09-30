@@ -1,7 +1,9 @@
 package main
 
 import (
+	"cmp"
 	"context"
+	"crypto/subtle"
 	"errors"
 	"log/slog"
 	"math/rand/v2"
@@ -35,7 +37,8 @@ func run(log *slog.Logger) error {
 	}
 	addr := os.Getenv("ADDR")
 	if addr == "" {
-		addr = ":8080"
+		// Vercel tells the server which port to bind through PORT.
+		addr = ":" + cmp.Or(os.Getenv("PORT"), "8080")
 	}
 
 	pool, err := connect(ctx, log, dsn)
@@ -50,9 +53,22 @@ func run(log *slog.Logger) error {
 	}
 	log.Info("migrations applied")
 
+	mux := http.NewServeMux()
+	mux.Handle("/", api.New(pg, log, rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())), time.Now).Handler())
+	// Unlike /healthz this touches the database, so a daily probe also keeps
+	// an idle free-tier database from being paused.
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := pool.Exec(r.Context(), "SELECT 1"); err != nil {
+			log.Error("readiness check failed", "err", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           logRequests(log, api.New(pg, log, rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())), time.Now).Handler()),
+		Handler:           logRequests(log, requireOriginSecret(os.Getenv("ORIGIN_SECRET"), mux)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	errCh := make(chan error, 1)
@@ -94,6 +110,23 @@ func connect(ctx context.Context, log *slog.Logger, dsn string) (*pgxpool.Pool, 
 		case <-time.After(time.Second):
 		}
 	}
+}
+
+// requireOriginSecret rejects requests that did not come through the edge
+// proxy, which adds the shared secret. An empty secret disables the check.
+// The hosting firewall enforces the same rule before requests are billed;
+// this is the backstop in case that rule is missing.
+func requireOriginSecret(secret string, next http.Handler) http.Handler {
+	if secret == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Origin-Auth")), []byte(secret)) != 1 {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func logRequests(log *slog.Logger, next http.Handler) http.Handler {
