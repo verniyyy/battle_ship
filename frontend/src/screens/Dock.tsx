@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { audio } from '../audio'
 import { ShipArt } from '../components/ShipArt'
@@ -7,7 +7,7 @@ import { fx } from '../fx'
 import { CLASS_INFO, lookOfCard, skillOf, SKILL_INFO, statRows, usesLine } from '../game'
 import { useGame } from '../state'
 import type { Card, OwnedShip } from '../types'
-import { sortShips } from './Formation'
+import { RosterCard, sortShips } from './Formation'
 
 type Tab = 'roster' | 'book'
 
@@ -15,10 +15,14 @@ export function Dock({ onBack }: { onBack: () => void }) {
   const { profile, catalog, card } = useGame()
   const [tab, setTab] = useState<Tab>('roster')
   const [sel, setSel] = useState<string | null>(profile?.fleet[0] ?? null)
+  const ships = useMemo(() => (profile ? sortShips(profile.ships, 'rarity', (s) => card(s.card)?.rarity ?? 0) : []), [profile?.ships, card])
+  const pick = useCallback((uid: string) => {
+    audio.play('tap')
+    setSel(uid)
+  }, [])
   if (!profile || !catalog) return null
 
   const owned = new Map(profile.ships.map((s) => [s.card, s]))
-  const ships = sortShips(profile.ships, 'rarity', (s) => card(s.card)?.rarity ?? 0)
   const selShip = profile.ships.find((s) => s.uid === sel)
   const selCard = selShip ? card(selShip.card) : undefined
   const pct = Math.round((owned.size / catalog.cards.length) * 100)
@@ -44,22 +48,17 @@ export function Dock({ onBack }: { onBack: () => void }) {
               const c = card(s.card)
               if (!c) return null
               return (
-                <CardView
+                <RosterCard
                   key={s.uid}
-                  look={lookOfCard(c)}
+                  uid={s.uid}
+                  card={c}
                   level={s.level}
                   stars={s.stars}
-                  size="sm"
-                  motion
                   className={s.uid === sel ? 'picked' : ''}
-                  onClick={() => {
-                    audio.play('tap')
-                    setSel(s.uid)
-                  }}
-                >
-                  {profile.fleet.includes(s.uid) && <span className="in-fleet-tag">編成中</span>}
-                  {s.uid === profile.secretary && <span className="sec-tag">秘書</span>}
-                </CardView>
+                  tag={profile.fleet.includes(s.uid) ? '編成中' : undefined}
+                  secretary={s.uid === profile.secretary}
+                  onPick={pick}
+                />
               )
             })}
           </div>
@@ -83,6 +82,7 @@ export function Dock({ onBack }: { onBack: () => void }) {
                       key={c.id}
                       look={lookOfCard(c)}
                       size="sm"
+                      lite
                       stars={s.stars}
                       onClick={() => {
                         audio.play('tap')

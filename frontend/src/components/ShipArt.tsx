@@ -158,6 +158,7 @@ function palette(look: Look) {
 // motion plays the card's motion effect (Card.fx) over the art; for the
 // large showcases only, where it is worth the frames. staged shows the
 // card's staged illustration instead, where one exists (also showcases).
+// lite leaves out the twinkling glints on the water, for long card lists.
 export function ShipArt({
   look,
   className = '',
@@ -165,6 +166,7 @@ export function ShipArt({
   frame = 'bust',
   motion = false,
   staged = false,
+  lite = false,
 }: {
   look: Look
   className?: string
@@ -172,10 +174,11 @@ export function ShipArt({
   frame?: Frame
   motion?: boolean
   staged?: boolean
+  lite?: boolean
 }) {
   const portrait = portraitOf(look, useAssets())
   if (staged && portrait?.staged) return <StagedArt look={look} art={portrait.staged} motion={motion} className={className} />
-  return <SceneArt look={look} portrait={portrait} className={className} showKanji={showKanji} frame={frame} motion={motion} />
+  return <SceneArt look={look} portrait={portrait} className={className} showKanji={showKanji} frame={frame} motion={motion} lite={lite} />
 }
 
 // A staged illustration fills the box on its own: its background and
@@ -202,6 +205,7 @@ function SceneArt({
   showKanji,
   frame,
   motion,
+  lite,
 }: {
   look: Look
   portrait: Portrait | undefined
@@ -209,6 +213,7 @@ function SceneArt({
   showKanji: boolean
   frame: Frame
   motion: boolean
+  lite: boolean
 }) {
   const id = useId().replace(/:/g, '')
   const hull = HULLS[look.cls]
@@ -292,7 +297,7 @@ function SceneArt({
             ))}
           </g>
         )}
-        <Sea id={id} pal={pal} />
+        <Sea id={id} pal={pal} glints={!lite} />
       </svg>
       {fx.on && <FxBack fx={fx} />}
       {portrait && <PortraitImg portrait={portrait} frame={frame} className="art-portrait" />}
@@ -320,7 +325,7 @@ const GLINTS: [number, number, number, number][] = (() => {
 // Water that reflects its sky: the sky's colour at the horizon deepening to
 // navy, a haze softening the horizon, the orb's light as a column on the
 // water and glints twinkling in perspective.
-function Sea({ id, pal }: { id: string; pal: ReturnType<typeof palette> }) {
+function Sea({ id, pal, glints }: { id: string; pal: ReturnType<typeof palette>; glints: boolean }) {
   return (
     <g className="art-sea">
       <rect y="186" width="200" height="27" fill={`url(#haze${id})`} />
@@ -328,9 +333,10 @@ function Sea({ id, pal }: { id: string; pal: ReturnType<typeof palette> }) {
       <rect y="212" width="200" height="68" fill={`url(#skyglass${id})`} />
       <ellipse cx="140" cy="226" rx="24" ry="44" fill={`url(#column${id})`} className="art-column" />
       <rect y="211.6" width="200" height="0.8" fill={pal.orb} opacity="0.45" />
-      {GLINTS.map(([x, y, w, d], i) => (
-        <rect key={i} className="art-glint" x={x} y={y} width={w} height={0.35 + (y - 212) / 120} rx="0.3" style={{ animationDelay: `${d}s` }} />
-      ))}
+      {glints &&
+        GLINTS.map(([x, y, w, d], i) => (
+          <rect key={i} className="art-glint" x={x} y={y} width={w} height={0.35 + (y - 212) / 120} rx="0.3" style={{ animationDelay: `${d}s` }} />
+        ))}
       <rect y="236" width="200" height="44" fill={`url(#deep${id})`} />
     </g>
   )

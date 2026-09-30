@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { audio } from '../audio'
 import { Backdrop, CardView, Counter, TopBar } from '../components/ui'
 import { fx } from '../fx'
 import { CLASS_INFO, lookOfCard, usesLine } from '../game'
 import { useGame } from '../state'
-import type { OwnedShip, ShipClass } from '../types'
+import type { Card, OwnedShip, ShipClass } from '../types'
 
 type Sort = 'rarity' | 'level' | 'power' | 'class'
 const CLASS_ORDER: ShipClass[] = ['battleship', 'cruiser', 'destroyer', 'submarine', 'carrier']
@@ -19,6 +19,39 @@ export function sortShips(ships: OwnedShip[], sort: Sort, rarityOf: (s: OwnedShi
   }
   return [...ships].sort(by[sort])
 }
+
+// One card in a list of owned ships. It takes only plain values and a
+// stable onPick, so a change to one ship (training, reassigning) re-renders
+// that card rather than the whole list.
+export const RosterCard = memo(function RosterCard({
+  uid,
+  card,
+  level,
+  stars,
+  className,
+  tag,
+  secretary,
+  showClass,
+  onPick,
+}: {
+  uid: string
+  card: Card
+  level: number
+  stars: number
+  className?: string
+  tag?: string
+  secretary?: boolean
+  showClass?: boolean
+  onPick: (uid: string, el: Element) => void
+}) {
+  return (
+    <CardView look={lookOfCard(card)} level={level} stars={stars} size="sm" lite className={className} onClick={(e) => onPick(uid, e.currentTarget)}>
+      {tag && <span className="in-fleet-tag">{tag}</span>}
+      {secretary && <span className="sec-tag">秘書</span>}
+      {showClass && <span className="card-class-name">{CLASS_INFO[card.class].name}</span>}
+    </CardView>
+  )
+})
 
 export function ShipStatLine({ s }: { s: OwnedShip }) {
   const st = s.stats
@@ -38,10 +71,13 @@ export function Formation({ onBack }: { onBack: () => void }) {
   const [slot, setSlot] = useState(0)
   const [sort, setSort] = useState<Sort>('rarity')
   const [busy, setBusy] = useState(false)
+  const ships = useMemo(() => (profile ? sortShips(profile.ships, sort, (s) => card(s.card)?.rarity ?? 0) : []), [profile?.ships, sort, card])
+  // The cards keep one handler; it reads the latest fleet and slot through this ref.
+  const pickRef = useRef<(uid: string, el: Element) => void>(() => {})
+  const pick = useCallback((uid: string, el: Element) => pickRef.current(uid, el), [])
   if (!profile) return null
 
   const fleet = profile.fleet
-  const ships = sortShips(profile.ships, sort, (s) => card(s.card)?.rarity ?? 0)
   const byUid = (uid: string) => profile.ships.find((s) => s.uid === uid)
 
   const save = async (next: string[], el?: Element | null) => {
@@ -74,6 +110,7 @@ export function Formation({ onBack }: { onBack: () => void }) {
     void save(next, el)
     setSlot(Math.min(slot + 1, profile.fleetSlots - 1))
   }
+  pickRef.current = assign
 
   const remove = (i: number) => {
     if (fleet.length <= 1) return
@@ -153,10 +190,17 @@ export function Formation({ onBack }: { onBack: () => void }) {
             if (!c) return null
             const at = fleet.indexOf(s.uid)
             return (
-              <CardView key={s.uid} look={lookOfCard(c)} level={s.level} stars={s.stars} size="sm" onClick={(e) => assign(s.uid, e.currentTarget)} className={at >= 0 ? 'in-fleet' : ''}>
-                {at >= 0 && <span className="in-fleet-tag">{at === 0 ? '旗艦' : `${at + 1}番`}</span>}
-                <span className="card-class-name">{CLASS_INFO[c.class].name}</span>
-              </CardView>
+              <RosterCard
+                key={s.uid}
+                uid={s.uid}
+                card={c}
+                level={s.level}
+                stars={s.stars}
+                className={at >= 0 ? 'in-fleet' : ''}
+                tag={at < 0 ? undefined : at === 0 ? '旗艦' : `${at + 1}番`}
+                showClass
+                onPick={pick}
+              />
             )
           })}
         </div>

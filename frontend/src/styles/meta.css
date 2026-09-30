@@ -2064,6 +2064,12 @@ button.card:active {
   overflow-y: hidden;
 }
 
+/* long lists: cards scrolled out of view skip layout, paint and animation */
+.roster-grid > .card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 112px auto 156px;
+}
+
 .in-fleet-tag,
 .sec-tag {
   position: absolute;
