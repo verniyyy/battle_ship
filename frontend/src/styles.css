@@ -98,7 +98,9 @@ p {
   width: 1280px;
   height: 720px;
   flex: none;
-  overflow: hidden;
+  /* clip, not hidden: nothing (focus, scrollIntoView) may scroll the stage
+     towards the off-screen curtain and shift the whole game up */
+  overflow: clip;
   transform-origin: center;
   background: var(--navy-900);
   box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
