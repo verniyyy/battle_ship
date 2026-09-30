@@ -130,7 +130,7 @@ cd backend && SIM=1 go test ./internal/meta -run Simulate -v
 
 ## デプロイ
 
-公開 URL: https://battleship.orekkueito2811.workers.dev
+公開 URL: https://battleship.verniyyy.workers.dev
 
 すべて**支払い方法を登録していない無料プラン**で動かしています。悪意あるアクセスがあっても課金は発生せず、起こりうるのは無料枠を使い切ったあとの一時停止だけです。**どのサービスにもクレジットカードを登録しない・有料プランにアップグレードしない**でください。
 
