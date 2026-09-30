@@ -90,6 +90,36 @@ const SFX_LEVEL = 0.8
 const AMBIENCE_LEVEL = 0.25
 const MASTER_LEVEL = 0.9
 
+// Sounds fired in bursts (salvos, the full barrage) are rendered once offline and
+// replayed as samples: a barrage of synthesised voices can outrun the audio thread
+// (crackle, dropouts), while a buffer playback costs next to nothing. Each entry maps
+// the options that change the sound to part of the cache key; pan is applied on playback.
+const BAKE: Partial<Record<Sfx, (o: PlayOpts) => string>> = {
+  cannon: (o) => `${calibre(o)}${o.far ? 'f' : ''}`,
+  shell: (o) => `${flight(o)}${o.far ? 'f' : ''}`,
+  boom: (o) => (o.far ? 'f' : ''),
+  bigboom: () => '',
+  splash: () => '',
+  miss: () => '',
+  crit: () => '',
+  evade: () => '',
+  founder: (o) => (o.far ? 'f' : ''),
+}
+/** Takes kept per sound, so a salvo doesn't repeat one sample over and over. */
+const TAKES: Partial<Record<Sfx, number>> = { cannon: 2, boom: 2, splash: 2 }
+const BAKE_RATE = 24000
+const BAKE_SECONDS = 4.5
+
+const calibre = (o: PlayOpts) => Math.round(clamp(o.size ?? 1, 0, 2))
+/** Shell flight in 50ms steps, so the few speed settings share a handful of takes. */
+const flight = (o: PlayOpts) => Math.round(clamp(o.dur ?? 0.5, 0.12, 2) * 20)
+
+interface Take {
+  buf: AudioBuffer
+  /** Mix moves (music ducks) the sound made while it was rendered, replayed with it. */
+  moves: [depth: number, hold: number, back: number][]
+}
+
 const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12)
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 const rnd = (a: number, b: number) => a + Math.random() * (b - a)
@@ -386,6 +416,13 @@ class AudioEngine {
   private groupEnd = 0
   private recent = new Map<Sfx, number[]>()
 
+  private takes = new Map<string, Take[]>()
+  private bakeQueue: { name: Sfx; opt: PlayOpts; key: string }[] = []
+  private queued = new Set<string>()
+  private baking = false
+  /** Set while a sound is being rendered offline: collects its music ducks instead of applying them. */
+  private moves?: Take['moves']
+
   private track: Track | null = null
   private song?: Song
   private ch?: Channels
@@ -403,6 +440,7 @@ class AudioEngine {
   unlock() {
     if (!this.ctx) this.build()
     this.resume()
+    void this.pump()
     const t = this.track
     if (t && !this.seqTimer) {
       this.track = null
@@ -474,25 +512,7 @@ class AudioEngine {
     this.ambBus.gain.value = AMBIENCE_LEVEL * this.volume.se
     this.ambBus.connect(this.master)
 
-    // Sea echo: gunfire comes back off the water and the horizon, darker each time,
-    // so a salvo rolls away instead of stopping dead like a drum.
-    this.echoIn = ctx.createGain()
-    this.echoIn.channelCount = 1
-    this.echoIn.channelCountMode = 'explicit'
-    for (const [time, pan, fb] of [[0.19, -0.6, 0.42], [0.33, 0.6, 0.36]]) {
-      const dl = ctx.createDelay(1)
-      dl.delayTime.value = time
-      const lp = ctx.createBiquadFilter()
-      lp.type = 'lowpass'
-      lp.frequency.value = 650
-      const g = ctx.createGain()
-      g.gain.value = fb
-      const p = ctx.createStereoPanner()
-      p.pan.value = pan
-      this.echoIn.connect(dl)
-      dl.connect(lp).connect(g).connect(dl)
-      lp.connect(p).connect(this.sfxBus)
-    }
+    this.echoIn = seaEcho(ctx, this.sfxBus)
 
     this.noiseBufs = { white: this.noiseBuffer('white'), pink: this.noiseBuffer('pink'), brown: this.noiseBuffer('brown') }
   }
@@ -841,11 +861,16 @@ class AudioEngine {
     const ms = (this.groupEnd - this.ctx!.currentTime + 0.5) * 1000
     this.group = []
     this.groupEnd = 0
+    if (this.moves) return // an offline render: the whole context is dropped afterwards
     window.setTimeout(() => nodes.forEach((n) => n.disconnect()), Math.max(ms, 500))
   }
 
   /** Pulls the music down so a big moment lands, then lets it back. */
   private duck(depth: number, hold: number, back: number) {
+    if (this.moves) {
+      this.moves.push([depth, hold, back])
+      return
+    }
     const g = this.duckGain!.gain
     const t = this.ctx!.currentTime
     g.cancelScheduledValues(t)
@@ -866,10 +891,10 @@ class AudioEngine {
     f.exponentialRampToValueAtTime(20000, t + len)
   }
 
-  /** How loud a repeat of `name` may be: rapid-fire copies are thinned and softened. */
   /** How many copies of the current sound started within the last quarter second (1 = alone). */
   private copies = 1
 
+  /** How loud a repeat of `name` may be: rapid-fire copies are thinned and softened. */
   private density(name: Sfx, now: number) {
     const hist = (this.recent.get(name) ?? []).filter((at) => now - at < 0.25)
     const limit = name === 'cannon' || name === 'shell' || name === 'boom' || name === 'miss' || name === 'splash' ? 4 : 3
@@ -889,8 +914,139 @@ class AudioEngine {
     const now = this.ctx.currentTime
     const level = this.density(name, now)
     if (!level) return
+    const key = this.keyOf(name, opt)
+    const takes = key && this.takes.get(key)
+    if (takes) {
+      this.playTake(takes[Math.floor(Math.random() * takes.length)], name, opt, level)
+      return
+    }
+    if (key) this.queueBake(name, opt, key)
     // Enough lookahead that building a large sound finishes before it is due.
-    const t = now + 0.025
+    this.synth(name, opt, now + 0.025, level)
+  }
+
+  /** Renders the burst sounds a battle will use ahead of time, so the first salvo is already cheap. */
+  prewarm(list: [Sfx, PlayOpts?][]) {
+    for (const [name, opt = {}] of list) {
+      const key = this.keyOf(name, opt)
+      if (key) this.queueBake(name, opt, key)
+    }
+  }
+
+  private keyOf(name: Sfx, opt: PlayOpts) {
+    const k = BAKE[name]
+    return k ? `${name}:${k(opt)}` : undefined
+  }
+
+  private queueBake(name: Sfx, opt: PlayOpts, key: string) {
+    if (this.takes.has(key) || this.queued.has(key)) return
+    this.queued.add(key)
+    this.bakeQueue.push({ name, opt, key })
+    void this.pump()
+  }
+
+  /** Renders queued sounds one at a time, off the real-time audio thread. */
+  private async pump() {
+    if (this.baking || !this.ctx) return
+    this.baking = true
+    try {
+      for (let job = this.bakeQueue.shift(); job; job = this.bakeQueue.shift()) {
+        const takes: Take[] = []
+        for (let i = 0; i < (TAKES[job.name] ?? 1); i++) {
+          const take = await this.bake(job.name, job.opt).catch(() => undefined)
+          if (take) takes.push(take)
+        }
+        if (takes.length) this.takes.set(job.key, takes)
+        this.queued.delete(job.key)
+      }
+    } finally {
+      this.baking = false
+    }
+  }
+
+  /**
+   * Renders one take of a sound through the same code as live playback, into three
+   * channels: the dry stereo mix (sea echo included) and the reverb send.
+   */
+  private async bake(name: Sfx, opt: PlayOpts): Promise<Take> {
+    const off = new OfflineAudioContext(3, Math.ceil(BAKE_RATE * BAKE_SECONDS), BAKE_RATE)
+    const merge = off.createChannelMerger(3)
+    merge.connect(off.destination)
+    const dry = off.createGain()
+    const split = off.createChannelSplitter(2)
+    dry.connect(split)
+    split.connect(merge, 0, 0)
+    split.connect(merge, 1, 1)
+    const rev = off.createGain()
+    rev.channelCount = 1
+    rev.channelCountMode = 'explicit'
+    rev.connect(merge, 0, 2)
+
+    const live = { ctx: this.ctx, sfxBus: this.sfxBus, uiBus: this.uiBus, reverbIn: this.reverbIn, echoIn: this.echoIn, copies: this.copies }
+    const moves: Take['moves'] = []
+    this.ctx = off as unknown as AudioContext
+    this.sfxBus = this.uiBus = dry
+    this.reverbIn = rev
+    this.echoIn = seaEcho(off, dry)
+    this.moves = moves
+    this.copies = 1
+    const dur = name === 'shell' ? flight(opt) / 20 : opt.dur
+    try {
+      this.synth(name, { ...opt, dur, pan: 0, panTo: undefined }, 0, 1)
+    } finally {
+      Object.assign(this, live)
+      this.moves = undefined
+    }
+
+    const full = await off.startRendering()
+    // Cut the tail once it is 60dB under the peak, with a short fade, so the bank stays small.
+    let peak = 0
+    for (let c = 0; c < 3; c++) for (const v of full.getChannelData(c)) peak = Math.max(peak, Math.abs(v))
+    let end = 0
+    for (let c = 0; c < 3; c++) {
+      const d = full.getChannelData(c)
+      for (let i = d.length - 1; i > end; i--)
+        if (Math.abs(d[i]) > peak * 1e-3) {
+          end = i
+          break
+        }
+    }
+    const fade = Math.ceil(BAKE_RATE * 0.05)
+    const len = Math.min(full.length, end + fade)
+    const buf = new AudioBuffer({ numberOfChannels: 3, length: len, sampleRate: BAKE_RATE })
+    for (let c = 0; c < 3; c++) {
+      const d = full.getChannelData(c).subarray(0, len)
+      for (let i = Math.max(0, len - fade); i < len; i++) d[i] *= (len - i) / fade
+      buf.copyToChannel(d, c)
+    }
+    return { buf, moves }
+  }
+
+  /** Plays a rendered take: dry pair through a strip for pan and level, third channel to the hall. */
+  private playTake(take: Take, name: Sfx, opt: PlayOpts, level: number) {
+    const ctx = this.ctx!
+    const t = ctx.currentTime + 0.01
+    for (const m of take.moves) this.duck(...m)
+    const src = ctx.createBufferSource()
+    src.buffer = take.buf
+    // The shell's flight is timed to the animation; everything else drifts a little in pitch.
+    if (name !== 'shell') src.playbackRate.value = vary(0.035)
+    const split = ctx.createChannelSplitter(3)
+    const pair = ctx.createChannelMerger(2)
+    src.connect(split)
+    split.connect(pair, 0, 0)
+    split.connect(pair, 1, 1)
+    pair.connect(this.out(this.sfxBus!, { pan: opt.pan, panTo: opt.panTo, panT: opt.dur, vol: level }))
+    const rev = ctx.createGain()
+    rev.gain.value = level
+    split.connect(rev, 2).connect(this.reverbIn!)
+    src.start(t)
+    this.group.push(src, split, pair, rev)
+    this.groupEnd = t + take.buf.duration * 1.05
+    this.release()
+  }
+
+  private synth(name: Sfx, opt: PlayOpts, t: number, level: number) {
     const p = opt.pitch ?? 0
     const pan = opt.pan ?? 0
     const far = !!opt.far
@@ -1771,6 +1927,31 @@ function softClip() {
     curve[i] = Math.sign(x) * y
   }
   return curve
+}
+
+/**
+ * Sea echo: gunfire comes back off the water and the horizon, darker each time,
+ * so a salvo rolls away instead of stopping dead like a drum. Returns its (mono) input.
+ */
+function seaEcho(ctx: BaseAudioContext, dest: AudioNode) {
+  const input = ctx.createGain()
+  input.channelCount = 1
+  input.channelCountMode = 'explicit'
+  for (const [time, pan, fb] of [[0.19, -0.6, 0.42], [0.33, 0.6, 0.36]]) {
+    const dl = ctx.createDelay(1)
+    dl.delayTime.value = time
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 650
+    const g = ctx.createGain()
+    g.gain.value = fb
+    const p = ctx.createStereoPanner()
+    p.pan.value = pan
+    input.connect(dl)
+    dl.connect(lp).connect(g).connect(dl)
+    lp.connect(p).connect(dest)
+  }
+  return input
 }
 
 function readMuted() {

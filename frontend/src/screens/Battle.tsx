@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Scene } from '../App'
 import { api } from '../api'
-import { audio } from '../audio'
+import { audio, type PlayOpts, type Sfx } from '../audio'
 import { Board, CellOverlay } from '../components/Board'
 import { CutinLayer, DamageTally, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, tallyTier, type Cutin, type Float, type Tally } from '../components/battle'
 import { Backdrop, ShipToken, SoundToggle } from '../components/ui'
@@ -206,6 +206,29 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       audio.setIntensity(1)
     }
   }, [initial.game.weather])
+
+  // Render this fight's salvo and impact sounds ahead of time (our guns first), so a
+  // barrage plays back samples instead of synthesising dozens of voices at once.
+  useEffect(() => {
+    const guns = (ships: ShipView[], far: boolean) => [...new Set([...ships.map((s) => calibre(s.class)), 2])].map((size) => ['cannon', { size, far }] as [Sfx, PlayOpts])
+    const shells = (far: boolean) => [420, 480, 520].map((n) => ['shell', { dur: ms(n) / 1000, far }] as [Sfx, PlayOpts])
+    audio.prewarm([
+      ...guns(initial.game.playerShips, false),
+      ...shells(false),
+      ['boom', { far: true }],
+      ['splash', {}],
+      ['miss', {}],
+      ['bigboom', {}],
+      ['crit', {}],
+      ['founder', { far: true }],
+      ...guns(initial.game.enemyShips, true),
+      ...shells(true),
+      ['boom', {}],
+      ['evade', {}],
+      ['founder', {}],
+    ])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speed])
 
   // The music drives harder once the fight is down to its last ship or last turns.
   const alive = (ships: ShipView[]) => ships.filter((s) => s.hp > 0).length
