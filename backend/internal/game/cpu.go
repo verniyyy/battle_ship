@@ -118,6 +118,13 @@ func (st *State) Decide(side Side, rng *rand.Rand) Action {
 		lvl = 3
 	}
 	jitter := func() float64 { return rng.Float64() * 6 * float64(4-min(lvl, 3)) }
+	// lock weighs a cell up when a scouting lock-on makes any hit there crit.
+	lock := func(p Pos) float64 {
+		if lvl >= 1 && st.lockedOn(side, p) {
+			return critMult
+		}
+		return 1
+	}
 	aa := float64(aaScale) / float64(aaScale+enemy.AA())
 
 	type cand struct {
@@ -151,9 +158,9 @@ func (st *State) Decide(side Side, rng *rand.Rand) Action {
 		for _, lane := range lanes {
 			for _, c := range lane {
 				if v := pos(h, c); v >= 25 {
-					p := power
+					p := power * lock(c)
 					if from.Dist(c) <= pointBlank {
-						p *= critMult
+						p = power * critMult
 					}
 					sum += v / 100 * p
 					break
@@ -232,7 +239,7 @@ func (st *State) Decide(side Side, rng *rand.Rand) Action {
 				if sp.Class == Battleship {
 					p = p * float64(gunPct(i)) / 100
 				}
-				sc += pos(h, c) / 100 * p
+				sc += pos(h, c) / 100 * p * lock(c)
 			}
 			sc = max(sc, blind(cells))
 			if prev := st.LastGun[side]; prev != nil && *prev == t && (sp.Class == Battleship || sp.Class == Cruiser) && lvl >= 1 {
@@ -255,13 +262,13 @@ func (st *State) Decide(side Side, rng *rand.Rand) Action {
 			switch kind {
 			case SkillBarrage:
 				for _, c := range Footprint(st.Size, ActionSkill, kind, sp.Class, s.Pos, t) {
-					sc += pos(h, c) / 100 * float64(sp.Firepower) * barragePct / 100
+					sc += pos(h, c) / 100 * float64(sp.Firepower) * barragePct / 100 * lock(c)
 				}
 				sc *= 0.9
 			case SkillAirstrike:
 				p := float64(st.airPower(sp))
 				if st.tracking(side, t) && lvl >= 1 {
-					sc = pos(h, t) / 100 * p
+					sc = pos(h, t) / 100 * p * lock(t)
 				} else {
 					sc = max(pos(h, t)/100*p*aa, blind([]Pos{t})*2)
 				}

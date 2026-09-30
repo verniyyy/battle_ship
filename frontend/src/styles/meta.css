@@ -876,6 +876,29 @@ button.card:active {
   animation: spin 5s linear infinite;
 }
 
+/* a scouting lock-on: crosshairs over the token */
+.ship-token.marked::before {
+  content: '';
+  position: absolute;
+  inset: -24%;
+  z-index: 3;
+  pointer-events: none;
+  background:
+    linear-gradient(#ffd24a, #ffd24a) center top / 2px 26% no-repeat,
+    linear-gradient(#ffd24a, #ffd24a) center bottom / 2px 26% no-repeat,
+    linear-gradient(#ffd24a, #ffd24a) left center / 26% 2px no-repeat,
+    linear-gradient(#ffd24a, #ffd24a) right center / 26% 2px no-repeat;
+  filter: drop-shadow(0 0 3px #ffb300);
+  animation: lock-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes lock-pulse {
+  50% {
+    transform: scale(0.86);
+    opacity: 0.7;
+  }
+}
+
 /* ---------- home ---------- */
 
 .home-vignette {

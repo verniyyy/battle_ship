@@ -30,6 +30,8 @@ type ShipView struct {
 	MoveRange int       `json:"moveRange"`
 	// Pinned: a water column holds the ship this round. Shown for enemy ships only while spotted.
 	Pinned bool `json:"pinned,omitempty"`
+	// Marked: a scouting skill has locked on to the ship. Shown for enemy ships only while spotted.
+	Marked bool `json:"marked,omitempty"`
 	// UnderWay: the ship moved last round, so moving again resolves late.
 	UnderWay    bool `json:"underWay,omitempty"`
 	Pos         *Pos `json:"pos,omitempty"`
@@ -91,6 +93,7 @@ func (st *State) PlayerView() View {
 		sv := shipView(s, player)
 		sv.Pinned = s.Pinned > 0 && s.Alive()
 		sv.UnderWay = s.Sailed > 0 && s.Alive()
+		sv.Marked = s.Marked > 0 && s.Alive()
 		if inProgress {
 			sv.AttackTargets = player.AttackTargets(s.ID)
 			sv.TorpedoTargets = player.TorpedoTargets(s.ID)
@@ -107,6 +110,7 @@ func (st *State) PlayerView() View {
 				p := seen.Pos
 				sv.Pos, sv.Spotted, sv.SpottedTurn = &p, true, seen.Turn
 				sv.Pinned = s.Pinned > 0
+				sv.Marked = s.Marked > 0
 			}
 			// Every move is announced, so whether a ship is under way is public.
 			sv.UnderWay = s.Sailed > 0

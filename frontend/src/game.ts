@@ -16,8 +16,8 @@ export const KANJI = Object.fromEntries(Object.entries(CLASS_INFO).map(([k, v]) 
 
 export const SKILL_INFO: Record<SkillKind, { name: string; short: string; desc: string; icon: string }> = {
   barrage: { name: '一斉射', short: '3×3砲撃', desc: '3マス先までの3×3を砲撃（火力70%）。外れても水柱で足止め', icon: '✚' },
-  flare: { name: '照明弾', short: '3×3索敵', desc: '3マス先までの3×3を照らし水上艦を発見（潜水艦は映らない）', icon: '✦' },
-  sonar: { name: 'ソナー', short: '縦横索敵', desc: '自艦の縦横一列を探信し潜水艦も含め全艦を発見', icon: '◎' },
+  flare: { name: '照明弾', short: '全域3×3索敵', desc: '海域のどこでも3×3を照らし水上艦を発見・捕捉（潜水艦は映らない）。捕捉した艦への攻撃は次のターンまで回避されず必ず会心', icon: '✦' },
+  sonar: { name: 'ソナー', short: '縦横＋周囲索敵', desc: '自艦の縦横一列と周囲1マスを探信し潜水艦も含め全艦を発見・捕捉。捕捉した艦への攻撃は次のターンまで回避されず必ず会心', icon: '◎' },
   spread: { name: '扇状雷撃', short: '3列魚雷', desc: '並んだ3本の魚雷を同時に放つ（雷装80%・後攻・発射位置が露見）', icon: '⋙' },
   airstrike: { name: '航空攻撃', short: '全域爆撃', desc: '海域のどこでも1マスを爆撃。回避されにくいが敵の対空で減衰', icon: '✈' },
 }
@@ -28,6 +28,7 @@ export const SPECIAL_INFO: Record<Special, { name: string; en: string; desc: str
   spotting: { name: '着弾観測射撃', en: 'SPOTTING FIRE', desc: '直前に砲撃した地点へ戦艦・巡洋艦の主砲を再び撃つと必ず会心' },
   precision: { name: '精密爆撃', en: 'PRECISION STRIKE', desc: '追跡中の敵艦を爆撃すると対空・回避を無視' },
   pointblank: { name: '肉薄雷撃', en: 'POINT-BLANK TORPEDO', desc: '2マス以内の敵に魚雷が命中すると必ず会心' },
+  marked: { name: '照準射撃', en: 'LOCKED-ON FIRE', desc: '照明弾・ソナーで捕捉した敵への攻撃は回避されず必ず会心' },
 }
 
 export const WEATHER_INFO: Record<Weather, { name: string; icon: string; desc: string }> = {
@@ -101,10 +102,12 @@ export function footprint(size: number, type: ActionType, kind: SkillKind | unde
     for (const k of [-1, 0, 1]) lane({ row: target.row + k * dc, col: target.col + k * dr }, dr, dc)
   } else if (type === 'skill' && (kind === 'barrage' || kind === 'flare')) area()
   else if (type === 'skill' && kind === 'sonar') {
-    for (let i = 0; i < size; i++) {
-      if (i !== from.col) add({ row: from.row, col: i })
-      if (i !== from.row) add({ row: i, col: from.col })
-    }
+    for (let row = 0; row < size; row++)
+      for (let col = 0; col < size; col++) {
+        const self = row === from.row && col === from.col
+        const near = Math.max(Math.abs(row - from.row), Math.abs(col - from.col)) <= 1
+        if (!self && (row === from.row || col === from.col || near)) add({ row, col })
+      }
   } else add(target)
   return out
 }
@@ -162,7 +165,7 @@ export function describe(r: Result, game: GameView): LogLine {
     const n = r.revealed?.length ?? 0
     const what = SKILL_INFO[r.skill!].name
     if (!mine) return line(`${actor}の${what}！${n ? `味方${n}隻が発見された` : '味方は見つからなかった'}`, n ? 'bad' : 'info')
-    return line(`${actor}の${what}！${n ? `敵艦${n}隻を発見！` : '反応なし'}`, n ? 'great' : 'info')
+    return line(`${actor}の${what}！${n ? `敵艦${n}隻を発見・捕捉！` : '反応なし'}`, n ? 'great' : 'info')
   }
   const shots = r.shots ?? []
   const hits = shots.filter((s) => (s.damage ?? 0) > 0)

@@ -24,10 +24,14 @@
 // critical hit. A battleship shell that misses throws up a water column that
 // pins the ships next to it in place until the end of the next round.
 //
-// Three situational attacks always crit or cannot miss, and get a cut-in:
+// Four situational attacks always crit or cannot miss, and get a cut-in:
 // firing the main guns at the cell the fleet just shelled (spotting fire),
-// bombing a ship the fleet is tracking (precision bombing), and torpedoing a
-// ship at most two cells away (point-blank torpedo).
+// bombing a ship the fleet is tracking (precision bombing), torpedoing a
+// ship at most two cells away (point-blank torpedo), and hitting a ship a
+// scouting skill has locked on to (marked fire).
+//
+// Flares and sonar lock on to every ship they find: until the end of the
+// next round, shots on a locked-on ship cannot be dodged and always crit.
 //
 // Enemy ships side by side along a row or column always spot each other.
 // When no ship has taken damage for three rounds in a row, each side's
@@ -102,9 +106,10 @@ type SkillKind string
 const (
 	// SkillBarrage shells a 3×3 area centred up to 3 cells away.
 	SkillBarrage SkillKind = "barrage"
-	// SkillFlare lights a 3×3 area up to 3 cells away, revealing surface ships.
+	// SkillFlare lights a 3×3 area anywhere on the sea, revealing surface ships.
 	SkillFlare SkillKind = "flare"
-	// SkillSonar pings the ship's whole row and column, revealing every ship, submarines included.
+	// SkillSonar pings the ship's whole row and column and the cells around
+	// it, revealing every ship, submarines included.
 	SkillSonar SkillKind = "sonar"
 	// SkillSpread launches three torpedoes side by side along parallel lanes.
 	SkillSpread SkillKind = "spread"
@@ -201,6 +206,9 @@ type Ship struct {
 	Pinned int `json:"pinned,omitempty"`
 	// Sailed counts the round ends left during which another move resolves late.
 	Sailed int `json:"sailed,omitempty"`
+	// Marked counts the round ends left during which a scouting skill's lock-on
+	// makes every shot on the ship unavoidable and critical.
+	Marked int `json:"marked,omitempty"`
 }
 
 func (s *Ship) Alive() bool { return s.HP > 0 }
@@ -404,7 +412,7 @@ func (b *Board) SkillTargets(id int) []Pos {
 		case SkillBarrage:
 			ok = d >= 1 && d <= 3
 		case SkillFlare:
-			ok = d <= 3
+			ok = true
 		case SkillAirstrike:
 			ok = true
 		}
@@ -473,12 +481,12 @@ func footprintLanes(size int, t ActionType, kind SkillKind, class ShipClass, fro
 	case t == ActionSkill && (kind == SkillBarrage || kind == SkillFlare):
 		area()
 	case t == ActionSkill && kind == SkillSonar:
-		for i := 0; i < size; i++ {
-			if i != from.Col {
-				add(Pos{from.Row, i})
-			}
-			if i != from.Row {
-				add(Pos{i, from.Col})
+		for r := 0; r < size; r++ {
+			for c := 0; c < size; c++ {
+				p := Pos{r, c}
+				if p != from && (r == from.Row || c == from.Col || p.Dist(from) <= 1) {
+					add(p)
+				}
 			}
 		}
 	default:
@@ -571,6 +579,8 @@ const (
 	SpecialPrecision Special = "precision"
 	// SpecialPointBlank: a torpedo hit within 2 cells of the launcher. Always crits.
 	SpecialPointBlank Special = "pointblank"
+	// SpecialMarked: a hit on a ship a flare or sonar locked on to. Unavoidable and always crits.
+	SpecialMarked Special = "marked"
 )
 
 // Shot is the outcome of one shell, torpedo or bomb landing on a cell.
@@ -582,6 +592,8 @@ type Shot struct {
 	Evaded    bool `json:"evaded,omitempty"`
 	Sunk      bool `json:"sunk,omitempty"`
 	Splash    bool `json:"splash,omitempty"`
+	// Marked: the ship hit was locked on to by a scouting skill.
+	Marked bool `json:"marked,omitempty"`
 }
 
 // Sighting is an enemy ship located by a hit, a scouting skill or a torpedo wake.

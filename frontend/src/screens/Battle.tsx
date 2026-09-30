@@ -97,15 +97,19 @@ function patchMeta(g: GameView, r: Result): GameView {
 // mirroring the rules on the server (point-blank is a forecast: the ship may dodge or move).
 function predictSpecial(g: GameView, ship: ShipView | null, mode: ActionType | null, aim: Pos | null): Special | undefined {
   if (!ship || !mode || !aim || !ship.pos) return undefined
-  const tracked = (p: Pos) => g.enemyShips.some((e) => e.hp > 0 && e.spotted && samePos(e.pos, p))
+  const spotted = (p: Pos) => g.enemyShips.find((e) => e.hp > 0 && e.spotted && samePos(e.pos, p))
   if (mode === 'attack' && (ship.class === 'battleship' || ship.class === 'cruiser') && samePos(g.lastGun, aim)) return 'spotting'
-  if (mode === 'skill' && ship.skillKind === 'airstrike' && tracked(aim)) return 'precision'
+  if (mode === 'skill' && ship.skillKind === 'airstrike' && spotted(aim)) return 'precision'
+  const cells = footprint(g.boardSize, mode, ship.skillKind, ship.class, ship.pos, aim)
   if (mode === 'torpedo' || (mode === 'skill' && ship.skillKind === 'spread')) {
     const from = ship.pos
-    const cells = footprint(g.boardSize, mode, ship.skillKind, ship.class, from, aim)
-    const near = cells.find((c) => g.enemyShips.some((e) => e.hp > 0 && e.spotted && e.class !== 'submarine' && samePos(e.pos, c)))
+    const near = cells.find((c) => spotted(c) && spotted(c)!.class !== 'submarine')
     if (near && Math.max(Math.abs(near.row - from.row), Math.abs(near.col - from.col)) <= 2) return 'pointblank'
+    if (near && spotted(near)!.marked) return 'marked'
+    return undefined
   }
+  const offensive = mode === 'attack' || mode === 'ultimate' || (mode === 'skill' && (ship.skillKind === 'barrage' || ship.skillKind === 'airstrike'))
+  if (offensive && cells.some((c) => spotted(c)?.marked)) return 'marked'
   return undefined
 }
 
@@ -809,7 +813,9 @@ export function Battle({
                 <>
                   {marker && !busy && <span className={`marker ${marker}`} />}
                   {spotCell && samePos(spotCell, p) && <span className="spot-sign">観測</span>}
-                  {enemy && <ShipToken look={looks.enemy[enemy.id]} no={enemy.id + 1} sunk={enemy.hp <= 0} spotted={enemy.spotted && !finished} />}
+                  {enemy && (
+                    <ShipToken look={looks.enemy[enemy.id]} no={enemy.id + 1} sunk={enemy.hp <= 0} spotted={enemy.spotted && !finished} marked={enemy.marked && !finished} />
+                  )}
                   {own && <ShipToken look={looks.player[own.id]} no={own.id + 1} />}
                 </>
               )

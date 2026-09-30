@@ -99,6 +99,7 @@ func (st *State) endRound(played []Result) []Result {
 		for _, s := range b.Ships {
 			s.Pinned = max(s.Pinned-1, 0)
 			s.Sailed = max(s.Sailed-1, 0)
+			s.Marked = max(s.Marked-1, 0)
 		}
 	}
 	if st.Status == StatusInProgress && st.MaxTurns > 0 && st.Turn >= st.MaxTurns {
