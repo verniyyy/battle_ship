@@ -20,6 +20,12 @@ export type NewsItem = {
 
 export const NEWS: NewsItem[] = [
   {
+    id: '2026-10-01-wreck',
+    date: '2026-10-01',
+    title: '海図の表示を修正',
+    items: ['撃沈した敵艦のいるマスに移動すると、海図上の艦の表示がずれる不具合を修正しました。'],
+  },
+  {
     id: '2026-10-01-news',
     date: '2026-10-01',
     title: 'お知らせ機能を追加',
