@@ -74,6 +74,7 @@ export const api = {
   profile: () => request<WithProfile>('/profile'),
   claimLogin: () => post<WithProfile<{ day: number; grant: Grant }>>('/profile/login'),
   setFleet: (uids: string[]) => post<WithProfile>('/profile/fleet', { uids }),
+  rename: (name: string, comment: string) => post<WithProfile>('/profile/name', { name, comment }),
   setSecretary: (uid: string) => post<WithProfile>('/profile/secretary', { uid }),
   train: (uid: string) => post<WithProfile>(`/ships/${uid}/train`),
   pull: (count: 1 | 10) => post<WithProfile<{ gains: Gain[] }>>('/gacha', { count }),

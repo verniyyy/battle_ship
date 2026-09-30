@@ -27,6 +27,7 @@ type Badges struct {
 type ProfileView struct {
 	ID           string          `json:"id"`
 	Name         string          `json:"name"`
+	Comment      string          `json:"comment"`
 	Level        int             `json:"level"`
 	Exp          int             `json:"exp"`
 	NextExp      int             `json:"nextExp"`
@@ -47,16 +48,17 @@ type ProfileView struct {
 	Achievements map[string]bool `json:"achievements"`
 	Stats        Stats           `json:"stats"`
 	Badges       Badges          `json:"badges"`
+	Created      time.Time       `json:"created"`
 }
 
 func (p *Profile) View(now time.Time) ProfileView {
 	p.rollDaily(now)
 	v := ProfileView{
-		ID: p.ID, Name: p.Name, Level: p.Level, Exp: p.Exp, NextExp: ExpToNext(p.Level),
+		ID: p.ID, Name: p.Name, Comment: p.Comment, Level: p.Level, Exp: p.Exp, NextExp: ExpToNext(p.Level),
 		Coins: p.Coins, Gems: p.Gems, Fleet: p.Fleet, FleetSlots: FleetSlots(p.Level),
 		Secretary: p.Secretary, Stages: p.Stages, TotalStars: p.TotalStars(), Endless: p.Endless,
 		Gacha: p.Gacha, PityLeft: PityPulls - p.Gacha.Pity, Login: p.Login, Daily: p.Daily,
-		Achievements: p.Achievements, Stats: p.Stats,
+		Achievements: p.Achievements, Stats: p.Stats, Created: p.Created,
 		Badges: Badges{
 			Login:        p.LoginReady(now),
 			Missions:     p.missionsReady(),

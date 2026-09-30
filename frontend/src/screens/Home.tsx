@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import type { Scene } from '../App'
 import { api } from '../api'
 import { audio } from '../audio'
-import { ShipArt } from '../components/ShipArt'
+import { PortraitImg, ShipArt } from '../components/ShipArt'
 import { Backdrop, Badge, Modal, ResumeBanner, TopBar } from '../components/ui'
 import { fx } from '../fx'
 import { lookOfCard, SKILL_INFO, SPECIAL_INFO, CLASS_INFO, TIPS, TORPEDO_INFO } from '../game'
 import { celebrateGrant, useGame } from '../state'
+import { portraitOf, useAssets } from '../theme'
 import type { Catalog, GameSummary, Grant, MatchResponse, Profile } from '../types'
 
-type Dialog = 'record' | 'rules' | 'login' | null
+type Dialog = 'record' | 'rules' | 'login' | 'profile' | null
 
 export function nextStage(cat: Catalog, p: Profile) {
   const open = cat.stages.find((s, i) => !(p.stages[s.id] & 1) && (i === 0 || p.stages[cat.stages[i - 1].id] & 1))
@@ -102,7 +103,7 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
     <div className="screen home-screen">
       <Backdrop scene="home" />
       <div className="home-vignette" />
-      <TopBar />
+      <TopBar onAdmiral={() => open('profile')} />
 
       {/* ---- secretary ---- */}
       {sec && secCard && (
@@ -192,6 +193,7 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
         </div>
       </div>
 
+      {dialog === 'profile' && <ProfileDialog profile={profile} onClose={() => setDialog(null)} />}
       {dialog === 'record' && <RecordDialog profile={profile} onClose={() => setDialog(null)} />}
       {dialog === 'rules' && <RulesDialog onClose={() => setDialog(null)} />}
       {dialog === 'login' && (
@@ -281,6 +283,96 @@ function LoginDialog({
             また明日！
           </button>
         )}
+      </div>
+    </Modal>
+  )
+}
+
+const NAME_MAX = 12
+const COMMENT_MAX = 40
+const chars = (s: string) => [...s].length
+
+/** The admiral's card: name and one-line comment to edit, and a few facts. */
+function ProfileDialog({ profile, onClose }: { profile: Profile; onClose: () => void }) {
+  const { card, catalog, setProfile, notify } = useGame()
+  const [name, setName] = useState(profile.name)
+  const [comment, setComment] = useState(profile.comment)
+  const [busy, setBusy] = useState(false)
+  const sec = profile.ships.find((s) => s.uid === profile.secretary)
+  const secCard = sec ? card(sec.card) : undefined
+  const packs = useAssets()
+  const portrait = secCard ? portraitOf(lookOfCard(secCard), packs) : undefined
+  const s = profile.stats
+  const nameOk = name.trim() !== '' && chars(name.trim()) <= NAME_MAX
+  const changed = name.trim() !== profile.name || comment.trim() !== profile.comment
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      const r = await api.rename(name, comment)
+      setProfile(r.profile)
+      setName(r.profile.name)
+      setComment(r.profile.comment)
+      audio.play('stamp')
+      notify('プロフィールを更新しました', 'good')
+    } catch (e) {
+      notify((e as Error).message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const facts: [string, string][] = [
+    ['着任日', new Date(profile.created).getFullYear() > 2000 ? new Date(profile.created).toLocaleDateString('ja-JP') : '—'],
+    ['通算ログイン', `${profile.login.total} 日`],
+    ['戦績', `${s.wins} 勝 ${s.losses} 敗`],
+    ['最高連勝', `${s.bestStreak}`],
+    ['保有艦', `${profile.ships.length}${catalog ? ` / ${catalog.cards.length}` : ''} 隻`],
+    ['海域の星', `★${profile.totalStars}`],
+  ]
+
+  return (
+    <Modal title="提督プロフィール" onClose={onClose} wide className="profile-modal">
+      <div className="profile-head">
+        <div className="profile-face">{portrait ? <PortraitImg portrait={portrait} frame="bust" /> : '⚓'}</div>
+        <div className="profile-fields">
+          <label>
+            <span>
+              提督名 <small>{chars(name.trim())}/{NAME_MAX}</small>
+            </span>
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={NAME_MAX * 2} placeholder="提督" className={nameOk ? '' : 'bad'} />
+          </label>
+          <label>
+            <span>
+              ひとこと <small>{chars(comment.trim())}/{COMMENT_MAX}</small>
+            </span>
+            <input
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              maxLength={COMMENT_MAX * 2}
+              placeholder="例：無限海域の最深部を目指して出撃中！"
+              className={chars(comment.trim()) <= COMMENT_MAX ? '' : 'bad'}
+              onKeyDown={(e) => e.key === 'Enter' && nameOk && changed && !busy && void save()}
+            />
+          </label>
+          <p className="profile-level">
+            Lv.<b>{profile.level}</b> ／ 艦隊戦力 <b>{profile.fleetPower.toLocaleString()}</b>
+            {secCard && <> ／ 秘書艦 <b>{secCard.name}</b></>}
+          </p>
+        </div>
+      </div>
+      <dl className="profile-facts">
+        {facts.map(([k, v]) => (
+          <div key={k}>
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="modal-actions">
+        <button className="pill-btn gold" disabled={!nameOk || chars(comment.trim()) > COMMENT_MAX || !changed || busy} onClick={() => void save()}>
+          保存する
+        </button>
       </div>
     </Modal>
   )

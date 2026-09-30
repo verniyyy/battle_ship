@@ -286,6 +286,7 @@ export interface Mission {
 export interface Profile {
   id: string
   name: string
+  comment: string
   level: number
   exp: number
   nextExp: number
@@ -319,6 +320,7 @@ export interface Profile {
     ssrs: number
   }
   badges: { login: boolean; missions: number; achievements: number; freeTen: boolean }
+  created: string
 }
 
 export interface Catalog {

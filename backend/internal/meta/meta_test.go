@@ -3,6 +3,7 @@ package meta
 import (
 	"errors"
 	"math/rand/v2"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,6 +138,27 @@ func TestFleetAndTraining(t *testing.T) {
 	p.Coins = 0
 	if err := p.Train("s3", t0); !errors.Is(err, ErrInsufficient) {
 		t.Fatal("training should cost coins")
+	}
+}
+
+func TestRename(t *testing.T) {
+	p := NewProfile("p", t0)
+	if err := p.Rename("  蒼海の提督  ", " よろしく "); err != nil || p.Name != "蒼海の提督" || p.Comment != "よろしく" {
+		t.Fatalf("rename: %v %q %q", err, p.Name, p.Comment)
+	}
+	for _, c := range []struct{ name, comment string }{
+		{"   ", ""},
+		{"あいうえおかきくけこさしす", ""}, // 13 characters
+		{"提督", strings.Repeat("あ", MaxCommentLen+1)},
+		{"提\n督", ""},
+		{"提督", "改\x00行"},
+	} {
+		if err := p.Rename(c.name, c.comment); !errors.Is(err, ErrInvalid) {
+			t.Errorf("Rename(%q, %q) = %v, want ErrInvalid", c.name, c.comment, err)
+		}
+	}
+	if p.Name != "蒼海の提督" {
+		t.Fatalf("a rejected rename changed the name to %q", p.Name)
 	}
 }
 

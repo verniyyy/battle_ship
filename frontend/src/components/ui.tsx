@@ -165,7 +165,20 @@ export function Counter({ value, ms = 700, tick = false, className = '' }: { val
 }
 
 /** The persistent header: admiral level, currencies and optional navigation. */
-export function TopBar({ title, en, onBack, right }: { title?: string; en?: string; onBack?: () => void; right?: ReactNode }) {
+export function TopBar({
+  title,
+  en,
+  onBack,
+  onAdmiral,
+  right,
+}: {
+  title?: string
+  en?: string
+  onBack?: () => void
+  /** Makes the admiral plate a button, e.g. to open the profile. */
+  onAdmiral?: () => void
+  right?: ReactNode
+}) {
   const { profile } = useGame()
   if (!profile) return null
   const pct = Math.min(100, (profile.exp / profile.nextExp) * 100)
@@ -183,7 +196,7 @@ export function TopBar({ title, en, onBack, right }: { title?: string; en?: stri
           戻る
         </button>
       ) : (
-        <div className="admiral" ref={(el) => void (anchors.level = el)}>
+        <button className="admiral" ref={(el) => void (anchors.level = el)} onClick={onAdmiral} disabled={!onAdmiral} aria-label="提督プロフィール">
           <div className="admiral-lv" style={{ ['--p' as string]: `${pct}%` }}>
             <small>Lv</small>
             <b>{profile.level}</b>
@@ -194,7 +207,7 @@ export function TopBar({ title, en, onBack, right }: { title?: string; en?: stri
               <i style={{ width: `${pct}%` }} />
             </span>
           </div>
-        </div>
+        </button>
       )}
       {title ? (
         <div className="topbar-title">

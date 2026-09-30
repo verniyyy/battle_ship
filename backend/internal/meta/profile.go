@@ -4,7 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/verniyyy/battle_ship/backend/internal/game"
 )
@@ -97,6 +100,7 @@ type Stats struct {
 type Profile struct {
 	ID           string          `json:"id"`
 	Name         string          `json:"name"`
+	Comment      string          `json:"comment,omitempty"` // one line shown on the admiral's card
 	Level        int             `json:"level"`
 	Exp          int             `json:"exp"`
 	Coins        int             `json:"coins"`
@@ -275,6 +279,30 @@ func (p *Profile) SetFleet(uids []string) error {
 	}
 	p.Fleet = append([]string{}, uids...)
 	return nil
+}
+
+const (
+	MaxNameLen    = 12
+	MaxCommentLen = 40
+)
+
+// Rename sets the admiral's name and one-line comment, both trimmed.
+func (p *Profile) Rename(name, comment string) error {
+	name, comment = strings.TrimSpace(name), strings.TrimSpace(comment)
+	switch n := utf8.RuneCountInString(name); {
+	case n == 0 || n > MaxNameLen:
+		return fmt.Errorf("%w: name needs 1 to %d characters", ErrInvalid, MaxNameLen)
+	case utf8.RuneCountInString(comment) > MaxCommentLen:
+		return fmt.Errorf("%w: comment is over %d characters", ErrInvalid, MaxCommentLen)
+	case !printable(name) || !printable(comment):
+		return fmt.Errorf("%w: control characters are not allowed", ErrInvalid)
+	}
+	p.Name, p.Comment = name, comment
+	return nil
+}
+
+func printable(s string) bool {
+	return utf8.ValidString(s) && !strings.ContainsFunc(s, unicode.IsControl)
 }
 
 func (p *Profile) SetSecretary(uid string) error {

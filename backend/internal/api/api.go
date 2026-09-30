@@ -45,6 +45,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/profile/login", s.player(s.claimLogin))
 	mux.HandleFunc("POST /api/profile/fleet", s.player(s.setFleet))
 	mux.HandleFunc("POST /api/profile/secretary", s.player(s.setSecretary))
+	mux.HandleFunc("POST /api/profile/name", s.player(s.rename))
 	mux.HandleFunc("POST /api/ships/{uid}/train", s.player(s.train))
 	mux.HandleFunc("POST /api/gacha", s.player(s.pull))
 	mux.HandleFunc("POST /api/missions/{id}/claim", s.player(s.claimMission))
@@ -132,6 +133,19 @@ func (s *Server) setSecretary(w http.ResponseWriter, r *http.Request, pid string
 	}
 	s.updateProfile(w, r, pid, func(p *meta.Profile) (map[string]any, error) {
 		return map[string]any{}, p.SetSecretary(req.UID)
+	})
+}
+
+func (s *Server) rename(w http.ResponseWriter, r *http.Request, pid string) {
+	var req struct {
+		Name    string `json:"name"`
+		Comment string `json:"comment"`
+	}
+	if !s.decode(w, r, &req) {
+		return
+	}
+	s.updateProfile(w, r, pid, func(p *meta.Profile) (map[string]any, error) {
+		return map[string]any{}, p.Rename(req.Name, req.Comment)
 	})
 }
 

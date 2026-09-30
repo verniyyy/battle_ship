@@ -85,6 +85,20 @@
 .admiral-info {
   display: grid;
   gap: 4px;
+  text-align: left;
+}
+
+/* On the harbour the plate opens the profile. */
+.admiral:enabled .admiral-name::after {
+  content: ' ✎';
+  font-size: 12px;
+  letter-spacing: 0;
+  color: var(--cyan);
+  opacity: 0.7;
+}
+
+.admiral:enabled:hover .admiral-name {
+  color: var(--gold-hi);
 }
 
 .admiral-name {
@@ -2673,4 +2687,109 @@ button.card:active {
 .detail-skill em {
   display: block;
   margin-top: 2px;
+}
+
+/* ---------- admiral profile ---------- */
+
+.profile-head {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 20px;
+  align-items: center;
+}
+
+.profile-face {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font-size: 48px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 30%, var(--navy-600), var(--navy-900));
+  border: 3px solid var(--gold);
+  box-shadow: 0 0 20px rgba(244, 198, 90, 0.35);
+}
+
+/* the face fills the disc (see .portrait-img.bust) */
+.profile-face:has(.portrait-img) {
+  container-type: size;
+  --face-h: 0.6;
+  --face-top: 0.18;
+  background: radial-gradient(circle at 50% 40%, #f4f8ff, #b9cde6);
+}
+
+.profile-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.profile-fields label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.profile-fields label small {
+  font-weight: 400;
+  margin-left: 6px;
+}
+
+.profile-fields input {
+  width: 100%;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(5, 12, 24, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.profile-fields input:focus {
+  outline: none;
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 2px rgba(70, 224, 255, 0.25);
+}
+
+.profile-fields input.bad {
+  border-color: var(--red);
+}
+
+.profile-level {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.profile-level b {
+  color: var(--text);
+}
+
+.profile-facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 18px 0 0;
+}
+
+.profile-facts div {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+}
+
+.profile-facts dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.profile-facts dd {
+  margin: 2px 0 0;
+  font-weight: 700;
 }
