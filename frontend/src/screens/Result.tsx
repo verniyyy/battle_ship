@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Scene } from '../App'
-import { api } from '../api'
+import { api, ApiError } from '../api'
 import { audio } from '../audio'
 import { ShipArt } from '../components/ShipArt'
 import { CardView, Counter, RarityBadge, Stars } from '../components/ui'
 import { fx, RAINBOW } from '../fx'
 import { lookOfCard, RANK_TEXT, stageLabel } from '../game'
 import { celebrateGrant, useGame } from '../state'
-import type { Chest, GameView, Reward, Stage } from '../types'
+import type { Chest, GameView, MatchResponse, Reward, Stage } from '../types'
 import { nextStage } from './Home'
 import { endlessStage } from './StageMap'
 
@@ -21,6 +21,7 @@ export function ResultOverlay({
   reward,
   onReward,
   onBoard,
+  onRematch,
   go,
 }: {
   gameId: string
@@ -29,6 +30,7 @@ export function ResultOverlay({
   reward: Reward
   onReward: (r: Reward) => void
   onBoard: () => void
+  onRematch: (m: MatchResponse) => void
   go: (s: Scene) => void
 }) {
   const { catalog, profile, card, setProfile, notify } = useGame()
@@ -36,6 +38,7 @@ export function ResultOverlay({
   const [lines, setLines] = useState(0)
   const [levelUp, setLevelUp] = useState(false)
   const [opening, setOpening] = useState<number | null>(null)
+  const [rematching, setRematching] = useState(false)
   const timers = useRef<number[]>([])
   const rankRef = useRef<HTMLDivElement>(null)
   const chestRefs = useRef<(HTMLButtonElement | null)[]>([])
@@ -139,13 +142,28 @@ export function ResultOverlay({
     return go(n ? { name: 'sortie', stage: n } : { name: 'map', area: 5 })
   }
 
+  // After a defeat: straight back in, same stage, the fleet where it stood.
+  const rematch = async () => {
+    audio.play('charge')
+    setRematching(true)
+    try {
+      fx.flash('#bfe9ff', 400, 0.5)
+      onRematch(await api.rematch(gameId))
+    } catch (e) {
+      // Typically the formation changed since; deploy it by hand instead.
+      notify(e instanceof ApiError && e.status === 400 ? '前回の配置では出撃できません。配置からやり直してください' : (e as Error).message, 'error')
+      setRematching(false)
+      go({ name: 'sortie', stage: stage.id === 'ex' && profile ? endlessStage(profile) : stage })
+    }
+  }
+
   const accuracy = reward.stats.shots ? Math.round((reward.stats.hits / reward.stats.shots) * 100) : 0
   const mvp = reward.mvp >= 0 ? game.playerShips[reward.mvp] : undefined
   const mvpCard = mvp ? card(mvp.key) : undefined
   const expPct = profile ? (reward.toExp / Math.max(1, profile.nextExp)) * 100 : 0
   const dropCard = reward.drop ? card(reward.drop.card) : undefined
   const campaign = stage.id !== 'ex'
-  const nextLabel = !reward.win ? '再挑戦' : stage.id === 'ex' ? `第${(profile?.endless ?? 0) + 1}層へ` : '次の海域へ'
+  const nextLabel = !reward.win ? '配置からやり直す' : stage.id === 'ex' ? `第${(profile?.endless ?? 0) + 1}層へ` : '次の海域へ'
 
   return (
     <div className={`result ${reward.win ? 'win' : 'lose'} rank-${reward.rank}`} onClick={skipAhead}>
@@ -318,9 +336,20 @@ export function ResultOverlay({
         <button className="pill-btn" onClick={() => go({ name: 'home' })}>
           母港へ
         </button>
-        <button className="pill-btn gold big pulse" onClick={next}>
-          {nextLabel} ▶
-        </button>
+        {reward.win ? (
+          <button className="pill-btn gold big pulse" onClick={next}>
+            {nextLabel} ▶
+          </button>
+        ) : (
+          <>
+            <button className="pill-btn" onClick={next}>
+              {nextLabel}
+            </button>
+            <button className="pill-btn gold big pulse" onClick={() => void rematch()} disabled={rematching} title="同じ海域に、同じ配置で再出撃します">
+              再戦 ▶
+            </button>
+          </>
+        )}
       </footer>
     </div>
   )

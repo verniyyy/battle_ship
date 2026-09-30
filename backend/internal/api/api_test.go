@@ -214,6 +214,9 @@ func TestCurrentGame(t *testing.T) {
 	if code := do(t, ts, bob, "GET", "/api/games/current", nil, nil); code != http.StatusNotFound {
 		t.Fatalf("another admiral's battle: got %d", code)
 	}
+	if code := do(t, ts, alice, "POST", "/api/games/"+created.ID+"/rematch", nil, nil); code != http.StatusBadRequest {
+		t.Fatalf("rematch mid-battle: got %d", code)
+	}
 }
 
 // TestPlayToTheEnd plays random legal moves until the battle ends, then checks
@@ -258,6 +261,27 @@ func TestPlayToTheEnd(t *testing.T) {
 	}
 	if code := do(t, ts, alice, "POST", "/api/games/"+m.ID+"/actions", game.Action{Type: game.ActionMove}, nil); code != http.StatusConflict {
 		t.Fatalf("acting after the end: got %d", code)
+	}
+
+	// A rematch deploys the fleet where it stood at the start of this one.
+	if code := do(t, ts, bob, "POST", "/api/games/"+m.ID+"/rematch", nil, nil); code != http.StatusNotFound {
+		t.Fatalf("rematch of another admiral's battle: got %d", code)
+	}
+	var again matchResponse
+	if code := do(t, ts, alice, "POST", "/api/games/"+m.ID+"/rematch", nil, &again); code != http.StatusCreated || again.ID == m.ID || again.Stage.ID != "1-1" {
+		t.Fatalf("rematch: status %d, %+v", code, again)
+	}
+	for i, s := range again.Game.PlayerShips {
+		if s.Pos == nil || *s.Pos != placements[i] {
+			t.Fatalf("ship %d deployed at %v, want %v", i, s.Pos, placements[i])
+		}
+	}
+	// Not once the formation has changed.
+	var prof struct{ Profile meta.ProfileView }
+	do(t, ts, alice, "GET", "/api/profile", nil, &prof)
+	do(t, ts, alice, "POST", "/api/profile/fleet", map[string][]string{"uids": prof.Profile.Fleet[:2]}, nil)
+	if code := do(t, ts, alice, "POST", "/api/games/"+m.ID+"/rematch", nil, nil); code != http.StatusBadRequest {
+		t.Fatalf("rematch with another fleet: got %d", code)
 	}
 }
 

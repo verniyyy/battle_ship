@@ -90,6 +90,8 @@ export const api = {
     }),
   act: (id: string, type: ActionType, shipId: number, target: Pos) =>
     post<ActionResponse>(`/games/${id}/actions`, { type, shipId, target }),
+  /** A fresh battle on the same stage with the fleet deployed as in game id. */
+  rematch: (id: string) => post<MatchResponse>(`/games/${id}/rematch`),
   openChest: (id: string, index: number) => post<WithProfile<{ chest: Chest; reward: Reward }>>(`/games/${id}/chest`, { index }),
   history: (limit = 20) => request<{ games: GameSummary[] }>(`/games?limit=${limit}`),
 }

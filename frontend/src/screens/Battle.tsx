@@ -121,7 +121,17 @@ function loadSpeed() {
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a)
 
-export function Battle({ initial, resumed, go }: { initial: MatchResponse; resumed?: boolean; go: (s: Scene) => void }) {
+export function Battle({
+  initial,
+  resumed,
+  onRematch,
+  go,
+}: {
+  initial: MatchResponse
+  resumed?: boolean
+  onRematch: (m: MatchResponse) => void
+  go: (s: Scene) => void
+}) {
   const { catalog, card, setProfile } = useGame()
   const gameId = initial.id
   const stage = initial.stage
@@ -941,7 +951,16 @@ export function Battle({ initial, resumed, go }: { initial: MatchResponse; resum
       {cutin && <CutinLayer cutin={cutin} onSkip={() => skip.current?.()} />}
 
       {showResult && reward && (
-        <ResultOverlay gameId={gameId} game={game} stage={stage} reward={reward} onReward={setReward} onBoard={() => setShowResult(false)} go={go} />
+        <ResultOverlay
+          gameId={gameId}
+          game={game}
+          stage={stage}
+          reward={reward}
+          onReward={setReward}
+          onBoard={() => setShowResult(false)}
+          onRematch={onRematch}
+          go={go}
+        />
       )}
     </div>
   )

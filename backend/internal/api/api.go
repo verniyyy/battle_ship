@@ -56,6 +56,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/games/{id}", s.player(s.getGame))
 	mux.HandleFunc("POST /api/games/{id}/actions", s.player(s.act))
 	mux.HandleFunc("POST /api/games/{id}/chest", s.player(s.openChest))
+	mux.HandleFunc("POST /api/games/{id}/rematch", s.player(s.rematch))
 	return mux
 }
 
@@ -201,6 +202,30 @@ func (s *Server) createGame(w http.ResponseWriter, r *http.Request, pid string) 
 	if _, err := s.store.UpdatePlayer(r.Context(), pid, func(p *meta.Profile) error {
 		var err error
 		s.withRng(func(rng *rand.Rand) { m, err = meta.NewMatch(p, req.StageID, req.Placements, rng) })
+		return err
+	}); err != nil {
+		s.fail(w, err)
+		return
+	}
+	id, err := s.store.CreateMatch(r.Context(), m)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, matchView(id, m))
+}
+
+// rematch starts the same stage again with the fleet deployed as last time.
+func (s *Server) rematch(w http.ResponseWriter, r *http.Request, pid string) {
+	prev, err := s.getMatch(r, pid)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	var m *meta.Match
+	if _, err := s.store.UpdatePlayer(r.Context(), pid, func(p *meta.Profile) error {
+		var err error
+		s.withRng(func(rng *rand.Rand) { m, err = meta.Rematch(prev, p, rng) })
 		return err
 	}); err != nil {
 		s.fail(w, err)

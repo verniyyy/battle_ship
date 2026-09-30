@@ -3,6 +3,7 @@ package meta
 import (
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"time"
 
 	"github.com/verniyyy/battle_ship/backend/internal/game"
@@ -14,8 +15,10 @@ type Match struct {
 	PlayerID string      `json:"playerId"`
 	Stage    Stage       `json:"stage"`
 	// Fleet maps player ship IDs to roster UIDs.
-	Fleet  []string `json:"fleet"`
-	Reward *Reward  `json:"reward,omitempty"`
+	Fleet []string `json:"fleet"`
+	// Placements is where the fleet was deployed, kept for a rematch.
+	Placements []game.Pos `json:"placements,omitempty"`
+	Reward     *Reward    `json:"reward,omitempty"`
 }
 
 // NewMatch sets up a battle on stageID with the admiral's current formation.
@@ -39,11 +42,27 @@ func NewMatch(p *Profile, stageID string, placements []game.Pos, rng *rand.Rand)
 		return nil, err
 	}
 	return &Match{
-		Game:     game.NewState(player, cpu, stage.MaxTurns, game.AI{Level: stage.AI}, rollWeather(rng)),
-		PlayerID: p.ID,
-		Stage:    stage,
-		Fleet:    append([]string{}, p.Fleet...),
+		Game:       game.NewState(player, cpu, stage.MaxTurns, game.AI{Level: stage.AI}, rollWeather(rng)),
+		PlayerID:   p.ID,
+		Stage:      stage,
+		Fleet:      append([]string{}, p.Fleet...),
+		Placements: append([]game.Pos{}, placements...),
 	}, nil
+}
+
+// Rematch sets up a fresh battle on a finished match's stage with the fleet
+// deployed where it was. The enemy and the weather are rolled anew.
+func Rematch(prev *Match, p *Profile, rng *rand.Rand) (*Match, error) {
+	if prev.Game.Status != game.StatusFinished {
+		return nil, fmt.Errorf("%w: the battle is still going", ErrInvalid)
+	}
+	if len(prev.Placements) == 0 {
+		return nil, fmt.Errorf("%w: this battle did not record its deployment", ErrInvalid)
+	}
+	if !slices.Equal(prev.Fleet, p.Fleet) {
+		return nil, fmt.Errorf("%w: the fleet has changed since, deploy it again", ErrInvalid)
+	}
+	return NewMatch(p, prev.Stage.ID, prev.Placements, rng)
 }
 
 // rollWeather picks the sea condition: calm about half the time, otherwise

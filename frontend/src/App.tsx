@@ -96,6 +96,7 @@ export function App() {
           key={scene.match.id}
           initial={scene.match}
           resumed={scene.resumed}
+          onRematch={(m) => startBattle(m)}
           go={go}
         />
       )}
