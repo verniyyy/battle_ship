@@ -41,8 +41,11 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # wrangler is not a dependency (the devshell provides it), so fetch it here
-      # to generate worker-configuration.d.ts from wrangler.jsonc.
-      - run: bun x wrangler@4 types
+      # to generate worker-configuration.d.ts from wrangler.jsonc. The secret's
+      # type comes from .dev.vars (not in git), so give it a placeholder.
+      - run: |
+          echo 'ORIGIN_SECRET=ci-placeholder' > .dev.vars
+          bun x wrangler@4 types
       - run: bun x tsc --noEmit
 
   docker:
