@@ -1344,6 +1344,66 @@ button.card:active {
   animation: ticker 60s linear infinite;
 }
 
+/* ---------- news ---------- */
+
+.news-list {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+
+.news-list > li {
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.news-list > li.unread {
+  border-color: rgba(244, 198, 90, 0.5);
+  background: rgba(244, 198, 90, 0.08);
+}
+
+.news-list header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+
+.news-list time {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.news-list h3 {
+  flex-basis: 100%;
+  font-size: 17px;
+  color: var(--gold);
+}
+
+.news-new {
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #fff;
+  border-radius: 999px;
+  background: #e0443e;
+}
+
+.news-list ul {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 4px;
+  line-height: 1.7;
+}
+
 /* ---------- login bonus ---------- */
 
 .login-lead {
