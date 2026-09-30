@@ -264,9 +264,36 @@ func TestFlareMissesSubmarinesSonarDoesNot(t *testing.T) {
 	if len(res.Revealed) != 2 {
 		t.Fatalf("flare revealed %v, want the two surface ships", res.Revealed)
 	}
+	// The sonar pings row 2 (the submarine) and the ring around the destroyer (the battleship).
 	res = apply(t, st, SidePlayer, Action{ActionSkill, 1, Pos{2, 0}})
-	if len(res.Revealed) != 1 || res.Revealed[0].ShipID != 2 {
-		t.Fatalf("sonar revealed %v, want the submarine", res.Revealed)
+	if len(res.Revealed) != 2 || !slices.ContainsFunc(res.Revealed, func(s Sighting) bool { return s.ShipID == 2 }) {
+		t.Fatalf("sonar revealed %v, want the submarine and the battleship", res.Revealed)
+	}
+}
+
+func TestScoutingLocksOn(t *testing.T) {
+	dodgy := dd
+	dodgy.Evasion = 100
+	st := fleetGame(t, []Spec{ca, dd}, []Spec{dodgy, ss}, []Pos{{0, 0}, {4, 4}}, []Pos{{2, 2}, {4, 0}})
+	// A flare reaches anywhere on the sea.
+	if res := apply(t, st, SidePlayer, Action{ActionSkill, 0, Pos{3, 1}}); len(res.Revealed) != 1 {
+		t.Fatalf("flare revealed %v", res.Revealed)
+	}
+	if v := st.PlayerView(); !v.EnemyShips[0].Marked {
+		t.Fatal("the lit destroyer is not shown locked on")
+	}
+	res := apply(t, st, SidePlayer, Action{ActionAttack, 0, Pos{2, 2}})
+	sh := res.Shots[0]
+	if res.Special != SpecialMarked || sh.Evaded || !sh.Crit || !sh.Marked || !between(sh.Damage, 120, 0, critMult) {
+		t.Fatalf("shot on a locked-on ship %+v (%s)", sh, res.Special)
+	}
+	st.endRound(nil)
+	if st.Boards[SideCPU].Ships[0].Marked == 0 {
+		t.Fatal("the lock-on should hold through the next round")
+	}
+	st.endRound(nil)
+	if st.Boards[SideCPU].Ships[0].Marked != 0 {
+		t.Fatal("the lock-on should wear off after the next round")
 	}
 }
 
@@ -457,8 +484,18 @@ func TestFootprintClipsToBoard(t *testing.T) {
 	if n := len(Footprint(5, ActionAttack, "", Battleship, Pos{}, Pos{0, 0})); n != 3 {
 		t.Fatalf("corner battleship salvo covers %d cells", n)
 	}
-	if n := len(Footprint(5, ActionSkill, SkillSonar, Destroyer, Pos{2, 2}, Pos{2, 2})); n != 8 {
+	if n := len(Footprint(5, ActionSkill, SkillSonar, Destroyer, Pos{2, 2}, Pos{2, 2})); n != 12 {
 		t.Fatalf("sonar covers %d cells", n)
+	}
+	if n := len(Footprint(5, ActionSkill, SkillFlare, Cruiser, Pos{}, Pos{2, 2})); n != 13 {
+		t.Fatalf("flare covers %d cells", n)
+	}
+	// A wide sea widens both: the flare to 5×5, the sonar to three-cell lanes.
+	if n := len(Footprint(WideSea, ActionSkill, SkillFlare, Cruiser, Pos{}, Pos{3, 3})); n != 25 {
+		t.Fatalf("flare on a wide sea covers %d cells", n)
+	}
+	if n := len(Footprint(WideSea, ActionSkill, SkillSonar, Destroyer, Pos{3, 3}, Pos{3, 3})); n != 3*WideSea*2-9-1 {
+		t.Fatalf("sonar on a wide sea covers %d cells", n)
 	}
 }
 

@@ -132,12 +132,25 @@ func TestFleetAndTraining(t *testing.T) {
 		t.Fatal(err)
 	}
 	coins := p.Coins
-	if err := p.Train("s3", t0); err != nil || p.Ship("s3").Level != 2 || p.Coins != coins-LevelUpCost(1) {
-		t.Fatalf("train: %v", err)
+	if n, err := p.Train("s3", 1, t0); err != nil || n != 1 || p.Ship("s3").Level != 2 || p.Coins != coins-LevelUpCost(1) {
+		t.Fatalf("train: %d %v", n, err)
 	}
 	p.Coins = 0
-	if err := p.Train("s3", t0); !errors.Is(err, ErrInsufficient) {
+	if _, err := p.Train("s3", 1, t0); !errors.Is(err, ErrInsufficient) {
 		t.Fatal("training should cost coins")
+	}
+	// Training to the max stops where the coins run out...
+	p.Coins = LevelUpCost(2) + LevelUpCost(3) + LevelUpCost(4) - 1
+	if n, err := p.Train("s3", 0, t0); err != nil || n != 2 || p.Ship("s3").Level != 4 || p.Coins != LevelUpCost(4)-1 {
+		t.Fatalf("train max: %d %v, level %d coins %d", n, err, p.Ship("s3").Level, p.Coins)
+	}
+	// ...or at the level cap.
+	p.Coins = 1 << 30
+	if n, err := p.Train("s3", 0, t0); err != nil || p.Ship("s3").Level != ShipMaxLevel(0) || n != ShipMaxLevel(0)-4 {
+		t.Fatalf("train to cap: %d %v, level %d", n, err, p.Ship("s3").Level)
+	}
+	if _, err := p.Train("s3", 0, t0); !errors.Is(err, ErrInvalid) {
+		t.Fatal("a capped ship trained further")
 	}
 }
 

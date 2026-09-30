@@ -38,11 +38,11 @@ export function ShipBadge({ cls, enemy, sunk }: { cls: ShipClass; enemy?: boolea
 
 // Map piece for one ship: the character's face for cards with a portrait,
 // otherwise the class kanji, ringed in the card colour, with its fleet number.
-export function ShipToken({ look, no, sunk, spotted }: { look: Look; no: number; sunk?: boolean; spotted?: boolean }) {
+export function ShipToken({ look, no, sunk, spotted, marked }: { look: Look; no: number; sunk?: boolean; spotted?: boolean; marked?: boolean }) {
   const portrait = portraitOf(look, useAssets())
   return (
     <span
-      className={`ship-token ${look.cls} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${sunk ? 'sunk' : ''} ${spotted ? 'spotted' : ''}`}
+      className={`ship-token ${look.cls} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${sunk ? 'sunk' : ''} ${spotted ? 'spotted' : ''} ${marked ? 'marked' : ''}`}
       style={{ ['--c' as string]: look.enemy ? undefined : look.color }}
     >
       <span className="token-disc">
@@ -78,6 +78,7 @@ export function CardView({
   size = 'md',
   fresh,
   motion,
+  lite,
   className = '',
   onClick,
   children,
@@ -89,6 +90,8 @@ export function CardView({
   fresh?: boolean
   // Plays the card's motion effect; see ShipArt.
   motion?: boolean
+  // Lighter art for long lists; see ShipArt.
+  lite?: boolean
   className?: string
   onClick?: (e: MouseEvent<HTMLElement>) => void
   children?: ReactNode
@@ -96,7 +99,7 @@ export function CardView({
   const Tag = onClick ? 'button' : 'div'
   return (
     <Tag className={`card card-${size} r${look.rarity} ${className}`} onClick={onClick} type={onClick ? 'button' : undefined}>
-      <ShipArt look={look} motion={motion} />
+      <ShipArt look={look} motion={motion} lite={lite} />
       <span className="card-shine" />
       <span className="card-top">
         <RarityBadge r={look.rarity} />

@@ -1,5 +1,5 @@
 // App-wide data: the sign-in session, the static catalog, the admiral's profile and toasts.
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, auth, onUnauthorized } from './api'
 import { audio } from './audio'
 import { fx } from './fx'
@@ -100,7 +100,8 @@ export function GameDataProvider({ children }: { children: ReactNode }) {
     window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2600)
   }, [])
 
-  const card = useCallback((id: string) => catalog?.cards.find((c) => c.id === id), [catalog])
+  const cards = useMemo(() => new Map(catalog?.cards.map((c) => [c.id, c])), [catalog])
+  const card = useCallback((id: string) => cards.get(id), [cards])
 
   return (
     <Ctx.Provider value={{ session, reloadSession, signOut, catalog, profile, error, setProfile, refresh, card, toasts, notify }}>{children}</Ctx.Provider>

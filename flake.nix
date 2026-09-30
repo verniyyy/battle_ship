@@ -19,6 +19,9 @@
         # Docker itself (daemon + compose plugin) comes from the host system.
         # wrangler comes from nixpkgs because the npm build's workerd binary
         # does not run on NixOS; Node.js runs it and the Vercel CLI (via npx).
+        # Playwright's browsers come from nixpkgs too (the downloaded ones do
+        # not run on NixOS); frontend/package.json pins @playwright/test to
+        # the same version as playwright-driver.
         default = pkgs.mkShell {
           packages = [
             pkgs.just
@@ -26,6 +29,9 @@
             pkgs.nodejs_22
             pkgs.wrangler
           ];
+          PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers;
+          PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
         };
       });
     };

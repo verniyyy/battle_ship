@@ -314,24 +314,38 @@ func (p *Profile) SetSecretary(uid string) error {
 	return nil
 }
 
-// Train buys one ship level with coins.
-func (p *Profile) Train(uid string, now time.Time) error {
+// Train buys up to levels ship levels with coins, stopping at the level cap
+// or when the coins run out; levels <= 0 buys as many as that allows. It
+// returns how many levels were bought, and fails when not even one was.
+func (p *Profile) Train(uid string, levels int, now time.Time) (int, error) {
 	s := p.Ship(uid)
 	if s == nil {
-		return fmt.Errorf("%w: unknown ship %q", ErrInvalid, uid)
+		return 0, fmt.Errorf("%w: unknown ship %q", ErrInvalid, uid)
 	}
 	if s.Level >= ShipMaxLevel(s.Stars) {
-		return fmt.Errorf("%w: ship is at its level cap", ErrInvalid)
+		return 0, fmt.Errorf("%w: ship is at its level cap", ErrInvalid)
 	}
-	cost := LevelUpCost(s.Level)
-	if p.Coins < cost {
-		return ErrInsufficient
+	to, cost := TrainReach(s.Level, ShipMaxLevel(s.Stars), p.Coins, levels)
+	if to == s.Level {
+		return 0, ErrInsufficient
 	}
+	n := to - s.Level
 	p.Coins -= cost
-	s.Level++
+	s.Level = to
 	s.Exp = 0
-	p.bump(now, StatTrain, 1)
-	return nil
+	p.bump(now, StatTrain, n)
+	return n, nil
+}
+
+// TrainReach is the level training from lv reaches with coins, at most
+// levels levels (all when levels <= 0) and never past maxLv, and its price.
+func TrainReach(lv, maxLv, coins, levels int) (int, int) {
+	to, cost := lv, 0
+	for to < maxLv && (levels <= 0 || to-lv < levels) && cost+LevelUpCost(to) <= coins {
+		cost += LevelUpCost(to)
+		to++
+	}
+	return to, cost
 }
 
 // FleetSpecs resolves the formation into battle specs.

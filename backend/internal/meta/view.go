@@ -14,6 +14,10 @@ type ShipView struct {
 	MaxLevel  int       `json:"maxLevel"`
 	NextExp   int       `json:"nextExp"`
 	TrainCost int       `json:"trainCost"`
+	// MaxTrainLevel is how far the admiral's coins can train the ship right
+	// now, and MaxTrainCost what that costs.
+	MaxTrainLevel int `json:"maxTrainLevel"`
+	MaxTrainCost  int `json:"maxTrainCost"`
 }
 
 // Badges are the red dots on the home screen.
@@ -77,6 +81,7 @@ func (p *Profile) View(now time.Time) ProfileView {
 			OwnedShip: *s, Stats: sp, Power: Power(sp),
 			MaxLevel: ShipMaxLevel(s.Stars), NextExp: ShipExpToNext(s.Level), TrainCost: LevelUpCost(s.Level),
 		}
+		sv.MaxTrainLevel, sv.MaxTrainCost = TrainReach(s.Level, sv.MaxLevel, p.Coins, 0)
 		v.Ships = append(v.Ships, sv)
 		if inFleet[s.UID] {
 			v.FleetPower += sv.Power

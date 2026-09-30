@@ -22,6 +22,7 @@ const (
 	pinRounds     = 2   // a water column holds for the rest of this round and the next
 	sailRounds    = 2   // a ship that moved is under way for the rest of this round and the next
 	reconAfter    = 3   // quiet rounds before scout planes report an enemy ship
+	markRounds    = 2   // a scouting lock-on holds for the rest of this round and the next
 )
 
 // Gauge gains. Shooting gains are scaled by the running combo.
@@ -29,7 +30,7 @@ const (
 	gaugeHit    = 14
 	gaugeSink   = 22
 	gaugeSplash = 5
-	gaugeScout  = 8
+	gaugeScout  = 15
 	gaugeHurt   = 12
 )
 
@@ -177,6 +178,7 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 			for _, e := range st.Boards[side.Opponent()].Ships {
 				if e.Alive() && slices.Contains(cells, e.Pos) && (kind == SkillSonar || e.Spec.Surface()) {
 					res.Revealed = append(res.Revealed, Sighting{ShipID: e.ID, Pos: e.Pos, Turn: st.Turn + 1})
+					e.Marked = markRounds
 				}
 			}
 		}
@@ -190,6 +192,9 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 		}
 	}
 
+	if res.Special == "" && slices.ContainsFunc(res.Shots, func(s Shot) bool { return s.Marked && s.Damage > 0 }) {
+		res.Special = SpecialMarked
+	}
 	st.LastGun[side] = lastGun
 	st.score(side, &res)
 	st.learn(res)
@@ -345,6 +350,13 @@ func (st *State) tracking(side Side, p Pos) bool {
 	return false
 }
 
+// lockedOn reports whether side tracks, at p, an enemy ship its scouting has
+// locked on to: shots there cannot miss and always crit.
+func (st *State) lockedOn(side Side, p Pos) bool {
+	s := st.Boards[side.Opponent()].shipAt(p)
+	return s != nil && s.Marked > 0 && st.tracking(side, p)
+}
+
 // fire lands one strike from side on cell t.
 func (st *State) fire(side Side, t Pos, s strike, rng *rand.Rand) Shot {
 	enemy := st.Boards[side.Opponent()]
@@ -352,6 +364,10 @@ func (st *State) fire(side Side, t Pos, s strike, rng *rand.Rand) Shot {
 	if hit := enemy.shipAt(t); hit != nil {
 		id := hit.ID
 		sh.HitShipID = &id
+		if hit.Marked > 0 {
+			sh.Marked = true
+			s.forceCrit, s.evadeDiv = true, 0
+		}
 		evasion := hit.Spec.Evasion
 		if st.Weather == Fog {
 			evasion += 10

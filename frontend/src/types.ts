@@ -2,7 +2,7 @@ export type Side = 'player' | 'cpu'
 export type ShipClass = 'battleship' | 'cruiser' | 'destroyer' | 'submarine' | 'carrier'
 export type SkillKind = 'barrage' | 'flare' | 'sonar' | 'spread' | 'airstrike'
 export type ActionType = 'attack' | 'torpedo' | 'move' | 'skill' | 'ultimate'
-export type Special = 'spotting' | 'precision' | 'pointblank'
+export type Special = 'spotting' | 'precision' | 'pointblank' | 'marked'
 export type Weather = 'clear' | 'fog' | 'storm' | 'night'
 export type Direction = 'north' | 'south' | 'east' | 'west'
 export type EndReason = 'annihilated' | 'disarmed' | 'judgment' | 'abandoned'
@@ -64,6 +64,8 @@ export interface ShipView {
   gunRange: number
   moveRange: number
   pinned?: boolean
+  /** A flare or sonar locked on: hits on it cannot miss and always crit, until the end of next round. */
+  marked?: boolean
   /** Moved last round: moving again resolves late. */
   underWay?: boolean
   pos?: Pos
@@ -83,6 +85,8 @@ export interface Shot {
   evaded?: boolean
   sunk?: boolean
   splash?: boolean
+  /** The ship hit was locked on to by a scouting skill. */
+  marked?: boolean
 }
 
 export interface Sighting {
@@ -272,6 +276,9 @@ export interface OwnedShip {
   maxLevel: number
   nextExp: number
   trainCost: number
+  /** How far the current coins can train the ship, and what that costs. */
+  maxTrainLevel: number
+  maxTrainCost: number
 }
 
 export interface Mission {

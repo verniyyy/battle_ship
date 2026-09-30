@@ -37,6 +37,11 @@ export function ShipPlate({
           {ship.name}
           {dmg !== 'none' && dmg !== 'sunk' && <em className={`dmg-tag ${dmg}`}>{DAMAGE_LABEL[dmg]}</em>}
           {enemy && ship.spotted && ship.hp > 0 && <em className="spot-tag">追跡</em>}
+          {ship.marked && ship.hp > 0 && (
+            <em className="lock-tag" title="索敵で捕捉された。次のターンまで攻撃が回避されず必ず会心">
+              捕捉
+            </em>
+          )}
           {ship.pinned && ship.hp > 0 && <em className="pin-tag">水柱</em>}
           {ship.underWay && !ship.pinned && ship.hp > 0 && (
             <em className="sail-tag" title="前のターンに移動した。続けて移動すると後攻になる">

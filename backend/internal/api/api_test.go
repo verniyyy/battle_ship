@@ -10,6 +10,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -354,6 +355,7 @@ func TestProfileGachaAndFleet(t *testing.T) {
 	var out struct {
 		Profile meta.ProfileView `json:"profile"`
 		Gains   []meta.Gain      `json:"gains"`
+		Levels  int              `json:"levels"`
 	}
 	if code := do(t, ts, alice, "GET", "/api/profile", nil, &out); code != http.StatusOK || len(out.Profile.Ships) != 3 {
 		t.Fatalf("profile: %d %+v", code, out.Profile)
@@ -377,6 +379,14 @@ func TestProfileGachaAndFleet(t *testing.T) {
 	}
 	if code := do(t, ts, alice, "POST", "/api/ships/"+fleet[1]+"/train", nil, &out); code != http.StatusOK {
 		t.Fatalf("train: %d", code)
+	}
+	ship := func() meta.ShipView {
+		i := slices.IndexFunc(out.Profile.Ships, func(s meta.ShipView) bool { return s.UID == fleet[1] })
+		return out.Profile.Ships[i]
+	}
+	want := ship().MaxTrainLevel
+	if code := do(t, ts, alice, "POST", "/api/ships/"+fleet[1]+"/train?max=1", nil, &out); code != http.StatusOK || ship().Level != want || out.Levels < 1 {
+		t.Fatalf("train max: %d, level %d want %d (%d levels)", code, ship().Level, want, out.Levels)
 	}
 	// A two-ship fleet needs two placements.
 	if code := do(t, ts, alice, "POST", "/api/games", createGameRequest{StageID: "1-1", Placements: placements}, nil); code != http.StatusBadRequest {
