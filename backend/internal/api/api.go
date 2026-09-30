@@ -1,7 +1,7 @@
 // Package api exposes the game over a JSON HTTP API.
 //
-// Every /api route except the catalog is scoped to the admiral named by the
-// X-Player-Id header, a client-generated UUID. Profiles are created on first use.
+// Every /api route except the catalog and sign-in is scoped to the signed-in
+// admiral. Profiles are created on first use.
 package api
 
 import (
@@ -10,11 +10,11 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
-	"regexp"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/verniyyy/battle_ship/backend/internal/auth"
 	"github.com/verniyyy/battle_ship/backend/internal/game"
 	"github.com/verniyyy/battle_ship/backend/internal/meta"
 	"github.com/verniyyy/battle_ship/backend/internal/store"
@@ -22,6 +22,7 @@ import (
 
 type Server struct {
 	store store.Store
+	auth  *auth.Handler
 	log   *slog.Logger
 	now   func() time.Time
 
@@ -29,8 +30,8 @@ type Server struct {
 	rng *rand.Rand
 }
 
-func New(s store.Store, log *slog.Logger, rng *rand.Rand, now func() time.Time) *Server {
-	return &Server{store: s, log: log, rng: rng, now: now}
+func New(s store.Store, a *auth.Handler, log *slog.Logger, rng *rand.Rand, now func() time.Time) *Server {
+	return &Server{store: s, auth: a, log: log, rng: rng, now: now}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -38,6 +39,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	catalog := meta.BuildCatalog()
 	mux.HandleFunc("GET /api/catalog", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, http.StatusOK, catalog) })
+	s.auth.Register(mux)
 
 	mux.HandleFunc("GET /api/profile", s.player(s.profile))
 	mux.HandleFunc("POST /api/profile/login", s.player(s.claimLogin))
@@ -56,16 +58,14 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
-
 type playerHandler func(w http.ResponseWriter, r *http.Request, pid string)
 
-// player requires a well-formed X-Player-Id header.
+// player requires a signed-in admiral.
 func (s *Server) player(h playerHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		pid := r.Header.Get("X-Player-Id")
-		if !uuidRe.MatchString(pid) {
-			writeError(w, http.StatusBadRequest, "X-Player-Id header must be a UUID")
+		pid, ok := s.auth.PlayerID(w, r)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "ログインしてください")
 			return
 		}
 		h(w, r, pid)

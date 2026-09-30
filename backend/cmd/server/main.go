@@ -10,12 +10,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/verniyyy/battle_ship/backend/internal/api"
+	"github.com/verniyyy/battle_ship/backend/internal/auth"
 	"github.com/verniyyy/battle_ship/backend/internal/store"
 )
 
@@ -41,6 +43,11 @@ func run(log *slog.Logger) error {
 		addr = ":" + cmp.Or(os.Getenv("PORT"), "8080")
 	}
 
+	authCfg, sessions, err := authConfig()
+	if err != nil {
+		return err
+	}
+
 	pool, err := connect(ctx, log, dsn)
 	if err != nil {
 		return err
@@ -54,7 +61,8 @@ func run(log *slog.Logger) error {
 	log.Info("migrations applied")
 
 	mux := http.NewServeMux()
-	mux.Handle("/", api.New(pg, log, rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())), time.Now).Handler())
+	authn := auth.New(authCfg, sessions, pg, log)
+	mux.Handle("/", api.New(pg, authn, log, rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())), time.Now).Handler())
 	// Unlike /healthz this touches the database, so a daily probe also keeps
 	// an idle free-tier database from being paused.
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +93,27 @@ func run(log *slog.Logger) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// authConfig reads the sign-in settings from the environment.
+func authConfig() (auth.Config, *auth.Sessions, error) {
+	cfg := auth.Config{
+		PublicURL:          os.Getenv("PUBLIC_URL"),
+		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		DevLogin:           os.Getenv("DEV_LOGIN") == "1",
+	}
+	secret := os.Getenv("SESSION_SECRET")
+	switch {
+	case len(secret) < 32:
+		return cfg, nil, errors.New("SESSION_SECRET must be at least 32 characters")
+	case cfg.GoogleClientID == "" && !cfg.DevLogin:
+		return cfg, nil, errors.New("no sign-in method: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (or DEV_LOGIN=1 locally)")
+	case cfg.GoogleClientID != "" && (cfg.GoogleClientSecret == "" || cfg.PublicURL == ""):
+		return cfg, nil, errors.New("Google sign-in needs GOOGLE_CLIENT_SECRET and PUBLIC_URL")
+	}
+	secure := strings.HasPrefix(cfg.PublicURL, "https://")
+	return cfg, auth.NewSessions([]byte(secret), secure, time.Now), nil
 }
 
 // connect retries until the database accepts connections, which smooths over container start-up ordering.

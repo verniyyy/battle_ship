@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/verniyyy/battle_ship/backend/internal/auth"
 	"github.com/verniyyy/battle_ship/backend/internal/game"
 	"github.com/verniyyy/battle_ship/backend/internal/meta"
 )
@@ -91,5 +92,35 @@ func TestPostgresRoundTrip(t *testing.T) {
 	}
 	if _, err := pg.GetMatch(ctx, oldID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("legacy row: %v", err)
+	}
+}
+
+func TestPostgresResolve(t *testing.T) {
+	pg := testDB(t)
+	ctx := context.Background()
+	guest := auth.NewPlayerID()
+	if _, err := pg.UpdatePlayer(ctx, guest, func(*meta.Profile) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	alice := auth.Identity{Provider: "google", Subject: "alice-" + guest, Email: "alice@example.com"}
+	bob := auth.Identity{Provider: "google", Subject: "bob-" + guest, Email: "bob@example.com"}
+
+	// The first sign-in adopts the guest's progress.
+	pid, err := pg.Resolve(ctx, alice, guest)
+	if err != nil || pid != guest {
+		t.Fatalf("first sign-in: %q %v", pid, err)
+	}
+	// Later sign-ins find the same player whatever the browser played as.
+	if again, err := pg.Resolve(ctx, alice, auth.NewPlayerID()); err != nil || again != guest {
+		t.Fatalf("second sign-in: %q %v", again, err)
+	}
+	// A guest can only be claimed once; unknown guests are not adopted.
+	if other, err := pg.Resolve(ctx, bob, guest); err != nil || other == guest || !auth.IsPlayerID(other) {
+		t.Fatalf("claimed guest: %q %v", other, err)
+	}
+	carol := auth.Identity{Provider: "google", Subject: "carol-" + guest}
+	unknown := auth.NewPlayerID()
+	if pid, err := pg.Resolve(ctx, carol, unknown); err != nil || pid == unknown {
+		t.Fatalf("unknown guest: %q %v", pid, err)
 	}
 }

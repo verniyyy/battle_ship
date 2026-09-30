@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/verniyyy/battle_ship/backend/internal/auth"
 	"github.com/verniyyy/battle_ship/backend/internal/game"
 	"github.com/verniyyy/battle_ship/backend/internal/meta"
 )
@@ -30,6 +31,7 @@ type Store interface {
 	// UpdateMatch locks the match and its player's profile, applies fn and saves both atomically.
 	UpdateMatch(ctx context.Context, id string, fn func(*meta.Match, *meta.Profile) error) (*meta.Match, *meta.Profile, error)
 	ListFinished(ctx context.Context, playerID string, limit int) ([]Summary, error)
+	auth.Accounts
 }
 
 // Usable reports whether a stored match can be played under the current rules.

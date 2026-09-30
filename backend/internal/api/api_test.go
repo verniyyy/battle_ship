@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/verniyyy/battle_ship/backend/internal/auth"
 	"github.com/verniyyy/battle_ship/backend/internal/game"
 	"github.com/verniyyy/battle_ship/backend/internal/meta"
 	"github.com/verniyyy/battle_ship/backend/internal/store"
@@ -96,15 +97,23 @@ func (m *memStore) ListFinished(context.Context, string, int) ([]store.Summary, 
 	return nil, nil
 }
 
+func (m *memStore) Resolve(context.Context, auth.Identity, string) (string, error) {
+	return auth.NewPlayerID(), nil
+}
+
 const (
 	alice = "11111111-1111-4111-8111-111111111111"
 	bob   = "22222222-2222-4222-8222-222222222222"
 )
 
+var sessions = auth.NewSessions([]byte("test-secret-test-secret-test-secret"), false, time.Now)
+
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	now := func() time.Time { return time.Date(2026, 9, 28, 12, 0, 0, 0, meta.JST) }
-	s := New(newMemStore(), slog.New(slog.NewTextHandler(io.Discard, nil)), rand.New(rand.NewPCG(1, 1)), now)
+	st := newMemStore()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s := New(st, auth.New(auth.Config{DevLogin: true}, sessions, st, log), log, rand.New(rand.NewPCG(1, 1)), now)
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 	return ts
@@ -119,7 +128,8 @@ func do(t *testing.T, ts *httptest.Server, player, method, path string, body any
 	}
 	req, _ := http.NewRequest(method, ts.URL+path, r)
 	if player != "" {
-		req.Header.Set("X-Player-Id", player)
+		token, _ := sessions.Token(player, "")
+		req.AddCookie(&http.Cookie{Name: "session", Value: token})
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -284,8 +294,8 @@ func TestProfileGachaAndFleet(t *testing.T) {
 func TestValidationErrors(t *testing.T) {
 	ts := newTestServer(t)
 
-	if code := do(t, ts, "", "GET", "/api/profile", nil, nil); code != http.StatusBadRequest {
-		t.Fatalf("missing player id: got %d", code)
+	if code := do(t, ts, "", "GET", "/api/profile", nil, nil); code != http.StatusUnauthorized {
+		t.Fatalf("signed out: got %d", code)
 	}
 	if code := do(t, ts, "", "GET", "/api/catalog", nil, nil); code != http.StatusOK {
 		t.Fatalf("catalog: got %d", code)

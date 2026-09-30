@@ -19,6 +19,12 @@ services:
     build: ./backend
     environment:
       DATABASE_URL: postgres://battleship:battleship@db:5432/battleship?sslmode=disable
+      SESSION_SECRET: local-dev-session-secret-not-for-production
+      PUBLIC_URL: http://localhost:8080
+      # Google sign-in is optional locally: put the OAuth client in .env to try it.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      DEV_LOGIN: "1"
     depends_on:
       db:
         condition: service_healthy

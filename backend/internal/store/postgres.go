@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/verniyyy/battle_ship/backend/internal/auth"
 	"github.com/verniyyy/battle_ship/backend/internal/meta"
 )
 
@@ -211,4 +212,43 @@ func scanJSON(row pgx.Row, v any) error {
 		return err
 	}
 	return json.Unmarshal(data, v)
+}
+
+func (p *Postgres) Resolve(ctx context.Context, id auth.Identity, guestID string) (string, error) {
+	var pid string
+	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, `
+			UPDATE accounts SET email = $3, last_login_at = now()
+			WHERE provider = $1 AND subject = $2 RETURNING player_id::text`,
+			id.Provider, id.Subject, id.Email).Scan(&pid)
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		// First sign-in: carry over the guest's progress if it exists and is
+		// unclaimed, otherwise start afresh. ON CONFLICT covers both a guest
+		// that is already owned and a concurrent first sign-in.
+		candidates := []string{auth.NewPlayerID()}
+		if guestID != "" {
+			var exists bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM players WHERE id = $1)`, guestID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists {
+				candidates = append([]string{guestID}, candidates...)
+			}
+		}
+		for _, c := range candidates {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO accounts (provider, subject, player_id, email) VALUES ($1, $2, $3, $4)
+				ON CONFLICT DO NOTHING`, id.Provider, id.Subject, c, id.Email); err != nil {
+				return err
+			}
+			err := tx.QueryRow(ctx, `SELECT player_id::text FROM accounts WHERE provider = $1 AND subject = $2`, id.Provider, id.Subject).Scan(&pid)
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+		}
+		return errors.New("could not create account")
+	})
+	return pid, err
 }
