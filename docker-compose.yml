@@ -25,6 +25,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       DEV_LOGIN: "1"
+      APP_VERSION: ${APP_VERSION:-dev}
     depends_on:
       db:
         condition: service_healthy
@@ -32,7 +33,10 @@ services:
       - "8081:8080"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     depends_on:
       - backend
     ports:

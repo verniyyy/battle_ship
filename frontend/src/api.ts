@@ -71,6 +71,7 @@ export const auth = {
 
 export const api = {
   catalog: () => request<Catalog>('/catalog'),
+  version: () => request<{ version: string }>('/version'),
   profile: () => request<WithProfile>('/profile'),
   claimLogin: () => post<WithProfile<{ day: number; grant: Grant }>>('/profile/login'),
   setFleet: (uids: string[]) => post<WithProfile>('/profile/fleet', { uids }),

@@ -111,10 +111,11 @@ cd backend && SIM=1 go test ./internal/meta -run Simulate -v
 
 ## API
 
-`/api/catalog` と `/api/auth/*` 以外はすべてログインが必要です（セッション Cookie がなければ 401）。
+`/api/catalog`・`/api/version`・`/api/auth/*` 以外はすべてログインが必要です（セッション Cookie がなければ 401）。
 
 | メソッド | パス | 説明 |
 | --- | --- | --- |
+| GET | `/api/version` | 動いている backend のバージョン `{"version":"cbee965"}` |
 | GET | `/api/auth/session` | ログイン状態 `{"signedIn":true,"email":"...","google":true,"dev":false}`（`google` / `dev` は使えるログイン方法） |
 | GET | `/api/auth/google/login?guest=<UUID>` | Google のログイン画面へリダイレクト。`guest` はログイン機能より前にこのブラウザで遊んでいたプレイヤー ID で、そのアカウントの初回ログイン時に進行状況を引き継ぐ |
 | GET | `/api/auth/google/callback` | Google からの戻り先。セッション Cookie を発行して `/` へ（失敗時は `/?login=cancelled\|expired\|failed`） |
@@ -166,6 +167,12 @@ nix develop          # just / bun / node / wrangler が入ったシェル
 just deploy          # backend を Vercel へ、frontend + Worker を Cloudflare へ
 just deploy-api      # backend だけ
 just deploy-web      # frontend と Worker だけ
+```
+
+どちらも `git describe --always --dirty` の値（例: `cbee965`、未コミットの変更があれば `cbee965-dirty`）をバージョンとして埋め込みます。デプロイ中のバージョンはタイトル画面の最下部（`web … ・ api …`）か、次のコマンドで確認できます。
+
+```sh
+just versions        # 手元・公開中の frontend（/version.json）・backend（/api/version）のバージョン
 ```
 
 初回だけ `npx vercel login` と `wrangler login` が必要です。backend のリンク情報は `backend/.vercel/`（git 管理外）にあります。
