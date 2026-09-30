@@ -5,12 +5,13 @@ import { audio } from '../audio'
 import { PortraitImg, ShipArt } from '../components/ShipArt'
 import { Backdrop, Badge, Modal, ResumeBanner, TopBar } from '../components/ui'
 import { fx } from '../fx'
+import { markNewsSeen, NEWS, unreadNews } from '../news'
 import { lookOfCard, SKILL_INFO, SPECIAL_INFO, CLASS_INFO, TIPS, TORPEDO_INFO } from '../game'
 import { celebrateGrant, useGame } from '../state'
 import { portraitOf, useAssets } from '../theme'
 import type { Catalog, GameSummary, Grant, MatchResponse, Profile } from '../types'
 
-type Dialog = 'record' | 'rules' | 'login' | 'profile' | null
+type Dialog = 'record' | 'rules' | 'login' | 'profile' | 'news' | null
 
 export function nextStage(cat: Catalog, p: Profile) {
   const open = cat.stages.find((s, i) => !(p.stages[s.id] & 1) && (i === 0 || p.stages[cat.stages[i - 1].id] & 1))
@@ -22,6 +23,8 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
   const [line, setLine] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
   const [loginSeen, setLoginSeen] = useState(false)
+  const [unread, setUnread] = useState(() => unreadNews().length)
+  const [newsShown, setNewsShown] = useState(false)
   const lineTimer = useRef<number>(undefined)
   const artRef = useRef<HTMLButtonElement>(null)
 
@@ -65,6 +68,17 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
     }, 900)
     return () => clearTimeout(t)
   }, [profile?.badges.login, loginSeen])
+
+  // Pop unread news once per visit, after the login bonus has had its turn.
+  const loginPending = !!profile?.badges.login && !loginSeen
+  useEffect(() => {
+    if (!profile || !unread || newsShown || loginPending || dialog) return
+    const t = window.setTimeout(() => {
+      setNewsShown(true)
+      setDialog('news')
+    }, 900)
+    return () => clearTimeout(t)
+  }, [profile, unread, newsShown, loginPending, dialog])
 
   if (!profile || !catalog) {
     return (
@@ -176,6 +190,10 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
           <button className="menu-tile rules" onClick={() => open('rules')}>
             <b>📘</b>要綱
           </button>
+          <button className={`menu-tile news ${unread ? 'hot' : ''}`} onClick={() => open('news')}>
+            <b>📰</b>お知らせ
+            <Badge n={unread} />
+          </button>
         </div>
       </nav>
 
@@ -189,13 +207,24 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
       <div className="ticker">
         <span className="ticker-tag">司令部通達</span>
         <div className="ticker-track">
-          <p>{TIPS.join(' ／ ')}</p>
+          <p>{[...(NEWS[0] ? [`【${NEWS[0].date.replaceAll('-', '/')} 更新】${NEWS[0].title}`] : []), ...TIPS].join(' ／ ')}</p>
         </div>
       </div>
 
       {dialog === 'profile' && <ProfileDialog profile={profile} onClose={() => setDialog(null)} />}
       {dialog === 'record' && <RecordDialog profile={profile} onClose={() => setDialog(null)} />}
       {dialog === 'rules' && <RulesDialog onClose={() => setDialog(null)} />}
+      {dialog === 'news' && (
+        <NewsDialog
+          unread={unread}
+          onClose={() => {
+            markNewsSeen()
+            setUnread(0)
+            setNewsShown(true)
+            setDialog(null)
+          }}
+        />
+      )}
       {dialog === 'login' && (
         <LoginDialog
           profile={profile}
@@ -435,6 +464,34 @@ function RecordDialog({ profile, onClose }: { profile: Profile; onClose: () => v
       ) : (
         <p className="muted center">まだ戦績がありません。出撃しましょう！</p>
       )}
+    </Modal>
+  )
+}
+
+function NewsDialog({ unread, onClose }: { unread: number; onClose: () => void }) {
+  return (
+    <Modal title="お知らせ" onClose={onClose} wide className="news-modal">
+      <ul className="news-list">
+        {NEWS.map((n, i) => (
+          <li key={n.id} className={i < unread ? 'unread' : ''}>
+            <header>
+              <time dateTime={n.date}>{n.date.replaceAll('-', '/')}</time>
+              {i < unread && <span className="news-new">NEW</span>}
+              <h3>{n.title}</h3>
+            </header>
+            <ul>
+              {n.items.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+      <div className="modal-actions">
+        <button className="pill-btn" onClick={onClose}>
+          確認しました
+        </button>
+      </div>
     </Modal>
   )
 }

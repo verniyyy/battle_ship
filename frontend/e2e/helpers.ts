@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test'
+import { NEWS } from '../src/news'
 import type { Profile } from '../src/types'
 
 type WithProfile<T = object> = T & { profile: Profile }
@@ -24,8 +25,12 @@ export async function newAdmiral(page: Page): Promise<Profile> {
   return profile
 }
 
-/** Opens the harbour through the title screen. */
-export async function toHome(page: Page) {
+/**
+ * Opens the harbour through the title screen. The latest news counts as
+ * read unless news is set, so its popup stays out of the way.
+ */
+export async function toHome(page: Page, { news = false } = {}) {
+  if (!news) await page.addInitScript((id) => localStorage.setItem('newsSeen', id), NEWS[0].id)
   await page.goto('/')
   await page.locator('.title-screen').click()
   await expect(page.locator('.menu-tile').first()).toBeVisible()
