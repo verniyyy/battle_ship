@@ -3,6 +3,13 @@
  * entry at the top with a new, never-reused id when shipping something
  * players should hear about; admirals who have not seen it get the dialog
  * on their next visit to the harbour.
+ *
+ * - Add one in the same PR as any change players will notice: features,
+ *   rule or balance changes, visible fixes. Skip refactors, CI and tests.
+ * - Never change an existing id; read state is keyed on it. A new id like
+ *   `2026-10-01-scout` works; an unreleased entry of the same day can take
+ *   more items instead.
+ * - Write in Japanese for players: what they can now do or what changed.
  */
 export type NewsItem = {
   id: string
