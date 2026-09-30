@@ -427,13 +427,16 @@ class AudioEngine {
 
     // A single hall shared by everything gives the game one acoustic space.
     const reverb = ctx.createConvolver()
-    reverb.buffer = this.impulse(2.6, 2.4)
+    reverb.buffer = this.impulse(2, 2.2)
     const reverbHp = ctx.createBiquadFilter()
     reverbHp.type = 'highpass'
     reverbHp.frequency.value = 180
     const reverbOut = ctx.createGain()
     reverbOut.gain.value = 0.9
+    // Summed to mono before the (stereo) hall: two convolutions instead of four.
     this.reverbIn = ctx.createGain()
+    this.reverbIn.channelCount = 1
+    this.reverbIn.channelCountMode = 'explicit'
     this.reverbIn.connect(reverbHp).connect(reverb).connect(reverbOut).connect(this.master)
 
     this.sfxBus = ctx.createGain()
@@ -570,7 +573,7 @@ class AudioEngine {
     }
     const ws = this.ctx!.createWaveShaper()
     ws.curve = curve
-    ws.oversample = '2x'
+    ws.oversample = 'none'
     return ws
   }
 
@@ -586,7 +589,7 @@ class AudioEngine {
     p.linearRampToValueAtTime(peak, t + a)
     if (e.d !== undefined) p.setTargetAtTime(peak * (e.s ?? 0), t + a, e.d)
     p.setTargetAtTime(0, t + gate, r)
-    const silent = e.d !== undefined && !e.s ? Math.min(t + gate + r * 6, t + a + e.d * 7) : t + gate + r * 6
+    const silent = e.d !== undefined && !e.s ? Math.min(t + gate + r * 5, t + a + e.d * 6) : t + gate + r * 5
     this.groupEnd = Math.max(this.groupEnd, silent)
     return silent
   }
@@ -649,6 +652,13 @@ class AudioEngine {
       lfo.start(t)
       lfo.stop(end)
     }
+    // Wide unison: voices alternate between one left and one right panner.
+    const sides = v.width && n > 1 ? [-v.width, v.width].map((pan) => {
+      const p = ctx.createStereoPanner()
+      p.pan.value = pan
+      p.connect(input)
+      return p
+    }) : undefined
     for (let i = 0; i < n; i++) {
       const o = ctx.createOscillator()
       o.type = v.type ?? 'sine'
@@ -657,11 +667,7 @@ class AudioEngine {
       const pos = n > 1 ? (i / (n - 1)) * 2 - 1 : 0
       o.detune.value = (v.detune ?? 0) + pos * (v.spread ?? 12)
       vib?.connect(o.detune)
-      if (v.width && n > 1) {
-        const p = ctx.createStereoPanner()
-        p.pan.value = pos * v.width
-        o.connect(p).connect(input)
-      } else o.connect(input)
+      o.connect(sides ? sides[i % 2] : input)
       o.start(t)
       o.stop(end)
     }
@@ -721,8 +727,7 @@ class AudioEngine {
   }
 
   private bell(dest: AudioNode, t: number, note: number, vol: number, len = 0.6) {
-    this.fm(dest, t, { f: midi(note), ratio: 3.5, index: 1.6, index2: 0.05, indexT: len * 0.6, vol, dur: len * 2, d: len * 0.45, r: 0.2 })
-    this.fm(dest, t, { f: midi(note), ratio: 1, index: 0.5, vol: vol * 0.7, dur: len * 2, d: len * 0.6, r: 0.2 })
+    this.fm(dest, t, { f: midi(note), ratio: 3.5, index: 1.3, index2: 0.04, indexT: len * 0.5, vol: vol * 1.4, dur: len * 2, d: len * 0.5, r: 0.2 })
   }
 
   private brass(dest: AudioNode, t: number, notes: number[], dur: number, vol: number, bright = 3200) {
@@ -810,6 +815,9 @@ class AudioEngine {
   }
 
   /** How loud a repeat of `name` may be: rapid-fire copies are thinned and softened. */
+  /** How many copies of the current sound started within the last quarter second (1 = alone). */
+  private copies = 1
+
   private density(name: Sfx, now: number) {
     const hist = (this.recent.get(name) ?? []).filter((at) => now - at < 0.25)
     const limit = name === 'cannon' || name === 'boom' || name === 'miss' || name === 'splash' ? 4 : 3
@@ -817,6 +825,7 @@ class AudioEngine {
     if (hist.length && now - hist[hist.length - 1] < 0.025) return 0
     hist.push(now)
     this.recent.set(name, hist)
+    this.copies = hist.length
     return 1 / Math.sqrt(hist.length)
   }
 
@@ -828,7 +837,8 @@ class AudioEngine {
     const now = this.ctx.currentTime
     const level = this.density(name, now)
     if (!level) return
-    const t = now + 0.005
+    // Enough lookahead that building a large sound finishes before it is due.
+    const t = now + 0.025
     const p = opt.pitch ?? 0
     const pan = opt.pan ?? 0
     const fx = (send: number, extra: { pan?: number; panTo?: number; panT?: number } = {}) => this.out(this.sfxBus!, { pan, send, vol: level, ...extra })
@@ -934,7 +944,8 @@ class AudioEngine {
         this.noise(d, t, { filter: 'highpass', f: 4000, f2: 9000, fT: 0.2, vol: 0.28, dur: 0.3, d: 0.1 })
         this.osc(d, t, { f: midi(64), type: 'sawtooth', voices: 3, spread: 18, width: 0.6, vol: 0.07, dur: 0.5, d: 0.22, lp: 5500, lp2: 1200, lpT: 0.4 })
         this.osc(d, t, { f: midi(71), type: 'sawtooth', voices: 3, spread: 18, width: 0.6, vol: 0.06, dur: 0.5, d: 0.22, lp: 5500, lp2: 1200, lpT: 0.4 })
-        ;[96, 100, 103, 108, 103].forEach((n, i) => this.bell(this.out(this.sfxBus!, { pan: (i % 2 ? 1 : -1) * 0.5, send: 0.4, vol: level }), t + 0.02 + i * 0.035, n, 0.04, 0.3))
+        const sides = [-0.5, 0.5].map((p) => this.out(this.sfxBus!, { pan: p, send: 0.4, vol: level }))
+        ;[96, 100, 103, 108, 103].forEach((n, i) => this.bell(sides[i % 2], t + 0.02 + i * 0.035, n, 0.04, 0.3))
         break
       }
       case 'splash': {
@@ -1101,12 +1112,10 @@ class AudioEngine {
         break
       }
       case 'gem': {
-        ;[0, 7, 12, 16].forEach((n, i) => {
-          const d = this.out(this.uiBus!, { pan: (i % 2 ? 0.4 : -0.4) + pan, send: 0.45, vol: level })
-          this.fm(d, t + i * 0.05, { f: midi(88 + n + p), ratio: 4.2, index: 0.7, index2: 0.05, indexT: 0.3, vol: 0.06, dur: 0.8, d: 0.3, r: 0.2 })
-          this.osc(d, t + i * 0.05, { f: midi(88 + n + p), vol: 0.05, dur: 0.8, d: 0.3 })
-        })
-        this.noise(this.out(this.uiBus!, { send: 0.4, vol: level }), t, { filter: 'highpass', f: 8000, vol: 0.08, dur: 0.4, d: 0.15, width: 0.7 })
+        const sides = [-0.4, 0.4].map((s) => this.out(this.uiBus!, { pan: s + pan, send: 0.45, vol: level }))
+        ;[0, 7, 12, 16].forEach((n, i) => this.fm(sides[i % 2], t + i * 0.05, { f: midi(88 + n + p), ratio: 4.2, index: 0.6, index2: 0.04, indexT: 0.3, vol: 0.09, dur: 0.8, d: 0.3, r: 0.2 }))
+        if (this.copies > 1) break
+        this.noise(sides[0], t, { filter: 'highpass', f: 8000, vol: 0.08, dur: 0.4, d: 0.15, width: 0.7 })
         break
       }
       case 'star': {
@@ -1160,6 +1169,7 @@ class AudioEngine {
       case 'rare': {
         const d = fx(0.45)
         ;[76, 80, 83, 88].forEach((n, i) => this.bell(d, t + i * 0.025, n, 0.07, 0.8))
+        if (this.copies > 1) break
         this.osc(d, t, { f: midi(64), type: 'sawtooth', voices: 4, spread: 18, width: 0.8, vol: 0.05, a: 0.05, dur: 0.6, d: 0.4, s: 0.3, r: 0.3, lp: 1200, lp2: 3000 })
         this.noise(d, t, { filter: 'highpass', f: 6000, vol: 0.14, dur: 0.6, d: 0.25, width: 0.7 })
         break
@@ -1170,10 +1180,11 @@ class AudioEngine {
         this.osc(d, t, { f: 60, f2: 30, glide: 0.8, vol: 0.95, dur: 1.4, d: 0.5, drive: 1.5 })
         this.noise(d, t, { color: 'brown', f: 3000, f2: 100, vol: 0.75, dur: 1.5, d: 0.45 })
         this.cymbal(d, t, 0.28, 2.4)
-        ;[72, 76, 79, 84, 88, 91, 96, 100].forEach((n, i) => this.bell(this.out(this.sfxBus!, { pan: (i % 2 ? 0.5 : -0.5), send: 0.5, vol: level }), t + i * 0.045, n, 0.06, 0.5))
+        const sides = [-0.6, 0.6].map((p) => this.out(this.sfxBus!, { pan: p, send: 0.55, vol: level }))
+        ;[72, 76, 79, 84, 88, 91, 96, 100].forEach((n, i) => this.bell(sides[i % 2], t + i * 0.045, n, 0.06, 0.5))
         for (const n of [60, 67, 72, 76, 79])
-          this.osc(d, t + 0.05, { f: midi(n), type: 'sawtooth', voices: 5, spread: 22, width: 0.9, vol: 0.035, a: 0.25, dur: 1.8, d: 1, s: 0.6, r: 0.8, lp: 800, lp2: 2800, lpT: 1 })
-        for (let i = 0; i < 18; i++) this.bell(this.out(this.sfxBus!, { pan: rnd(-0.9, 0.9), send: 0.6, vol: level }), t + 0.4 + Math.random() * 1.8, 96 + [0, 2, 4, 7, 9, 12][Math.floor(Math.random() * 6)], 0.018, 0.25)
+          this.osc(d, t + 0.05, { f: midi(n), type: 'sawtooth', voices: 3, spread: 22, width: 0.9, vol: 0.035, a: 0.25, dur: 1.8, d: 1, s: 0.6, r: 0.8, lp: 800, lp2: 2800, lpT: 1 })
+        for (let i = 0; i < 8; i++) this.bell(sides[i % 2], t + 0.4 + (i / 8) * 1.6 + Math.random() * 0.1, 96 + [0, 2, 4, 7, 9, 12][Math.floor(Math.random() * 6)], 0.022, 0.25)
         break
       }
       case 'start': {
@@ -1377,8 +1388,7 @@ class AudioEngine {
         for (const n of notes) this.osc(ch.pad, t, { f: midi(n), type: 'triangle', voices: 2, spread: 8, width: 0.7, vol: 0.05, a: 0.4, dur: barLen, r: 0.5, lp: 1800 })
       } else if (song.pad === 'choir') {
         for (const n of notes) {
-          this.osc(ch.pad, t, { f: midi(n), type: 'sawtooth', voices: 3, spread: 16, width: 0.9, vol: 0.035, a: 0.35, dur: barLen, r: 0.4, lp: 1100, vib: 12, vibRate: 5 })
-          this.osc(ch.pad, t, { f: midi(n + 12), type: 'triangle', vol: 0.015, a: 0.4, dur: barLen, r: 0.4 })
+          this.osc(ch.pad, t, { f: midi(n), type: 'sawtooth', voices: 3, spread: 16, width: 0.9, vol: 0.04, a: 0.35, dur: barLen, r: 0.4, lp: 1300, vib: 12, vibRate: 5 })
         }
       } else {
         for (const n of notes) this.osc(ch.pad, t, { f: midi(n), type: 'sawtooth', voices: 3, spread: 14, width: 0.9, vol: 0.03, a: 0.3, dur: barLen, r: 0.35, lp: 1400, vib: 8, vibRate: 4.5 })
@@ -1394,7 +1404,7 @@ class AudioEngine {
         if (song.comp.kind === 'ep') {
           notes.forEach((n, k) => this.fm(ch.comp, t + k * 0.008, { f: midi(n), ratio: 1, index: 1.4, index2: 0.2, indexT: 0.3, vol: 0.035, dur, d: 0.5, s: 0.3, r: 0.15 }))
         } else if (song.comp.kind === 'stab') {
-          for (const n of notes) this.osc(ch.comp, t, { f: midi(n - 12), type: 'sawtooth', voices: 3, spread: 18, width: 0.8, vol: 0.035, dur, d: 0.08, s: 0.2, r: 0.05, lp: 3200, lp2: 700, lpT: dur, drive: 0.8 })
+          for (const n of notes) this.osc(ch.comp, t, { f: midi(n - 12), type: 'sawtooth', voices: 2, spread: 18, width: 0.8, vol: 0.04, dur, d: 0.08, s: 0.2, r: 0.05, lp: 3200, lp2: 700, lpT: dur })
         } else {
           notes.forEach((n, k) => this.bell(ch.comp, t + k * 0.02, n, 0.02, dur))
         }
@@ -1409,7 +1419,7 @@ class AudioEngine {
         const dur = len * sd * 0.92
         if (song.bass.kind === 'drive') {
           this.osc(ch.bass, t, { f, type: 'sawtooth', vol: 0.14, dur, d: 0.12, s: 0.5, r: 0.04, lp: 1600, lp2: 280, lpT: 0.12, q: 2 })
-          this.osc(ch.bass, t, { f: f / 2, vol: 0.18, dur, d: 0.2, s: 0.6, r: 0.04 })
+          if (i % 4 === 0) this.osc(ch.bass, t, { f: f / 2, vol: 0.18, dur: Math.max(dur, sd * 3), d: 0.2, s: 0.6, r: 0.04 })
         } else {
           this.osc(ch.bass, t, { f, type: 'triangle', vol: 0.2, dur, d: 0.4, s: 0.5, r: 0.08, lp: 900 })
           this.osc(ch.bass, t, { f: f / 2, vol: 0.14, dur, d: 0.4, s: 0.5, r: 0.08 })
@@ -1465,8 +1475,7 @@ class AudioEngine {
     if (kind === 'brass') {
       this.osc(dest, t, { f, type: 'sawtooth', voices: 2, spread: 9, vol: 0.06 * gain, a: 0.03, dur, d: 0.4, s: 0.7, r: 0.08, lp: 700, lp2: 2800, lpT: 0.08, q: 1.5, vib: 14, vibRate: 5.5, vibDelay: 0.18 })
     } else if (kind === 'dark') {
-      this.osc(dest, t, { f, type: 'square', voices: 2, spread: 12, vol: 0.045 * gain, a: 0.02, dur, d: 0.3, s: 0.7, r: 0.08, lp: 2200, q: 2, vib: 18, vibRate: 6, vibDelay: 0.15 })
-      this.osc(dest, t, { f, type: 'sawtooth', vol: 0.03 * gain, a: 0.02, dur, d: 0.3, s: 0.6, r: 0.08, lp: 1400 })
+      this.osc(dest, t, { f, type: 'square', voices: 2, spread: 12, vol: 0.055 * gain, a: 0.02, dur, d: 0.3, s: 0.7, r: 0.08, lp: 2000, q: 2, vib: 18, vibRate: 6, vibDelay: 0.15 })
     } else if (kind === 'flute') {
       this.osc(dest, t, { f, type: 'sine', vol: 0.07 * gain, a: 0.05, dur, d: 0.5, s: 0.8, r: 0.12, vib: 16, vibRate: 5, vibDelay: 0.2 })
       this.osc(dest, t, { f: f * 2, type: 'triangle', vol: 0.012 * gain, a: 0.05, dur, d: 0.5, s: 0.7, r: 0.12 })
