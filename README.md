@@ -226,4 +226,16 @@ npm install
 npm run dev
 ```
 
+### CI
+
+GitHub Actions（`.github/workflows/`）が push と PR で、変更のあったディレクトリだけを検査します。
+
+| ワークフロー | 対象 | 内容 |
+| --- | --- | --- |
+| `backend` | `backend/` | gofmt・`go vet`・`go test -race`（使い捨ての PostgreSQL でストアの結合テストも実行）・Docker イメージのビルド |
+| `web` | `frontend/` `edge/` | frontend の型チェックとビルド・Worker の型チェック・Docker イメージのビルド |
+| `portraitgen` | `tools/portraitgen/` | CPU での pytest |
+
+デプロイは CI では行いません。キャラ絵（`public/portraits/`）が git 管理外で、Actions からは配信物を組み立てられないためです。
+
 旧バージョン（Spring Boot + JRuby）のデモ動画: `demo.mp4`
