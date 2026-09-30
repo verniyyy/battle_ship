@@ -17,8 +17,15 @@
     {
       devShells = forAllSystems (pkgs: {
         # Docker itself (daemon + compose plugin) comes from the host system.
+        # wrangler comes from nixpkgs because the npm build's workerd binary
+        # does not run on NixOS; Node.js runs it and the Vercel CLI (via npx).
         default = pkgs.mkShell {
-          packages = [ pkgs.just ];
+          packages = [
+            pkgs.just
+            pkgs.bun
+            pkgs.nodejs_22
+            pkgs.wrangler
+          ];
         };
       });
     };

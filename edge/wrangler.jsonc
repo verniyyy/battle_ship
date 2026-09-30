@@ -16,7 +16,7 @@
 
   "vars": {
     // Production URL of the Vercel project that runs backend/.
-    "ORIGIN_URL": "https://REPLACE_ME.vercel.app",
+    "ORIGIN_URL": "https://battleship-api-eight.vercel.app",
     // Keeps Vercel under its 1M requests/month free allowance (31 x 30,000).
     "DAILY_API_LIMIT": "30000"
   },

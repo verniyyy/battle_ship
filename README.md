@@ -7,9 +7,10 @@
 | ディレクトリ | 内容 |
 | --- | --- |
 | `backend/` | Go (標準 `net/http` + `pgx`)。`game`: 戦闘ルールと CPU 思考、`meta`: 艦カード・ガチャ・海域・報酬・任務、`api`: REST API |
-| `frontend/` | React + TypeScript + Vite。本番は nginx で配信し `/api` を backend へプロキシ |
+| `frontend/` | React + TypeScript + Vite。docker compose では nginx で配信し `/api` を backend へプロキシ |
+| `edge/` | 本番用の Cloudflare Worker。frontend を配信し、`/api` を守りつつ Vercel 上の backend へ転送 |
 | `docker-compose.yml` | PostgreSQL / backend / frontend |
-| `flake.nix` / `justfile` | 開発シェル（`just` を提供）とタスク定義 |
+| `flake.nix` / `justfile` | 開発シェル（`just`・デプロイ用 CLI を提供）とタスク定義 |
 
 プレイヤーはブラウザが生成した UUID（`X-Player-Id` ヘッダ）で識別し、プロフィールと対局を PostgreSQL に JSONB で保存します（サーバーはステートレス）。決着の一手と報酬の支払いは同じトランザクションで確定します。マイグレーションは backend 起動時に自動適用されます。
 
@@ -126,6 +127,49 @@ cd backend && SIM=1 go test ./internal/meta -run Simulate -v
 | POST | `/api/games/{id}/actions` | 行動 `{"type":"attack"\|"torpedo"\|"move"\|"skill"\|"ultimate","shipId":0,"target":{"row":1,"col":1}}`。CPU の行動と合わせて 1 ターンを解決し、実行順の `results`、決着時は報酬も返る |
 | POST | `/api/games/{id}/chest` | 宝箱を開ける `{"index":0}` |
 | GET | `/api/games?limit=20` | 終了した対局の一覧 |
+
+## デプロイ
+
+公開 URL: https://battleship.orekkueito2811.workers.dev
+
+すべて**支払い方法を登録していない無料プラン**で動かしています。悪意あるアクセスがあっても課金は発生せず、起こりうるのは無料枠を使い切ったあとの一時停止だけです。**どのサービスにもクレジットカードを登録しない・有料プランにアップグレードしない**でください。
+
+```
+ブラウザ ─► Cloudflare Workers (Free)          edge/
+             ├─ 静的ファイル: frontend/dist（無料・無制限。Worker は実行されない）
+             └─ /api/*: IP ごとのレート制限（120 回/分）→ 1 日の上限（30,000 回, UTC 0 時リセット）
+                        → 共有シークレットを付けて転送
+                          ▼
+            Vercel Hobby: backend/ の Go サーバー（東京 hnd1）
+              WAF: シークレットの無いリクエストは拒否（Hobby の使用量に数えられない）
+                          ▼
+            Supabase Free: PostgreSQL（東京、Session pooler 経由）
+```
+
+- 1 日の上限は Vercel Hobby の月 100 万回を超えないための値です。Vercel は上限超過で最大 30 日止まりますが、この上限のおかげで止まるのは最悪でも翌日 9:00（JST）までです。
+- Worker の Cron が毎日 `/readyz` を叩いて DB に触れるので、Supabase の無料プロジェクトが 7 日間の無操作で一時停止されることはありません。
+- 旧素材（`public/legacy/`）は第三者の素材なので `frontend/public/.assetsignore` で配信対象から外しています。キャラ絵（`public/portraits/`）は git 管理外なので、デプロイは手元から行います。
+
+### 更新のデプロイ
+
+```sh
+nix develop          # just / bun / node / wrangler が入ったシェル
+just deploy          # backend を Vercel へ、frontend + Worker を Cloudflare へ
+just deploy-api      # backend だけ
+just deploy-web      # frontend と Worker だけ
+```
+
+初回だけ `npx vercel login` と `wrangler login` が必要です。backend のリンク情報は `backend/.vercel/`（git 管理外）にあります。
+
+### 設定の置き場所
+
+| 設定 | 場所 |
+| --- | --- |
+| `DATABASE_URL`（Supabase Session pooler の URI + `?sslmode=require&pool_max_conns=3`） | Vercel の環境変数（Production, Secret） |
+| `ORIGIN_SECRET`（Worker と Vercel の共有シークレット） | Vercel の環境変数、Cloudflare の Worker シークレット、Vercel WAF のカスタムルール「Only via edge proxy」の 3 か所 |
+| 転送先 URL・1 日の上限・レート制限 | `edge/wrangler.jsonc` |
+
+シークレットを入れ替えるときは 3 か所すべてを同じ値に更新します（`vercel env add ORIGIN_SECRET production --force`、`wrangler secret put ORIGIN_SECRET`、`vercel firewall rules` でルールを作り直して `vercel firewall publish`）。その後 `just deploy-api` で Vercel に反映します。
 
 ## ローカル開発
 
