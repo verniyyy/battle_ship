@@ -487,6 +487,16 @@ func TestFootprintClipsToBoard(t *testing.T) {
 	if n := len(Footprint(5, ActionSkill, SkillSonar, Destroyer, Pos{2, 2}, Pos{2, 2})); n != 12 {
 		t.Fatalf("sonar covers %d cells", n)
 	}
+	if n := len(Footprint(5, ActionSkill, SkillFlare, Cruiser, Pos{}, Pos{2, 2})); n != 13 {
+		t.Fatalf("flare covers %d cells", n)
+	}
+	// A wide sea widens both: the flare to 5×5, the sonar to three-cell lanes.
+	if n := len(Footprint(WideSea, ActionSkill, SkillFlare, Cruiser, Pos{}, Pos{3, 3})); n != 25 {
+		t.Fatalf("flare on a wide sea covers %d cells", n)
+	}
+	if n := len(Footprint(WideSea, ActionSkill, SkillSonar, Destroyer, Pos{3, 3}, Pos{3, 3})); n != 3*WideSea*2-9-1 {
+		t.Fatalf("sonar on a wide sea covers %d cells", n)
+	}
 }
 
 // TestAIAlwaysLegalAndGamesEnd plays many AI-vs-AI games with every class

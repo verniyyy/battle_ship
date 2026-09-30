@@ -54,6 +54,8 @@ import (
 const (
 	MinBoardSize = 5
 	MaxBoardSize = 8
+	// WideSea is the board size from which scouting skills cover more.
+	WideSea = 7
 	GaugeMax     = 100
 	// StateVersion is bumped whenever State stops being readable by older code.
 	StateVersion = 3
@@ -106,10 +108,13 @@ type SkillKind string
 const (
 	// SkillBarrage shells a 3×3 area centred up to 3 cells away.
 	SkillBarrage SkillKind = "barrage"
-	// SkillFlare lights a 3×3 area anywhere on the sea, revealing surface ships.
+	// SkillFlare lights an area anywhere on the sea, revealing surface ships:
+	// a diamond of cells up to 2 steps from the aim point, or on a wide sea a
+	// 5×5 square.
 	SkillFlare SkillKind = "flare"
 	// SkillSonar pings the ship's whole row and column and the cells around
-	// it, revealing every ship, submarines included.
+	// it, revealing every ship, submarines included. On a wide sea the row and
+	// column are three cells wide.
 	SkillSonar SkillKind = "sonar"
 	// SkillSpread launches three torpedoes side by side along parallel lanes.
 	SkillSpread SkillKind = "spread"
@@ -478,13 +483,26 @@ func footprintLanes(size int, t ActionType, kind SkillKind, class ShipClass, fro
 			}
 		}
 		return lanes
-	case t == ActionSkill && (kind == SkillBarrage || kind == SkillFlare):
+	case t == ActionSkill && kind == SkillBarrage:
 		area()
+	case t == ActionSkill && kind == SkillFlare:
+		for dr := -2; dr <= 2; dr++ {
+			for dc := -2; dc <= 2; dc++ {
+				if size >= WideSea || abs(dr)+abs(dc) <= 2 {
+					add(Pos{target.Row + dr, target.Col + dc})
+				}
+			}
+		}
 	case t == ActionSkill && kind == SkillSonar:
+		// Half the width of the pinged row and column.
+		w := 0
+		if size >= WideSea {
+			w = 1
+		}
 		for r := 0; r < size; r++ {
 			for c := 0; c < size; c++ {
 				p := Pos{r, c}
-				if p != from && (r == from.Row || c == from.Col || p.Dist(from) <= 1) {
+				if p != from && (abs(r-from.Row) <= w || abs(c-from.Col) <= w || p.Dist(from) <= 1) {
 					add(p)
 				}
 			}

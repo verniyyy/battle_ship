@@ -16,8 +16,8 @@ export const KANJI = Object.fromEntries(Object.entries(CLASS_INFO).map(([k, v]) 
 
 export const SKILL_INFO: Record<SkillKind, { name: string; short: string; desc: string; icon: string }> = {
   barrage: { name: '一斉射', short: '3×3砲撃', desc: '3マス先までの3×3を砲撃（火力70%）。外れても水柱で足止め', icon: '✚' },
-  flare: { name: '照明弾', short: '全域3×3索敵', desc: '海域のどこでも3×3を照らし水上艦を発見・捕捉（潜水艦は映らない）。捕捉した艦への攻撃は次のターンまで回避されず必ず会心', icon: '✦' },
-  sonar: { name: 'ソナー', short: '縦横＋周囲索敵', desc: '自艦の縦横一列と周囲1マスを探信し潜水艦も含め全艦を発見・捕捉。捕捉した艦への攻撃は次のターンまで回避されず必ず会心', icon: '◎' },
+  flare: { name: '照明弾', short: '全域広域索敵', desc: '海域のどこでも、狙った地点から2マス以内（7×7以上の広い海域では5×5）を照らし水上艦を発見・捕捉（潜水艦は映らない）。捕捉した艦への攻撃は次のターンまで回避されず必ず会心', icon: '✦' },
+  sonar: { name: 'ソナー', short: '縦横＋周囲索敵', desc: '自艦の縦横一列（7×7以上の広い海域では3列幅）と周囲1マスを探信し潜水艦も含め全艦を発見・捕捉。捕捉した艦への攻撃は次のターンまで回避されず必ず会心', icon: '◎' },
   spread: { name: '扇状雷撃', short: '3列魚雷', desc: '並んだ3本の魚雷を同時に放つ（雷装80%・後攻・発射位置が露見）', icon: '⋙' },
   airstrike: { name: '航空攻撃', short: '全域爆撃', desc: '海域のどこでも1マスを爆撃。回避されにくいが敵の対空で減衰', icon: '✈' },
 }
@@ -72,6 +72,9 @@ export function usesLine(s: Stats, cls: ShipClass) {
 export const RARITY = ['N', 'R', 'SR', 'SSR', 'UR'] as const
 export const rarityName = (r: number) => RARITY[r] ?? 'N'
 
+// Board size from which scouting skills cover more (game.WideSea).
+export const WIDE_SEA = 7
+
 // Mirrors game.Footprint on the server so aims can be previewed.
 export function footprint(size: number, type: ActionType, kind: SkillKind | undefined, cls: ShipClass | undefined, from: Pos, target: Pos): Pos[] {
   const out: Pos[] = []
@@ -100,13 +103,17 @@ export function footprint(size: number, type: ActionType, kind: SkillKind | unde
   } else if (type === 'torpedo') lane(target, dr, dc)
   else if (type === 'skill' && kind === 'spread') {
     for (const k of [-1, 0, 1]) lane({ row: target.row + k * dc, col: target.col + k * dr }, dr, dc)
-  } else if (type === 'skill' && (kind === 'barrage' || kind === 'flare')) area()
-  else if (type === 'skill' && kind === 'sonar') {
+  } else if (type === 'skill' && kind === 'barrage') area()
+  else if (type === 'skill' && kind === 'flare') {
+    for (let dr = -2; dr <= 2; dr++)
+      for (let dc = -2; dc <= 2; dc++) if (size >= WIDE_SEA || Math.abs(dr) + Math.abs(dc) <= 2) add({ row: target.row + dr, col: target.col + dc })
+  } else if (type === 'skill' && kind === 'sonar') {
+    const w = size >= WIDE_SEA ? 1 : 0
     for (let row = 0; row < size; row++)
       for (let col = 0; col < size; col++) {
         const self = row === from.row && col === from.col
         const near = Math.max(Math.abs(row - from.row), Math.abs(col - from.col)) <= 1
-        if (!self && (row === from.row || col === from.col || near)) add({ row, col })
+        if (!self && (Math.abs(row - from.row) <= w || Math.abs(col - from.col) <= w || near)) add({ row, col })
       }
   } else add(target)
   return out
