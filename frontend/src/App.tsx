@@ -19,7 +19,8 @@ export type Scene =
   | { name: 'title' }
   | { name: 'home' }
   | { name: 'map'; area?: number }
-  | { name: 'formation' }
+  // Opened from the sortie screen, the formation screen returns there.
+  | { name: 'formation'; returnTo?: StageT }
   | { name: 'sortie'; stage: StageT }
   | { name: 'battle'; match: MatchResponse; resumed?: boolean }
   | { name: 'gacha' }
@@ -104,13 +105,15 @@ export function App() {
       {scene.name === 'title' && <Title onStart={() => go({ name: 'home' })} />}
       {scene.name === 'home' && <Home go={go} resumable={resumable} onResume={onResume} />}
       {scene.name === 'map' && <StageMap area={scene.area} go={go} resumable={resumable} onResume={onResume} />}
-      {scene.name === 'formation' && <Formation onBack={() => go({ name: 'home' })} />}
+      {scene.name === 'formation' && (
+        <Formation onBack={() => go(scene.returnTo ? { name: 'sortie', stage: scene.returnTo } : { name: 'home' })} />
+      )}
       {scene.name === 'sortie' && (
         <Sortie
           stage={scene.stage}
           resumable={resumable}
           onResume={onResume}
-          onDeploy={(m) => startBattle(m)} onBack={() => go({ name: 'map', area: scene.stage.area })} onFormation={() => go({ name: 'formation' })} />
+          onDeploy={(m) => startBattle(m)} onBack={() => go({ name: 'map', area: scene.stage.area })} onFormation={() => go({ name: 'formation', returnTo: scene.stage })} />
       )}
       {scene.name === 'battle' && (
         <Battle
