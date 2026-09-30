@@ -20,6 +20,12 @@ export type NewsItem = {
 
 export const NEWS: NewsItem[] = [
   {
+    id: '2026-10-01-rematch-win',
+    date: '2026-10-01',
+    title: '勝利後にも再戦できるように',
+    items: ['海域で勝利したあとも「再戦」ボタンから、同じ海域に同じ配置のまま再出撃できるようになりました。周回にどうぞ。'],
+  },
+  {
     id: '2026-10-01-wreck',
     date: '2026-10-01',
     title: '海図の表示を修正',
