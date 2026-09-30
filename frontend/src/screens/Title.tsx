@@ -49,7 +49,7 @@ export function Title({ onStart }: { onStart: () => void }) {
   const start = () => {
     if (!loaded) return
     audio.unlock()
-    audio.play('ssr')
+    audio.play('start')
     fx.flash('#fff', 500, 0.9)
     fx.rays(640, 300, '#bfe9ff', 16, 1)
     onStart()

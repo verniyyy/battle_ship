@@ -91,6 +91,7 @@ export function ResultOverlay({
   }
 
   useEffect(() => {
+    audio.music(reward.win ? 'win' : 'lose')
     runFrom(0)
     return () => timers.current.forEach(clearTimeout)
     // eslint-disable-next-line react-hooks/exhaustive-deps

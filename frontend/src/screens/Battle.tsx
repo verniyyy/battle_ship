@@ -179,6 +179,9 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
     if (mounted.current) setCutin(null)
   }
 
+  // Stereo position of a board cell, so fire and hits come from where they happen.
+  const panOf = (p?: Pos) => (p ? (((p.col + 0.5) / game.boardSize) * 2 - 1) * 0.75 : 0)
+
   const cellEl = (p: Pos) => boardRef.current?.querySelector(`[data-cell="${p.row}-${p.col}"]`)
   const cellPt = (p: Pos) => fx.center(cellEl(p))
 
@@ -187,6 +190,20 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
     setFloats((f) => [...f, { id, at, text, kind, tier }])
     window.setTimeout(() => mounted.current && setFloats((f) => f.filter((x) => x.id !== id)), kind === 'sunk' ? 2400 : 1400)
   }
+
+  // The sea under the battle follows the weather.
+  useEffect(() => {
+    audio.setAmbience(initial.game.weather ?? 'clear')
+    return () => {
+      audio.setAmbience(null)
+      audio.setIntensity(1)
+    }
+  }, [initial.game.weather])
+
+  // The music drives harder once the fight is down to its last ship or last turns.
+  const alive = (ships: ShipView[]) => ships.filter((s) => s.hp > 0).length
+  const climax = game.status !== 'finished' && (alive(game.enemyShips) <= 1 || alive(game.playerShips) <= 1 || (!!game.maxTurns && game.maxTurns - game.turn <= 3))
+  useEffect(() => audio.setIntensity(climax ? 2 : 1), [climax])
 
   useEffect(() => {
     mounted.current = true
@@ -266,7 +283,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
         void execute()
         return
       }
-      audio.play('tap')
+      audio.play('lock', { pan: panOf(p) })
       setTarget(p)
       return
     }
@@ -279,6 +296,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
   const impact = async (shot: Shot, mine: boolean) => {
     if (!mounted.current) return
     const pt = cellPt(shot.target)
+    const pan = panOf(shot.target)
     const victims = mine ? game.enemyShips : game.playerShips
     if ((shot.damage ?? 0) > 0) {
       const dmg = shot.damage!
@@ -286,10 +304,10 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       const tier = share >= 0.45 ? 2 : share >= 0.25 ? 1 : 0
       const big = shot.sunk ? 1.9 : shot.crit ? 1.4 : 1 + tier * 0.25
       fx.explosion(pt.x, pt.y, big, mine ? '#ffb347' : '#ff5a4e')
-      audio.play(shot.sunk || tier === 2 ? 'bigboom' : 'boom')
+      audio.play(shot.sunk || tier === 2 ? 'bigboom' : 'boom', { pan })
       addTally(dmg, mine)
       if (shot.crit) {
-        audio.play('crit')
+        audio.play('crit', { pan })
         float(shot.target, `CRITICAL -${dmg}`, 'crit', tier)
         fx.flash('#fff', 220, 0.55)
         await fx.hitstop(130)
@@ -315,7 +333,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       }
     } else if (shot.evaded) {
       fx.splash(pt.x, pt.y, 0.7)
-      audio.play('evade')
+      audio.play('evade', { pan })
       float(shot.target, 'EVADE', 'evade')
       if (mine) {
         const v = victims[shot.hitShipId!]
@@ -323,11 +341,11 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       }
     } else if (shot.splash) {
       fx.splash(pt.x, pt.y, 1.2)
-      audio.play('splash')
+      audio.play('splash', { pan })
       float(shot.target, mine ? '水しぶき！' : '至近弾', 'splash')
     } else {
       fx.splash(pt.x, pt.y, 0.55)
-      audio.play('miss')
+      audio.play('miss', { pan })
       float(shot.target, 'MISS', 'miss')
     }
   }
@@ -372,7 +390,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       fx.splash(pt.x + rnd(-10, 10), pt.y - 20, 1.3)
     }
     if (r.columns?.length) {
-      audio.play('splash')
+      audio.play('splash', { pan: panOf(r.columns[0]) })
       float(r.columns[0], '水柱！', 'splash')
     }
   }
@@ -394,7 +412,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       return
     }
     if (r.type === 'recon') {
-      audio.play(mine ? 'reveal' : 'alarm')
+      audio.play(mine ? 'reveal' : 'warn')
       setLog((l) => [line, ...l])
       for (const v of r.revealed ?? []) {
         float(v.pos, mine ? '発見！' : '発見された！', mine ? 'found' : 'hurt')
@@ -438,7 +456,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       audio.play('whoosh')
       await show({ kind: 'attack', look: actorLook, line: c?.attack ?? '撃てっ！', title, skill: r.skill }, r.type === 'attack' ? 650 : 1000)
     } else {
-      audio.play('alarm')
+      audio.play('warn')
       const title = r.type === 'skill' ? `敵の${SKILL_INFO[r.skill!].name}！` : r.type === 'torpedo' ? '敵の雷撃！' : '敵艦の砲撃！'
       await show({ kind: 'enemy', look: actorLook, title }, 850)
     }
@@ -453,7 +471,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
         cells.map(async (p, i) => {
           await wait(i * 70)
           const to = cellPt(p)
-          audio.play('cannon')
+          audio.play('cannon', { pan: panOf(p) })
           await flyShell(layer, skyPoint(to), to, ms(420), !mine)
           const s = byCell(p)
           if (s) await impact(s, mine)
@@ -468,7 +486,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       await flyPlane(layer, to, ms(900))
       if (shots[0]) await impact(shots[0], mine)
     } else if (torpedo) {
-      audio.play('torpedo')
+      audio.play('torpedo', { pan: panOf(mine ? actor?.pos : r.origin) })
       if (!mine && r.origin) float(r.origin, '雷跡！', 'found')
       await Promise.all(
         (r.paths ?? []).map(async (path) => {
@@ -488,7 +506,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
         }),
       )
     } else if (r.skill === 'flare' || r.skill === 'sonar') {
-      audio.play(r.skill)
+      audio.play(r.skill, { pan: panOf(r.target) })
       if (r.skill === 'flare') {
         const to = cellPt(r.target!)
         await flyShell(layer, from ?? skyPoint(to), to, ms(500), !mine)
@@ -520,7 +538,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
         shots.map(async (s, i) => {
           await wait(i * 80)
           const to = cellPt(s.target)
-          audio.play('cannon')
+          audio.play('cannon', { pan: panOf(mine ? (actor?.pos ?? s.target) : (r.origin ?? s.target)) })
           await flyShell(layer, from ?? skyPoint(to), to, ms(i === 0 ? 520 : 480), !mine)
           await impact(s, mine)
         }),
@@ -544,10 +562,12 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       await wait(350)
       if (mine) {
         fx.confetti(40, ['#ffd24a', '#fff', '#ff9a3c'])
+        audio.play('sunk')
         await show({ kind: 'banner', text: '撃沈！！', sub: names, tone: 'gold' }, 1700)
         const left = after.enemyShips.filter((s) => s.hp > 0).length
         if (left === 1 && after.status !== 'finished') await show({ kind: 'banner', text: '敵艦 残り1隻！', sub: '一気に畳みかけろ！', tone: 'blue' }, 900)
       } else {
+        audio.play('shellshock')
         await show({ kind: 'banner', text: '轟沈…', sub: names, tone: 'red' }, 1600)
       }
     }
@@ -596,6 +616,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       } else {
         const left = res.game.maxTurns ? res.game.maxTurns - res.game.turn : undefined
         if (left !== undefined && left <= 3) audio.play('alarm')
+        else audio.play('bell')
         await show({ kind: 'turn', turn: res.game.turn + 1, left }, 750)
       }
     } catch (e) {
