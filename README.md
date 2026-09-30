@@ -32,6 +32,8 @@ Nix を使わない場合は `docker compose up -d --build` でも同じです�
 - API: http://localhost:8081 （例: `curl localhost:8081/api/catalog`）
 - PostgreSQL: `localhost:5432`（user / password / db はすべて `battleship`）
 
+画面の動作確認は Playwright の E2E テストで行います。`just up` で起動した状態で `nix develop -c just e2e` を実行します（ブラウザは flake が nixpkgs から用意します）。テストは開発用ログインで毎回新しい提督を作り、スクリーンショットを `frontend/e2e/results/shots/` に残します。
+
 データを消して最初からやり直す場合は `docker compose down -v`。
 
 ローカルでも Google ログインを試す場合は、下記「Google ログインの設定」で作った OAuth クライアントの承認済みリダイレクト URI に `http://localhost:8080/api/auth/google/callback` を追加し、リポジトリ直下の `.env`（git 管理外）に `GOOGLE_CLIENT_ID=...` と `GOOGLE_CLIENT_SECRET=...` を書いてから `just up` します。

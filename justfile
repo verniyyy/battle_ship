@@ -17,6 +17,10 @@ up:
 down:
     docker compose down
 
+# Run the browser end-to-end tests against the running stack (needs `just up`; run inside `nix develop`)
+e2e *args:
+    cd frontend && npx playwright test {{args}}
+
 # Follow logs (optionally for one service)
 logs *service:
     docker compose logs -f {{service}}
