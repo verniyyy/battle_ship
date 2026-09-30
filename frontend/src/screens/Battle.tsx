@@ -8,7 +8,7 @@ import { Backdrop, ShipToken, SoundToggle } from '../components/ui'
 import { fx, RAINBOW } from '../fx'
 import { CLASS_INFO, describe, footprint, historyLog, lookOfShip, SKILL_INFO, SPECIAL_INFO, stageLabel, TORPEDO_INFO, WEATHER_INFO, type Look, type LogLine } from '../game'
 import { useGame } from '../state'
-import { posLabel, samePos, type ActionType, type GameView, type MatchResponse, type Pos, type Result, type Reward, type Shot, type ShipView, type Special } from '../types'
+import { posLabel, samePos, type ActionType, type GameView, type MatchResponse, type Pos, type Result, type Reward, type Shot, type ShipClass, type ShipView, type Special } from '../types'
 import { ResultOverlay } from './Result'
 
 type Marker = 'hit' | 'splash' | 'miss' | 'enemy-fire'
@@ -181,6 +181,13 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
 
   // Stereo position of a board cell, so fire and hits come from where they happen.
   const panOf = (p?: Pos) => (p ? (((p.col + 0.5) / game.boardSize) * 2 - 1) * 0.75 : 0)
+  // How heavy a ship's guns sound: battleships thunder, destroyers bark.
+  const calibre = (c?: ShipClass) => (c === 'battleship' ? 2 : c === 'cruiser' ? 1 : 0)
+  // A gun firing and its shell flying to the target over the animation's length.
+  const gun = (at: Pos | undefined, to: Pos, flight: number, mine: boolean, size: number) => {
+    audio.play('cannon', { pan: panOf(at ?? to), size, far: !mine })
+    audio.play('shell', { pan: panOf(at ?? to), panTo: panOf(to), dur: flight / 1000, far: !mine })
+  }
 
   const cellEl = (p: Pos) => boardRef.current?.querySelector(`[data-cell="${p.row}-${p.col}"]`)
   const cellPt = (p: Pos) => fx.center(cellEl(p))
@@ -210,11 +217,13 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
     if (initial.game.status !== 'finished') {
       ;(async () => {
         setBusy(true)
-        audio.play('alarm')
         const w = WEATHER_INFO[initial.game.weather ?? 'clear']
         if (resumed || initial.game.history.length > 0) {
+          audio.play('alarm')
           await show({ kind: 'intro', text: '敵艦隊 見ゆ！', sub: `${stageLabel(stage)} ${stage.name}` }, 1300)
         } else {
+          // All hands on the pipe; the klaxon sounds once the enemy is sighted.
+          audio.play('bosun')
           await show({ kind: 'intro', text: '索敵開始！', sub: `${stageLabel(stage)} ${stage.name}` }, 1100)
           if (initial.game.weather !== 'clear') await show({ kind: 'banner', text: `${w.icon} ${w.name}`, sub: w.desc, tone: 'blue' }, 1300)
           if (stage.boss) {
@@ -222,6 +231,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
             fx.shake(16, 600)
             await show({ kind: 'banner', text: '⚠ 敵旗艦 出現 ⚠', sub: game.enemyShips.find((s) => s.boss)?.name, tone: 'red' }, 1600)
           } else {
+            audio.play('alarm')
             await show({ kind: 'intro', text: '敵艦隊発見！', sub: `敵 ${game.enemyShips.length} 隻 ／ ${stage.size}×${stage.size} 海域` }, 1200)
           }
         }
@@ -304,7 +314,8 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       const tier = share >= 0.45 ? 2 : share >= 0.25 ? 1 : 0
       const big = shot.sunk ? 1.9 : shot.crit ? 1.4 : 1 + tier * 0.25
       fx.explosion(pt.x, pt.y, big, mine ? '#ffb347' : '#ff5a4e')
-      audio.play(shot.sunk || tier === 2 ? 'bigboom' : 'boom', { pan })
+      // Our hits land on the enemy line, further off; theirs ring our own hulls.
+      audio.play(shot.sunk || tier === 2 ? 'bigboom' : 'boom', { pan, far: mine })
       addTally(dmg, mine)
       if (shot.crit) {
         audio.play('crit', { pan })
@@ -327,6 +338,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       } else audio.buzz(30)
       setGame((g) => patchShot(g, shot, mine))
       if (shot.sunk) {
+        audio.play('founder', { pan, far: mine })
         await fx.hitstop(160)
         fx.explosion(pt.x + rnd(-20, 20), pt.y + rnd(-20, 20), 1.2)
         float(shot.target, mine ? '撃沈！' : '轟沈…', 'sunk')
@@ -437,12 +449,12 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
     // Cut-in.
     const torpedo = r.type === 'torpedo' || r.skill === 'spread'
     if (r.special) {
-      audio.play('charge')
+      audio.play(mine ? 'charge' : 'menace')
       fx.flash(mine ? '#fff6c0' : '#ff3050', 380, 0.7)
       fx.shake(10, 300)
       await show({ kind: 'special', special: r.special, look: actorLook, line: mine ? (c?.attack ?? '撃てっ！') : '……捉えた。', enemy: !mine }, 1500)
     } else if (r.type === 'ultimate') {
-      audio.play('charge')
+      audio.play(mine ? 'charge' : 'menace')
       fx.flash(mine ? '#fff6c0' : '#ff3050', 500, 0.6)
       if (mine) await show({ kind: 'ultimate', looks: after.playerShips.filter((s) => s.hp > 0).map((s) => looks.player[s.id]) }, 1700)
       else await show({ kind: 'banner', text: '敵艦隊 全艦斉射！！', sub: '総員、衝撃に備えよ！', tone: 'red' }, 1300)
@@ -453,10 +465,10 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
           : r.type === 'torpedo'
             ? `${TORPEDO_INFO.icon} 雷撃開始！`
             : '砲撃開始！'
-      audio.play('whoosh')
+      audio.play('order', { pitch: r.type === 'attack' ? 0 : 1 })
       await show({ kind: 'attack', look: actorLook, line: c?.attack ?? '撃てっ！', title, skill: r.skill }, r.type === 'attack' ? 650 : 1000)
     } else {
-      audio.play('warn')
+      audio.play('alert')
       const title = r.type === 'skill' ? `敵の${SKILL_INFO[r.skill!].name}！` : r.type === 'torpedo' ? '敵の雷撃！' : '敵艦の砲撃！'
       await show({ kind: 'enemy', look: actorLook, title }, 850)
     }
@@ -471,7 +483,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
         cells.map(async (p, i) => {
           await wait(i * 70)
           const to = cellPt(p)
-          audio.play('cannon', { pan: panOf(p) })
+          gun(undefined, p, ms(420), mine, 2)
           await flyShell(layer, skyPoint(to), to, ms(420), !mine)
           const s = byCell(p)
           if (s) await impact(s, mine)
@@ -486,7 +498,7 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
       await flyPlane(layer, to, ms(900))
       if (shots[0]) await impact(shots[0], mine)
     } else if (torpedo) {
-      audio.play('torpedo', { pan: panOf(mine ? actor?.pos : r.origin) })
+      audio.play('torpedo', { pan: panOf(mine ? actor?.pos : r.origin), far: !mine })
       if (!mine && r.origin) float(r.origin, '雷跡！', 'found')
       await Promise.all(
         (r.paths ?? []).map(async (path) => {
@@ -538,8 +550,9 @@ export function Battle({ initial, resumed, onFinished, go }: { initial: MatchRes
         shots.map(async (s, i) => {
           await wait(i * 80)
           const to = cellPt(s.target)
-          audio.play('cannon', { pan: panOf(mine ? (actor?.pos ?? s.target) : (r.origin ?? s.target)) })
-          await flyShell(layer, from ?? skyPoint(to), to, ms(i === 0 ? 520 : 480), !mine)
+          const flight = ms(i === 0 ? 520 : 480)
+          gun(mine ? actor?.pos : r.origin, s.target, flight, mine, calibre(actor?.class))
+          await flyShell(layer, from ?? skyPoint(to), to, flight, !mine)
           await impact(s, mine)
         }),
       )

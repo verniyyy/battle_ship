@@ -7,6 +7,7 @@
 //   ui ──────┼─> (per sound: pan + send) ─┤                ├─> muffle ─> glue comp ─> limiter ─> out
 //   music ───┴─> duck ────────────────────┘                │
 //   ambience ─────────────────────────────────────────────┘
+//   guns, blasts ─> sea echo (two dark slap-backs off the horizon) ─> effects
 //
 // Effects are layered (transient, body, tail), slightly randomised so repeats
 // don't sound mechanical, placed in stereo by where they happen on the board,
@@ -18,6 +19,7 @@ export type Sfx =
   | 'back'
   | 'lock'
   | 'cannon'
+  | 'shell'
   | 'boom'
   | 'bigboom'
   | 'splash'
@@ -44,6 +46,11 @@ export type Sfx =
   | 'whoosh'
   | 'alarm'
   | 'warn'
+  | 'alert'
+  | 'menace'
+  | 'order'
+  | 'bosun'
+  | 'founder'
   | 'bell'
   | 'sunk'
   | 'shellshock'
@@ -64,6 +71,14 @@ export interface PlayOpts {
   pitch?: number
   /** Stereo position, -1 (left) to 1 (right). */
   pan?: number
+  /** Where a moving sound (a shell in flight) ends up. */
+  panTo?: number
+  /** How long a sound that tracks an animation (a shell's flight) lasts, in seconds. */
+  dur?: number
+  /** Gun calibre: 0 light (destroyer), 1 medium (cruiser), 2 heavy (battleship). */
+  size?: number
+  /** Heard from the enemy line: guns further off, hits on their ships, their shells inbound. */
+  far?: boolean
 }
 
 const MUTE_KEY = 'muted'
@@ -361,6 +376,7 @@ class AudioEngine {
   private duckGain?: GainNode
   private ambBus?: GainNode
   private reverbIn?: GainNode
+  private echoIn?: GainNode
   private noiseBufs = {} as Record<Color, AudioBuffer>
   private shapers = new Map<number, Float32Array<ArrayBuffer>>()
   private listeners = new Set<() => void>()
@@ -423,7 +439,11 @@ class AudioEngine {
     this.muffle.Q.value = 0.5
     this.master = ctx.createGain()
     this.master.gain.value = this.muted ? 0 : MASTER_LEVEL
-    this.master.connect(this.muffle).connect(glue).connect(limiter).connect(ctx.destination)
+    // A soft clipper after the limiter rounds off the few transients (gun cracks)
+    // that get through its attack, instead of letting them hard-clip.
+    const clip = ctx.createWaveShaper()
+    clip.curve = softClip()
+    this.master.connect(this.muffle).connect(glue).connect(limiter).connect(clip).connect(ctx.destination)
 
     // A single hall shared by everything gives the game one acoustic space.
     const reverb = ctx.createConvolver()
@@ -453,6 +473,26 @@ class AudioEngine {
     this.ambBus = ctx.createGain()
     this.ambBus.gain.value = AMBIENCE_LEVEL * this.volume.se
     this.ambBus.connect(this.master)
+
+    // Sea echo: gunfire comes back off the water and the horizon, darker each time,
+    // so a salvo rolls away instead of stopping dead like a drum.
+    this.echoIn = ctx.createGain()
+    this.echoIn.channelCount = 1
+    this.echoIn.channelCountMode = 'explicit'
+    for (const [time, pan, fb] of [[0.19, -0.6, 0.42], [0.33, 0.6, 0.36]]) {
+      const dl = ctx.createDelay(1)
+      dl.delayTime.value = time
+      const lp = ctx.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.value = 650
+      const g = ctx.createGain()
+      g.gain.value = fb
+      const p = ctx.createStereoPanner()
+      p.pan.value = pan
+      this.echoIn.connect(dl)
+      dl.connect(lp).connect(g).connect(dl)
+      lp.connect(p).connect(this.sfxBus)
+    }
 
     this.noiseBufs = { white: this.noiseBuffer('white'), pink: this.noiseBuffer('pink'), brown: this.noiseBuffer('brown') }
   }
@@ -763,21 +803,33 @@ class AudioEngine {
 
   // ---------------- mix helpers ----------------
 
-  /** A per-sound strip: level, pan (optionally moving) and reverb send. */
-  private out(bus: AudioNode, o: { pan?: number; panTo?: number; panT?: number; send?: number; vol?: number } = {}) {
+  /**
+   * A per-sound strip: level, pan (optionally moving), reverb and sea-echo sends,
+   * and an optional low-pass that pushes the sound into the distance.
+   */
+  private out(bus: AudioNode, o: { pan?: number; panTo?: number; panT?: number; send?: number; echo?: number; lp?: number; vol?: number } = {}) {
     const ctx = this.ctx!
     const t = ctx.currentTime
     const g = ctx.createGain()
     g.gain.value = o.vol ?? 1
     const p = ctx.createStereoPanner()
     p.pan.setValueAtTime(clamp(o.pan ?? 0, -1, 1), t)
-    if (o.panTo !== undefined) p.pan.linearRampToValueAtTime(clamp(o.panTo, -1, 1), t + (o.panT ?? 0.5))
-    g.connect(p).connect(bus)
+    if (o.panTo !== undefined) p.pan.linearRampToValueAtTime(clamp(o.panTo, -1, 1), t + 0.025 + (o.panT ?? 0.5))
     this.group.push(g, p)
-    if (o.send) {
+    if (o.lp) {
+      const f = ctx.createBiquadFilter()
+      f.type = 'lowpass'
+      f.frequency.value = o.lp
+      f.Q.value = 0.5
+      g.connect(f).connect(p)
+      this.group.push(f)
+    } else g.connect(p)
+    p.connect(bus)
+    for (const [amount, dest] of [[o.send, this.reverbIn!], [o.echo, this.echoIn!]] as const) {
+      if (!amount) continue
       const s = ctx.createGain()
-      s.gain.value = o.send
-      p.connect(s).connect(this.reverbIn!)
+      s.gain.value = amount
+      p.connect(s).connect(dest)
       this.group.push(s)
     }
     return g
@@ -820,7 +872,7 @@ class AudioEngine {
 
   private density(name: Sfx, now: number) {
     const hist = (this.recent.get(name) ?? []).filter((at) => now - at < 0.25)
-    const limit = name === 'cannon' || name === 'boom' || name === 'miss' || name === 'splash' ? 4 : 3
+    const limit = name === 'cannon' || name === 'shell' || name === 'boom' || name === 'miss' || name === 'splash' ? 4 : 3
     if (hist.length >= limit) return 0
     if (hist.length && now - hist[hist.length - 1] < 0.025) return 0
     hist.push(now)
@@ -841,7 +893,9 @@ class AudioEngine {
     const t = now + 0.025
     const p = opt.pitch ?? 0
     const pan = opt.pan ?? 0
-    const fx = (send: number, extra: { pan?: number; panTo?: number; panT?: number } = {}) => this.out(this.sfxBus!, { pan, send, vol: level, ...extra })
+    const far = !!opt.far
+    const fx = (send: number, extra: { pan?: number; panTo?: number; panT?: number; echo?: number; lp?: number; vol?: number } = {}) =>
+      this.out(this.sfxBus!, { pan, send, ...extra, vol: level * (extra.vol ?? 1) })
     const ui = (send = 0.08) => this.out(this.uiBus!, { pan, send, vol: level })
 
     switch (name) {
@@ -899,43 +953,97 @@ class AudioEngine {
 
       // ---- gunnery ----
       case 'cannon': {
-        const d = fx(0.3)
-        const k = vary(0.06)
-        this.noise(d, t, { filter: 'highpass', f: 1600, vol: 0.45, dur: 0.03, d: 0.01, drive: 3 })
-        this.noise(d, t, { color: 'brown', f: 4200, f2: 260, fT: 0.25, vol: 0.9, dur: 0.5, d: 0.12, drive: 1.5 })
-        this.osc(d, t, { f: 125 * k, f2: 38, glide: 0.18, vol: 0.85, dur: 0.4, d: 0.13, drive: 1.5 })
-        this.noise(d, t + 0.03, { color: 'brown', f: 420, f2: 120, vol: 0.32, a: 0.03, dur: 1.2, d: 0.45 })
+        // A naval gun, not a drum: no pitched body at all. A supersonic crack, an
+        // overdriven broadband blast, a pressure wave felt in the chest, and a rumble
+        // that rolls away over the water (the sea echo carries it to the horizon).
+        // Heavier calibres are darker, longer and wider; the enemy's guns are further off.
+        const size = clamp(opt.size ?? 1, 0, 2)
+        const weight = [0.72, 1, 1.4][size]
+        const tone = vary(0.05) * [1.35, 1, 0.72][size]
+        const d = fx(far ? 0.5 : 0.28, { echo: far ? 0.55 : 0.35 + size * 0.1, lp: far ? 2600 : undefined, vol: far ? 0.72 : 1 })
+        this.noise(d, t, { filter: 'highpass', f: 1500 * tone, vol: 0.75, dur: 0.007, d: 0.003, drive: 5 })
+        this.noise(d, t, { color: 'pink', filter: 'bandpass', f: 2400 * tone, q: 0.6, vol: 0.55, dur: 0.025, d: 0.01, drive: 3 })
+        this.noise(d, t, { color: 'pink', f: 9000, f2: 600 * tone, fT: 0.3 * weight, vol: 1.2 * weight, dur: 0.24 * weight, d: 0.07 * weight, drive: 3, width: 0.3 })
+        this.noise(d, t, { filter: 'bandpass', f: 1100 * tone, f2: 500 * tone, fT: 0.2, q: 0.8, vol: 0.5 * weight, dur: 0.12 * weight, d: 0.05 * weight, drive: 4 })
+        this.noise(d, t, { color: 'brown', f: 240 * tone, vol: 1 * weight, a: 0.003, dur: 0.25 * weight, d: 0.11 * weight, drive: 1.5 })
+        this.noise(d, t + 0.04, { color: 'brown', f: 520 * tone, f2: 130, fT: 1.4 * weight, vol: 0.5 * weight, a: 0.05, dur: 0.4 + weight * 0.6, d: 0.45 * weight, r: 0.4, trem: 0.5, tremRate: rnd(4, 7), width: 0.5 })
+        if (!far) {
+          // The shell tears the air as it leaves, and the breech slams back on recoil.
+          this.noise(d, t + 0.015, { color: 'pink', filter: 'bandpass', f: 2600, f2: 700, fT: 0.3, q: 1.4, vol: 0.14, a: 0.01, dur: 0.3, d: 0.12 })
+          if (size) {
+            this.fm(d, t + 0.14, { f: rnd(170, 200) / weight, ratio: 2.76, index: 3.5, index2: 0.2, indexT: 0.08, vol: 0.05, dur: 0.12, d: 0.035 })
+            this.noise(d, t + 0.14, { filter: 'bandpass', f: 1400, q: 2.5, vol: 0.12, dur: 0.02, d: 0.008 })
+          }
+        }
+        break
+      }
+      case 'shell': {
+        const len = clamp(opt.dur ?? 0.5, 0.12, 2)
+        const d = fx(0.22, { panTo: opt.panTo ?? pan, panT: len })
+        if (far) {
+          // Incoming: the whistle drops in pitch and swells until the shell lands.
+          const f = rnd(1800, 2400)
+          this.osc(d, t, { f, f2: f * 0.42, glide: len, type: 'triangle', vol: 0.1, a: len * 0.8, dur: len, r: 0.012, vib: 12, vibRate: rnd(6, 9), vibDelay: 0 })
+          this.noise(d, t, { color: 'pink', filter: 'bandpass', f: f * 0.95, f2: f * 0.42, fT: len, q: 5, vol: 0.26, a: len * 0.85, dur: len, r: 0.012 })
+          this.noise(d, t, { color: 'pink', filter: 'bandpass', f: 700, f2: 300, fT: len, q: 0.8, vol: 0.2, a: len * 0.9, dur: len, r: 0.015 })
+        } else {
+          // Outgoing: a tearing rush that recedes toward the target.
+          this.noise(d, t, { color: 'pink', filter: 'bandpass', f: 1500, f2: 450, fT: len, q: 1.6, vol: 0.28, a: 0.03, dur: len * 0.7, d: len * 0.35, r: 0.08, trem: 0.35, tremRate: 32 })
+          this.osc(d, t, { f: rnd(900, 1100), f2: 520, glide: len, type: 'triangle', vol: 0.035, a: 0.05, dur: len * 0.7, d: len * 0.4, r: 0.08 })
+        }
         break
       }
       case 'boom': {
-        const d = fx(0.3)
+        // A shell hitting a ship: armour struck, then the detonation, the fireball
+        // and shrapnel raining down. Hits on our own ships also ring the hull around us.
+        const d = fx(0.3, { echo: 0.3 })
         const k = vary(0.07)
-        this.noise(d, t, { filter: 'bandpass', f: 2800, q: 0.8, vol: 0.55, dur: 0.05, d: 0.02, drive: 4 })
-        this.noise(d, t, { color: 'brown', f: 5200, f2: 170, fT: 0.55, vol: 1, dur: 1, d: 0.24, drive: 2 })
-        this.osc(d, t, { f: 95 * k, f2: 30, glide: 0.4, vol: 0.9, dur: 0.8, d: 0.28 })
-        // Hull struck: inharmonic metal ring.
-        this.fm(d, t, { f: 210 * k, ratio: 1.414, index: 4, index2: 0.3, indexT: 0.4, vol: 0.09, dur: 0.7, d: 0.18 })
-        this.noise(d, t + 0.05, { color: 'pink', filter: 'bandpass', f: 800, f2: 300, q: 0.6, vol: 0.22, a: 0.05, dur: 1.2, d: 0.5 })
-        this.crackle(d, t + 0.08, 9, 0.7, 0.12)
+        this.fm(d, t, { f: 430 * k, ratio: 1.73, index: 6, index2: 0.4, indexT: 0.05, vol: 0.16, dur: 0.05, d: 0.018 })
+        this.noise(d, t, { filter: 'highpass', f: 1800, vol: 0.7, dur: 0.008, d: 0.004, drive: 5 })
+        const at = t + 0.012
+        this.noise(d, at, { color: 'pink', f: 9000, f2: 380, fT: 0.3, vol: 1.15, dur: 0.3, d: 0.08, drive: 3, width: 0.3 })
+        this.noise(d, at, { color: 'brown', f: 260, vol: 1.3, a: 0.004, dur: 0.35, d: 0.15, drive: 1.5 })
+        this.noise(d, at + 0.03, { color: 'pink', filter: 'bandpass', f: 800, f2: 260, fT: 0.8, q: 0.7, vol: 0.4, a: 0.06, dur: 0.8, d: 0.3, trem: 0.35, tremRate: 11, width: 0.5 })
+        this.crackle(d, at + 0.08, 10, 0.8, 0.14)
+        for (let i = 0; i < 3; i++) this.fm(d, at + rnd(0.15, 0.8), { f: rnd(1800, 3400), ratio: 1.41, index: 2, vol: rnd(0.015, 0.03), dur: 0.04, d: 0.03 })
+        if (!far) {
+          this.fm(d, at, { f: 115 * k, ratio: 1.414, index: 5, index2: 0.3, indexT: 0.6, vol: 0.1, dur: 1.1, d: 0.3 })
+          this.noise(d, at + 0.04, { filter: 'bandpass', f: 1600, q: 1.5, vol: 0.1, dur: 0.35, d: 0.12, trem: 0.8, tremRate: 26 })
+        }
         break
       }
       case 'bigboom': {
+        // A devastating hit: the magazine goes, secondaries follow and the steel groans.
         this.duck(0.3, 0.35, 1.6)
-        const d = fx(0.45)
+        const d = fx(0.45, { echo: 0.45 })
         const k = vary(0.05)
-        this.noise(d, t, { filter: 'highpass', f: 2400, vol: 0.7, dur: 0.04, d: 0.015, drive: 5 })
-        this.noise(d, t, { color: 'brown', f: 6500, f2: 120, fT: 0.9, vol: 1.15, dur: 1.6, d: 0.4, drive: 2.5 })
-        this.osc(d, t, { f: 72 * k, f2: 22, glide: 1.1, vol: 1, dur: 1.6, d: 0.6, drive: 1.2 })
+        this.fm(d, t, { f: 380 * k, ratio: 1.73, index: 7, index2: 0.4, indexT: 0.06, vol: 0.16, dur: 0.06, d: 0.02 })
+        this.noise(d, t, { filter: 'highpass', f: 2000, vol: 0.85, dur: 0.012, d: 0.005, drive: 6 })
+        this.noise(d, t, { color: 'pink', f: 10000, f2: 260, fT: 0.7, vol: 1.2, dur: 0.6, d: 0.16, drive: 3.5, width: 0.4 })
+        this.noise(d, t, { color: 'brown', f: 200, vol: 1.5, a: 0.004, dur: 0.8, d: 0.35, drive: 2 })
+        this.osc(d, t, { f: 46 * k, vol: 0.45, dur: 0.6, d: 0.3 })
         this.fm(d, t, { f: 150 * k, ratio: 1.414, index: 5, index2: 0.4, indexT: 0.6, vol: 0.08, dur: 1, d: 0.3 })
-        // Secondary detonations as magazines go up.
-        for (const [at, v] of [[0.22, 0.7], [0.52, 0.45]] as const) {
-          this.noise(d, t + at, { color: 'brown', f: 3000, f2: 150, vol: v, dur: 0.8, d: 0.22, drive: 2 })
-          this.osc(d, t + at, { f: 85 * vary(), f2: 30, glide: 0.3, vol: v * 0.8, dur: 0.6, d: 0.2 })
+        // Secondary detonations as magazines go up, off to either side.
+        for (const [at, v, side] of [[0.22, 0.75, -0.4], [0.5, 0.5, 0.45], [0.85, 0.3, -0.1]] as const) {
+          const s = this.out(this.sfxBus!, { pan: pan + side, send: 0.45, echo: 0.3, vol: level })
+          this.noise(s, t + at, { filter: 'highpass', f: 1600, vol: v * 0.6, dur: 0.01, d: 0.004, drive: 4 })
+          this.noise(s, t + at, { color: 'pink', f: 7000, f2: 300, fT: 0.4, vol: v, dur: 0.3, d: 0.1, drive: 2.5 })
+          this.noise(s, t + at, { color: 'brown', f: 220, vol: v * 1.1, dur: 0.35, d: 0.14 })
         }
         // Steel groaning as the hull gives.
         this.osc(d, t + 0.4, { f: 72, f2: 44, glide: 1.6, type: 'sawtooth', voices: 3, spread: 22, vol: 0.09, a: 0.3, dur: 1.4, d: 0.8, r: 0.4, lp: 380, q: 3 })
-        this.crackle(d, t + 0.06, 16, 1.4, 0.13)
-        this.noise(d, t + 0.1, { color: 'brown', f: 300, vol: 0.4, a: 0.1, dur: 2.6, d: 1.1, r: 0.6 })
+        this.crackle(d, t + 0.06, 18, 1.5, 0.14)
+        this.noise(d, t + 0.1, { color: 'brown', f: 320, vol: 0.5, a: 0.1, dur: 2.6, d: 1.1, r: 0.6, trem: 0.4, tremRate: 5, width: 0.6 })
+        break
+      }
+      case 'founder': {
+        // A ship going down: boilers flash to steam, the hull groans and the sea pours in.
+        const d = fx(far ? 0.5 : 0.35, { lp: far ? 3500 : undefined })
+        this.noise(d, t, { filter: 'highpass', f: 2600, f2: 5000, fT: 1.5, vol: 0.13, a: 0.25, dur: 1.4, d: 0.8, r: 0.5, width: 0.7 })
+        this.osc(d, t + 0.2, { f: 58, f2: 34, glide: 2.2, type: 'sawtooth', voices: 2, spread: 30, vol: 0.1, a: 0.4, dur: 2, d: 1, r: 0.5, lp: 320, q: 5 })
+        this.fm(d, t + 0.5, { f: 92, ratio: 1.414, index: 4, index2: 0.2, indexT: 1.2, vol: 0.06, a: 0.2, dur: 1.4, d: 0.6 })
+        this.noise(d, t + 0.4, { color: 'brown', f: 420, vol: 0.45, a: 0.5, dur: 1.8, d: 0.9, r: 0.6, trem: 0.5, tremRate: 3 })
+        this.bubbles(d, t + 0.6, 22, 2.4, 0.07, 140, 460)
         break
       }
       case 'crit': {
@@ -948,19 +1056,20 @@ class AudioEngine {
         ;[96, 100, 103, 108, 103].forEach((n, i) => this.bell(sides[i % 2], t + 0.02 + i * 0.035, n, 0.04, 0.3))
         break
       }
-      case 'splash': {
-        const d = fx(0.25)
-        this.osc(d, t, { f: 180 * vary(), f2: 60, glide: 0.12, vol: 0.35, dur: 0.2, d: 0.07 })
-        this.noise(d, t, { color: 'pink', filter: 'bandpass', f: 1500, f2: 480, fT: 0.5, q: 0.6, vol: 0.5, a: 0.01, dur: 0.9, d: 0.24, width: 0.5 })
-        this.noise(d, t + 0.02, { filter: 'highpass', f: 5000, vol: 0.18, a: 0.02, dur: 0.8, d: 0.25 })
-        this.bubbles(d, t + 0.05, 9, 0.7, 0.08)
-        break
-      }
+      case 'splash':
       case 'miss': {
-        const d = fx(0.2)
-        this.osc(d, t, { f: 240 * vary(), f2: 90, glide: 0.08, vol: 0.22, dur: 0.12, d: 0.04 })
-        this.noise(d, t, { color: 'pink', filter: 'bandpass', f: 1300, f2: 600, q: 0.8, vol: 0.28, dur: 0.45, d: 0.12 })
-        this.bubbles(d, t + 0.04, 5, 0.4, 0.06)
+        // A shell into the sea: the plunge, a column of water thrown up, then the
+        // column collapsing back as a heavy rain. A near miss ('splash') is bigger.
+        const big = name === 'splash'
+        const w = big ? 1 : 0.6
+        const d = fx(big ? 0.3 : 0.22, { echo: big ? 0.25 : 0.12 })
+        this.noise(d, t, { filter: 'bandpass', f: 1900 * vary(), q: 0.9, vol: 0.4 * w, dur: 0.025, d: 0.01, drive: 2 })
+        this.noise(d, t, { color: 'brown', f: 320, vol: 0.9 * w, dur: 0.12, d: 0.05, drive: 1.5 })
+        this.noise(d, t + 0.01, { color: 'pink', filter: 'bandpass', f: 450, f2: 1900, fT: 0.25, q: 0.6, vol: 0.55 * w, a: 0.03, dur: 0.3, d: 0.18, width: 0.5 })
+        const fall = t + (big ? 0.38 : 0.26)
+        this.noise(d, fall, { filter: 'highpass', f: 2400, vol: 0.22 * w, a: 0.2, dur: big ? 0.8 : 0.45, d: big ? 0.4 : 0.22, width: 0.8 })
+        this.noise(d, fall, { color: 'pink', filter: 'bandpass', f: 900, q: 0.5, vol: 0.2 * w, a: 0.15, dur: big ? 0.7 : 0.4, d: big ? 0.3 : 0.18, width: 0.6 })
+        this.bubbles(d, t + 0.08, big ? 7 : 4, big ? 0.6 : 0.4, 0.05)
         break
       }
       case 'evade': {
@@ -993,13 +1102,19 @@ class AudioEngine {
         break
       }
       case 'torpedo': {
-        const d = fx(0.3, { panTo: pan * -0.5, panT: 1.4 })
-        this.osc(d, t, { f: 140, f2: 60, glide: 0.12, vol: 0.5, dur: 0.25, d: 0.09 })
-        this.noise(d, t, { filter: 'bandpass', f: 1200, f2: 400, q: 0.7, vol: 0.32, dur: 0.25, d: 0.12 })
-        this.noise(d, t + 0.12, { color: 'pink', filter: 'bandpass', f: 1000, f2: 400, vol: 0.3, dur: 0.3, d: 0.12 })
-        this.noise(d, t + 0.2, { color: 'pink', filter: 'bandpass', f: 900, q: 5, vol: 0.14, a: 0.2, dur: 1.2, r: 0.2 })
-        this.osc(d, t + 0.2, { f: 110, type: 'sawtooth', vol: 0.05, a: 0.2, dur: 1.2, r: 0.2, lp: 520, vib: 35, vibRate: 18, vibDelay: 0 })
-        this.bubbles(d, t + 0.2, 14, 1.3, 0.07, 280, 700)
+        // Launch: a blast of compressed air, the fish hitting the water, then its
+        // screws running under the surface. The enemy's torpedoes come at us instead:
+        // their screws swell as the track closes in.
+        const d = fx(0.3, { panTo: far ? pan * 0.3 : pan * -0.5, panT: 1.4, lp: far ? 3000 : undefined })
+        this.noise(d, t, { filter: 'highpass', f: 1800, f2: 900, fT: 0.25, vol: 0.4, dur: 0.22, d: 0.07, width: 0.4 })
+        this.noise(d, t, { color: 'brown', f: 380, vol: 0.7, dur: 0.1, d: 0.04 })
+        this.noise(d, t + 0.13, { filter: 'bandpass', f: 1700, q: 0.9, vol: 0.28, dur: 0.02, d: 0.008 })
+        this.noise(d, t + 0.13, { color: 'pink', filter: 'bandpass', f: 500, f2: 1400, fT: 0.2, q: 0.7, vol: 0.3, a: 0.02, dur: 0.25, d: 0.12 })
+        const run = t + 0.25
+        const a = far ? 1 : 0.2
+        this.noise(d, run, { color: 'pink', filter: 'bandpass', f: 900, q: 5, vol: 0.15, a, dur: 1.2, r: 0.2 })
+        this.osc(d, run, { f: far ? 150 : 110, type: 'sawtooth', voices: 2, spread: 14, vol: 0.06, a, dur: 1.2, r: 0.2, lp: 560, vib: 35, vibRate: 18, vibDelay: 0 })
+        this.bubbles(d, run, 14, 1.3, 0.06, 280, 700)
         break
       }
       case 'airstrike': {
@@ -1022,6 +1137,34 @@ class AudioEngine {
         this.noise(d, hit, { color: 'brown', f: 5000, f2: 200, vol: 0.75, dur: 0.7, d: 0.2 })
         this.brass(d, hit, [50, 57, 62, 69], 0.5, 0.05, 4000)
         this.cymbal(d, hit, 0.22, 1.4)
+        break
+      }
+      case 'menace': {
+        // The enemy's cut-in: a sinking, dissonant swell that lands on a hostile hit.
+        this.duck(0.3, 1.2, 0.8)
+        const d = fx(0.4)
+        for (const [from, to] of [[62, 38], [63, 39]])
+          this.osc(d, t, { f: midi(from), f2: midi(to), glide: 1.1, type: 'sawtooth', voices: 3, spread: 30, width: 0.8, vol: 0.075, a: 0.8, dur: 1.1, r: 0.03, lp: 700, lp2: 3800, lpT: 1.1, q: 2 })
+        this.noise(d, t, { filter: 'bandpass', f: 400, f2: 3500, fT: 1.1, q: 1.5, vol: 0.28, a: 1, dur: 1.1, r: 0.02, width: 0.7 })
+        this.noise(d, t, { color: 'brown', f: 160, vol: 0.3, a: 0.8, dur: 1.1, r: 0.03, trem: 0.6, tremRate: 7 })
+        const hit = t + 1.12
+        this.noise(d, hit, { filter: 'highpass', f: 1600, vol: 0.7, dur: 0.01, d: 0.005, drive: 5 })
+        this.noise(d, hit, { color: 'pink', f: 8000, f2: 300, fT: 0.4, vol: 1, dur: 0.4, d: 0.12, drive: 3 })
+        this.noise(d, hit, { color: 'brown', f: 220, vol: 1.1, dur: 0.5, d: 0.2, drive: 1.5 })
+        this.brass(d, hit, [38, 44, 45, 50, 56], 0.7, 0.05, 3000)
+        this.cymbal(d, hit, 0.2, 1.6)
+        break
+      }
+      case 'order': {
+        // Our attack cut-in: an air swipe with the band, and a short bright brass call
+        // on a snare accent. Skills and torpedoes (pitch 1) sit a step higher.
+        const d = this.out(this.sfxBus!, { pan: -0.5, panTo: 0.3, panT: 0.25, send: 0.3, vol: level })
+        this.noise(d, t, { color: 'pink', filter: 'bandpass', f: 600, f2: 4500, fT: 0.16, q: 1.2, vol: 0.38, a: 0.12, dur: 0.16, r: 0.05 })
+        const s = t + 0.13
+        const up = p ? 2 : 0
+        this.brass(d, s, [55 + up, 62 + up, 67 + up, 71 + up], 0.24, 0.045, 4500)
+        this.noise(d, s, { filter: 'bandpass', f: 2300, q: 0.7, vol: 0.24, dur: 0.1, d: 0.045 })
+        this.noise(d, s, { filter: 'highpass', f: 7000, vol: 0.08, dur: 0.3, d: 0.1, width: 0.6 })
         break
       }
       case 'move': {
@@ -1048,21 +1191,45 @@ class AudioEngine {
 
       // ---- battle flow ----
       case 'alarm': {
-        // General quarters klaxon.
-        const d = fx(0.4)
+        // General quarters klaxon, rasping through the ship's speakers.
+        const d = fx(0.4, { echo: 0.2 })
         for (const at of [0, 0.5]) {
-          this.osc(d, t + at, { f: 300, f2: 540, glide: 0.1, type: 'sawtooth', voices: 2, spread: 10, vol: 0.07, a: 0.02, dur: 0.36, r: 0.05, lp: 1800, q: 3, hp: 280, drive: 2.5 })
+          this.osc(d, t + at, { f: 260, f2: 480, glide: 0.12, type: 'sawtooth', voices: 2, spread: 10, vol: 0.1, a: 0.02, dur: 0.38, r: 0.05, lp: 2200, q: 4, hp: 300, drive: 3 })
+          this.osc(d, t + at, { f: 520, f2: 960, glide: 0.12, type: 'square', vol: 0.025, a: 0.02, dur: 0.38, r: 0.05, lp: 2600 })
         }
         break
       }
+      case 'bosun': {
+        // Boatswain's call: all hands. A rising whistle, a held warble, then the fall.
+        const d = this.out(this.sfxBus!, { pan: -0.15, send: 0.5, vol: level })
+        this.osc(d, t, { f: 1200, f2: 2250, glide: 0.3, vol: 0.1, a: 0.05, dur: 0.95, r: 0.03, vib: 45, vibRate: 14, vibDelay: 0.4 })
+        this.osc(d, t, { f: 2400, f2: 4500, glide: 0.3, type: 'triangle', vol: 0.008, a: 0.05, dur: 0.95, r: 0.03 })
+        this.osc(d, t + 0.97, { f: 2250, f2: 1300, glide: 0.2, vol: 0.095, a: 0.01, dur: 0.22, r: 0.04 })
+        this.noise(d, t, { filter: 'bandpass', f: 2200, q: 3, vol: 0.02, a: 0.05, dur: 1.15, r: 0.04 })
+        break
+      }
       case 'warn': {
-        // Enemy acting: a short, uneasy low-brass cluster.
-        const d = fx(0.35)
-        this.osc(d, t, { f: midi(45), type: 'sawtooth', voices: 3, spread: 14, vol: 0.06, a: 0.04, dur: 0.35, d: 0.25, s: 0.3, r: 0.15, lp: 300, lp2: 1500, lpT: 0.12 })
-        this.osc(d, t, { f: midi(46), type: 'sawtooth', voices: 3, spread: 14, vol: 0.05, a: 0.04, dur: 0.35, d: 0.25, s: 0.3, r: 0.15, lp: 300, lp2: 1500, lpT: 0.12 })
-        this.osc(d, t, { f: 70, f2: 48, glide: 0.2, vol: 0.4, dur: 0.3, d: 0.12 })
-        this.osc(d, t, { f: 1760, vol: 0.03, dur: 0.03, d: 0.012 })
-        this.osc(d, t + 0.1, { f: 1760, vol: 0.03, dur: 0.03, d: 0.012 })
+        // Enemy recon has found us: a falling two-note ping over an uneasy low swell.
+        const d = fx(0.4)
+        this.fm(d, t, { f: midi(81), ratio: 2, index: 1, index2: 0.2, indexT: 0.1, vol: 0.18, dur: 0.12, d: 0.07 })
+        this.fm(d, t + 0.15, { f: midi(75), ratio: 2, index: 1, index2: 0.1, indexT: 0.3, vol: 0.18, dur: 0.5, d: 0.2, r: 0.1 })
+        for (const n of [45, 51])
+          this.osc(d, t, { f: midi(n), type: 'sawtooth', voices: 2, spread: 14, vol: 0.06, a: 0.08, dur: 0.6, d: 0.4, s: 0.4, r: 0.2, lp: 500, lp2: 2200, lpT: 0.2 })
+        break
+      }
+      case 'alert': {
+        // The enemy's attack cut-in. The red band slams in, a dissonant low-brass stab,
+        // and a piercing tritone warble like their fire control locking on.
+        this.duck(0.45, 0.6, 0.6)
+        const d = fx(0.3)
+        this.noise(d, t, { color: 'pink', filter: 'bandpass', f: 4000, f2: 700, fT: 0.2, q: 1.5, vol: 0.3, dur: 0.2, d: 0.08, width: 0.6 })
+        this.noise(d, t, { filter: 'highpass', f: 1500, vol: 0.55, dur: 0.012, d: 0.005, drive: 4 })
+        this.noise(d, t, { color: 'brown', f: 380, vol: 0.9, dur: 0.22, d: 0.08, drive: 2 })
+        for (const [n, v] of [[40, 0.075], [46, 0.06], [47, 0.055], [52, 0.05]])
+          this.osc(d, t, { f: midi(n), type: 'sawtooth', voices: 2, spread: 16, width: 0.5, vol: v, a: 0.008, dur: 0.45, d: 0.3, s: 0.35, r: 0.15, lp: 3400, lp2: 650, lpT: 0.35, q: 1.5, drive: 1.5 })
+        const w = this.out(this.sfxBus!, { send: 0.25, vol: level })
+        for (let i = 0; i < 6; i++)
+          this.osc(w, t + 0.05 + i * 0.085, { f: i % 2 ? 1480 : 1047, type: 'square', vol: 0.045 * (1 - i * 0.08), dur: 0.06, d: 0.05, s: 0.6, r: 0.01, lp: 3600 })
         break
       }
       case 'bell': {
@@ -1592,6 +1759,18 @@ class AudioEngine {
       }
     }, 1500)
   }
+}
+
+/** Linear up to 0.8, then bends smoothly toward full scale (the shaper holds its end value beyond ±1). */
+function softClip() {
+  const curve = new Float32Array(2049)
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i / (curve.length - 1)) * 2 - 1
+    const a = Math.abs(x)
+    const y = a <= 0.8 ? a : 0.8 + 0.2 * Math.tanh((a - 0.8) / 0.2)
+    curve[i] = Math.sign(x) * y
+  }
+  return curve
 }
 
 function readMuted() {
