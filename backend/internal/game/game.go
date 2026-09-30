@@ -55,8 +55,8 @@ const (
 	MinBoardSize = 5
 	MaxBoardSize = 8
 	// WideSea is the board size from which scouting skills cover more.
-	WideSea = 7
-	GaugeMax     = 100
+	WideSea  = 7
+	GaugeMax = 100
 	// StateVersion is bumped whenever State stops being readable by older code.
 	StateVersion = 3
 )
