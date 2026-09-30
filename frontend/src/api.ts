@@ -1,5 +1,6 @@
 import type {
   ActionResponse,
+  AuthSession,
   ActionType,
   Catalog,
   Chest,
@@ -21,41 +22,32 @@ export class ApiError extends Error {
   }
 }
 
-const PLAYER_KEY = 'playerId'
-
-// randomUUID only exists in secure contexts; plain-http LAN play needs the fallback.
-function uuid(): string {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
-  const b = crypto.getRandomValues(new Uint8Array(16))
-  b[6] = (b[6] & 0x0f) | 0x40
-  b[8] = (b[8] & 0x3f) | 0x80
-  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
-}
-
-// The admiral is identified by a UUID kept in this browser.
-function playerId(): string {
+// Before sign-in existed, the admiral was a UUID kept in this browser. Signing
+// in for the first time carries that progress over to the Google account.
+function guestId(): string | undefined {
   try {
-    let id = localStorage.getItem(PLAYER_KEY)
-    if (!id) {
-      id = uuid()
-      localStorage.setItem(PLAYER_KEY, id)
-    }
-    return id
+    return localStorage.getItem('playerId') ?? undefined
   } catch {
-    // Storage is unavailable (private mode): keep one id for this page load.
-    return (fallbackId ??= uuid())
+    return undefined
   }
 }
-let fallbackId: string | undefined
+
+let unauthorized: () => void = () => {}
+
+/** Registers what to do when the session has run out mid-game. */
+export function onUnauthorized(fn: () => void) {
+  unauthorized = fn
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', 'X-Player-Id': playerId(), ...init?.headers },
+    headers: { 'Content-Type': 'application/json', ...init?.headers },
   })
+  if (res.status === 204) return undefined as T
   const body = await res.json().catch(() => null)
   if (!res.ok) {
+    if (res.status === 401) unauthorized()
     throw new ApiError(res.status, body?.error ?? `HTTP ${res.status}`)
   }
   return body as T
@@ -65,6 +57,17 @@ const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
 
 type WithProfile<T = object> = T & { profile: Profile }
+
+export const auth = {
+  session: () => request<AuthSession>('/auth/session'),
+  /** Leaves for Google's sign-in page; the browser comes back to / afterwards. */
+  google: () => {
+    const g = guestId()
+    location.href = `/api/auth/google/login${g ? `?guest=${encodeURIComponent(g)}` : ''}`
+  },
+  dev: () => post<void>('/auth/dev', { guest: guestId() }),
+  logout: () => post<void>('/auth/logout'),
+}
 
 export const api = {
   catalog: () => request<Catalog>('/catalog'),

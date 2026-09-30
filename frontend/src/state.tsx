@@ -1,9 +1,9 @@
-// App-wide data: the static catalog, the admiral's profile and toasts.
+// App-wide data: the sign-in session, the static catalog, the admiral's profile and toasts.
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { api } from './api'
+import { api, auth, onUnauthorized } from './api'
 import { audio } from './audio'
 import { fx } from './fx'
-import type { Card, Catalog, Grant, Profile } from './types'
+import type { AuthSession, Card, Catalog, Grant, Profile } from './types'
 
 export interface Toast {
   id: number
@@ -12,6 +12,10 @@ export interface Toast {
 }
 
 interface GameData {
+  /** null until the server has said whether this browser is signed in. */
+  session: AuthSession | null
+  reloadSession: () => Promise<void>
+  signOut: () => Promise<void>
   catalog: Catalog | null
   profile: Profile | null
   error: string | null
@@ -43,6 +47,7 @@ export function celebrateGrant(g: Grant | undefined, from: Element | { x: number
 }
 
 export function GameDataProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<AuthSession | null>(null)
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -60,9 +65,32 @@ export function GameDataProvider({ children }: { children: ReactNode }) {
     }
   }, [catalog])
 
+  const reloadSession = useCallback(async () => {
+    try {
+      setSession(await auth.session())
+    } catch (e) {
+      setSession({ signedIn: false, google: false, dev: false })
+      setError(`司令部との通信に失敗: ${(e as Error).message}`)
+    }
+  }, [])
+
   useEffect(() => {
-    void refresh()
+    void reloadSession()
+    onUnauthorized(() => {
+      setSession((s) => s && { ...s, signedIn: false, email: undefined })
+      setProfile(null)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (session?.signedIn) void refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.signedIn])
+
+  const signOut = useCallback(async () => {
+    await auth.logout()
+    setProfile(null)
+    setSession((s) => s && { ...s, signedIn: false, email: undefined })
   }, [])
 
   const notify = useCallback((text: string, tone: Toast['tone'] = 'info') => {
@@ -75,7 +103,7 @@ export function GameDataProvider({ children }: { children: ReactNode }) {
   const card = useCallback((id: string) => catalog?.cards.find((c) => c.id === id), [catalog])
 
   return (
-    <Ctx.Provider value={{ catalog, profile, error, setProfile, refresh, card, toasts, notify }}>{children}</Ctx.Provider>
+    <Ctx.Provider value={{ session, reloadSession, signOut, catalog, profile, error, setProfile, refresh, card, toasts, notify }}>{children}</Ctx.Provider>
   )
 }
 

@@ -349,3 +349,11 @@ export const samePos = (a?: Pos | null, b?: Pos | null) => !!a && !!b && a.row =
 
 export const COLS = 'ABCDEFGH'
 export const posLabel = (p: Pos) => `${COLS[p.col]}${p.row + 1}`
+
+export interface AuthSession {
+  signedIn: boolean
+  email?: string
+  /** Sign-in methods the server offers. */
+  google: boolean
+  dev: boolean
+}

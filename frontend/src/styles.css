@@ -1664,3 +1664,74 @@ html.hitstop .shaker *::after {
   height: 100%;
   color: var(--muted);
 }
+
+/* ---------- sign-in ---------- */
+
+.login-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  cursor: default;
+  animation: fade-in 0.4s both;
+}
+
+/* Google's sign-in button: white, the G mark, Roboto-like weight. */
+.google-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 24px 0 16px;
+  border-radius: 999px;
+  border: 1px solid #dadce0;
+  background: #fff;
+  color: #1f1f1f;
+  font-family: var(--sans);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.google-btn:hover:not(:disabled) {
+  background: #f2f5fa;
+}
+
+.google-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.login-note {
+  font-size: 13px;
+  color: var(--muted);
+  text-shadow: 0 1px 4px #000;
+}
+
+.title-account {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: default;
+}
+
+.title-account button {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(8, 18, 34, 0.7);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}

@@ -52,7 +52,7 @@ export function App() {
   const [curtain, setCurtain] = useState<'idle' | 'closing' | 'opening'>('idle')
   const [resumable, setResumable] = useState<MatchResponse | null>(null)
   const timers = useRef<number[]>([])
-  const { refresh } = useGame()
+  const { refresh, session } = useGame()
 
   // Every scene change goes through a closing/opening shutter.
   const go = useCallback((next: Scene) => {
@@ -72,6 +72,12 @@ export function App() {
     const track = scene.name === 'title' ? null : scene.name === 'battle' ? (scene.match.stage.boss ? 'boss' : 'battle') : scene.name === 'gacha' ? 'gacha' : 'home'
     if (track) audio.music(track)
   }, [scene])
+
+  // Signing out, or a session running out, goes back to the sign-in screen.
+  useEffect(() => {
+    if (session && !session.signedIn && scene.name !== 'title') go({ name: 'title' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.signedIn])
 
   useEffect(() => {
     if (scene.name !== 'home') return
