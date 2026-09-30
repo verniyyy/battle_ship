@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { audio } from '../audio'
 import { Backdrop, CardView, Counter, TopBar } from '../components/ui'
+import { useDragScroll } from '../dragScroll'
 import { fx } from '../fx'
 import { CLASS_INFO, lookOfCard, usesLine } from '../game'
 import { useGame } from '../state'
@@ -71,6 +72,7 @@ export function Formation({ onBack }: { onBack: () => void }) {
   const [slot, setSlot] = useState(0)
   const [sort, setSort] = useState<Sort>('rarity')
   const [busy, setBusy] = useState(false)
+  const strip = useDragScroll<HTMLDivElement>()
   const ships = useMemo(() => (profile ? sortShips(profile.ships, sort, (s) => card(s.card)?.rarity ?? 0) : []), [profile?.ships, sort, card])
   // The cards keep one handler; it reads the latest fleet and slot through this ref.
   const pickRef = useRef<(uid: string, el: Element) => void>(() => {})
@@ -184,7 +186,7 @@ export function Formation({ onBack }: { onBack: () => void }) {
             ))}
           </div>
         </header>
-        <div className="roster-grid">
+        <div className="roster-grid" ref={strip}>
           {ships.map((s) => {
             const c = card(s.card)
             if (!c) return null

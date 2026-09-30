@@ -2062,6 +2062,16 @@ button.card:active {
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
+  cursor: grab;
+  user-select: none;
+}
+
+/* a mouse drag scrolls the strip (see useDragScroll) */
+.roster .roster-grid.dragging {
+  cursor: grabbing;
+}
+.roster .roster-grid.dragging > * {
+  pointer-events: none;
 }
 
 /* long lists: cards scrolled out of view skip layout, paint and animation */
