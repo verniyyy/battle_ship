@@ -500,6 +500,10 @@ p {
   color: var(--muted);
 }
 
+.title-foot a {
+  color: inherit;
+}
+
 /* ---------- modal ---------- */
 
 .modal-scrim {

@@ -91,7 +91,12 @@ export function Title({ onStart }: { onStart: () => void }) {
           <button onClick={() => void signOut()}>ログアウト</button>
         </div>
       )}
-      <footer className="title-foot">© battle_ship project</footer>
+      <footer className="title-foot">
+        © battle_ship project ・{' '}
+        <a href="/privacy.html" target="_blank" rel="noopener" onClick={(e) => e.stopPropagation()}>
+          プライバシーポリシー
+        </a>
+      </footer>
     </div>
   )
 }
