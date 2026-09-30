@@ -21,6 +21,10 @@ down:
 logs *service:
     docker compose logs -f {{service}}
 
+# Render the link-preview image (frontend/public/og.png) from scripts/og.html and the local portraits
+og:
+    google-chrome --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1200,630 --allow-file-access-from-files --screenshot=frontend/public/og.png "file://{{justfile_directory()}}/scripts/og.html"
+
 # Deploy the Go API to Vercel (production)
 deploy-api:
     cd backend && npx vercel deploy --prod --yes --env APP_VERSION={{APP_VERSION}}

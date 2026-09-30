@@ -1,0 +1,100 @@
+<!doctype html>
+<!-- Source of og.png (the link preview for X etc.). Not linked from the app.
+     Regenerate with `just og` after the portraits change. -->
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: #050c18;
+        font-family: 'Noto Serif JP', 'Noto Sans JP', 'Hiragino Mincho ProN', serif;
+      }
+      .sea {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(ellipse 60% 70% at 72% 40%, rgba(120, 190, 255, 0.35), transparent 70%),
+          linear-gradient(180deg, #0b2447 0%, #0a1a33 55%, #050c18 100%);
+      }
+      .horizon {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 58%;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(191, 233, 255, 0.6), transparent);
+      }
+      .crew {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        height: 630px;
+        width: 660px;
+      }
+      .crew img {
+        position: absolute;
+        bottom: -40px;
+        filter: drop-shadow(0 0 24px rgba(0, 0, 0, 0.6));
+      }
+      .fade {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, #050c18 0%, rgba(5, 12, 24, 0.85) 38%, transparent 62%);
+      }
+      .logo {
+        position: absolute;
+        left: 72px;
+        top: 150px;
+        color: #eef4fb;
+      }
+      .kicker {
+        margin: 0 0 18px;
+        font: 600 20px/1 system-ui, sans-serif;
+        letter-spacing: 0.3em;
+        color: #7fd0ff;
+      }
+      h1 {
+        margin: 0;
+        font-size: 124px;
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: 0.06em;
+        text-shadow: 0 0 30px rgba(127, 208, 255, 0.55);
+      }
+      .en {
+        display: block;
+        margin-top: 14px;
+        font: 700 40px/1 system-ui, sans-serif;
+        letter-spacing: 0.42em;
+        color: #f4c65a;
+      }
+      .sub {
+        margin: 40px 0 0;
+        font-size: 30px;
+        letter-spacing: 0.12em;
+        color: #cfe2f5;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sea"></div>
+    <div class="horizon"></div>
+    <div class="crew">
+      <img src="../frontend/public/portraits/ca_tsukuyomi.webp" style="height: 610px; left: -40px; opacity: 0.9" />
+      <img src="../frontend/public/portraits/bb_susanoo.webp" style="height: 640px; left: 380px; opacity: 0.9" />
+      <img src="../frontend/public/portraits/bb_amaterasu.webp" style="height: 700px; left: 90px" />
+    </div>
+    <div class="fade"></div>
+    <div class="logo">
+      <p class="kicker">NAVAL TACTICS × FLEET COLLECTION</p>
+      <h1>蒼海戦記<span class="en">BATTLE SHIP</span></h1>
+      <p class="sub">― 見えざる艦隊を撃滅せよ ―</p>
+    </div>
+  </body>
+</html>
