@@ -237,5 +237,3 @@ GitHub Actions（`.github/workflows/`）が push と PR で、変更のあった
 | `portraitgen` | `tools/portraitgen/` | CPU での pytest |
 
 デプロイは CI では行いません。キャラ絵（`public/portraits/`）が git 管理外で、Actions からは配信物を組み立てられないためです。
-
-旧バージョン（Spring Boot + JRuby）のデモ動画: `demo.mp4`
