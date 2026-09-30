@@ -744,8 +744,8 @@ export function Battle({
           </button>
           <SoundToggle />
           {!finished && (
-            <button className="chip-btn" onClick={() => go({ name: 'home' })} title="対局は保存され、母港から再開できます">
-              撤退
+            <button className="chip-btn" onClick={() => go({ name: 'home' })} title="戦闘を中断して母港へ。あとで復帰するか撤退するかを選べます">
+              中断
             </button>
           )}
         </div>

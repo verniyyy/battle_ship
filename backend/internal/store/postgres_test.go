@@ -71,6 +71,9 @@ func TestPostgresRoundTrip(t *testing.T) {
 	if cur, _, err := pg.CurrentMatch(ctx, pid); err != nil || cur != id {
 		t.Fatalf("current: %v %q, want %q", err, cur, id)
 	}
+	if _, err := pg.CreateMatch(ctx, m); !errors.Is(err, ErrInBattle) {
+		t.Fatalf("second suspended battle: %v", err)
+	}
 
 	// Finish the battle and settle it in one transaction.
 	_, prof, err := pg.UpdateMatch(ctx, id, func(m *meta.Match, p *meta.Profile) error {

@@ -58,6 +58,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/games/{id}/actions", s.player(s.act))
 	mux.HandleFunc("POST /api/games/{id}/chest", s.player(s.openChest))
 	mux.HandleFunc("POST /api/games/{id}/rematch", s.player(s.rematch))
+	mux.HandleFunc("POST /api/games/{id}/abandon", s.player(s.abandon))
 	return mux
 }
 
@@ -326,6 +327,27 @@ func (s *Server) act(w http.ResponseWriter, r *http.Request, pid string) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// abandon withdraws from a suspended battle for good, settled as a defeat.
+func (s *Server) abandon(w http.ResponseWriter, r *http.Request, pid string) {
+	now := s.now()
+	m, p, err := s.store.UpdateMatch(r.Context(), r.PathValue("id"), func(m *meta.Match, p *meta.Profile) error {
+		if m.PlayerID != pid {
+			return store.ErrNotFound
+		}
+		if err := m.Game.Abandon(); err != nil {
+			return err
+		}
+		s.withRng(func(rng *rand.Rand) { meta.Settle(m, p, rng, now) })
+		return nil
+	})
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	v := p.View(now)
+	writeJSON(w, http.StatusOK, actionResponse{Results: []game.Result{}, Game: m.Game.PlayerView(), Reward: m.Reward.Public(), Profile: &v})
+}
+
 func (s *Server) openChest(w http.ResponseWriter, r *http.Request, pid string) {
 	var req struct {
 		Index int `json:"index"`
@@ -391,7 +413,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, meta.ErrInsufficient):
 		writeError(w, http.StatusPaymentRequired, err.Error())
-	case errors.Is(err, game.ErrGameOver):
+	case errors.Is(err, game.ErrGameOver), errors.Is(err, store.ErrInBattle):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
 		s.log.Error("internal error", "err", err)

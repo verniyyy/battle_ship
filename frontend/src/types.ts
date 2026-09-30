@@ -5,7 +5,7 @@ export type ActionType = 'attack' | 'torpedo' | 'move' | 'skill' | 'ultimate'
 export type Special = 'spotting' | 'precision' | 'pointblank'
 export type Weather = 'clear' | 'fog' | 'storm' | 'night'
 export type Direction = 'north' | 'south' | 'east' | 'west'
-export type EndReason = 'annihilated' | 'disarmed' | 'judgment'
+export type EndReason = 'annihilated' | 'disarmed' | 'judgment' | 'abandoned'
 export type Rarity = 0 | 1 | 2 | 3 | 4
 
 export interface Pos {

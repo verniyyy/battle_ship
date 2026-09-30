@@ -124,6 +124,9 @@ func (p *Postgres) CreateMatch(ctx context.Context, m *meta.Match) (string, erro
 		`INSERT INTO games (status, turn, state, player_id, stage_id) VALUES ($1, $2, $3, $4, $5) RETURNING id::text`,
 		m.Game.Status, m.Game.Turn, data, m.PlayerID, m.Stage.ID,
 	).Scan(&id)
+	if pgErr := (*pgconn.PgError)(nil); errors.As(err, &pgErr) && pgErr.ConstraintName == "games_player_in_progress_idx" {
+		return "", ErrInBattle
+	}
 	return id, err
 }
 
@@ -196,8 +199,7 @@ func (p *Postgres) CurrentMatch(ctx context.Context, playerID string) (string, *
 		data []byte
 	)
 	err := p.pool.QueryRow(ctx, `
-		SELECT id::text, state FROM games WHERE status = 'in_progress' AND player_id = $1
-		ORDER BY updated_at DESC LIMIT 1`, playerID).Scan(&id, &data)
+		SELECT id::text, state FROM games WHERE status = 'in_progress' AND player_id = $1`, playerID).Scan(&id, &data)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil, ErrNotFound
 	}

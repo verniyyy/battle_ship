@@ -496,6 +496,15 @@ func (st *State) judge() {
 	}
 }
 
+// Abandon ends the battle as the player's defeat, without another shot fired.
+func (st *State) Abandon() error {
+	if st.Status != StatusInProgress {
+		return ErrGameOver
+	}
+	st.finish(SideCPU, EndAbandoned)
+	return nil
+}
+
 func (st *State) finish(winner Side, why EndReason) {
 	st.Status = StatusFinished
 	st.Winner = winner

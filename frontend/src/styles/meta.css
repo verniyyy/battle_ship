@@ -2793,3 +2793,21 @@ button.card:active {
   margin: 2px 0 0;
   font-weight: 700;
 }
+
+.resume-choice-where {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.resume-choice-where b {
+  font-size: 17px;
+}
+
+.resume-choice-note {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  opacity: 0.85;
+}

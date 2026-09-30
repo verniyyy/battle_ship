@@ -233,7 +233,7 @@ export function TopBar({
   )
 }
 
-/** Tappable notice that an unfinished battle is waiting, and a way back into it. */
+/** Tappable notice that the suspended battle is waiting; tapping it asks whether to resume or abandon it. */
 export function ResumeBanner({ match, onResume, className = '' }: { match: MatchResponse | null; onResume?: () => void; className?: string }) {
   if (!match || !onResume) return null
   return (
@@ -246,9 +246,59 @@ export function ResumeBanner({ match, onResume, className = '' }: { match: Match
     >
       <b>⚔ 交戦中の海域があります</b>
       <span>
-        {stageLabel(match.stage)} {match.stage.name} ／ ターン {match.game.turn + 1} ― タップで戦闘に戻る
+        {stageLabel(match.stage)} {match.stage.name} ／ ターン {match.game.turn + 1} ― タップで復帰／撤退
       </span>
     </button>
+  )
+}
+
+/** The only two ways out of a suspended battle: back into it, or a withdrawal that counts as a defeat. */
+export function ResumeChoice({ match, onResume, onAbandon, onClose }: { match: MatchResponse; onResume: () => void; onAbandon: () => Promise<void>; onClose: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [confirm, setConfirm] = useState(false)
+  return (
+    <Modal title="中断中の戦闘" onClose={onClose} className="resume-choice">
+      <p className="resume-choice-where">
+        <b>
+          {stageLabel(match.stage)} {match.stage.name}
+        </b>
+        ターン {match.game.turn + 1} で中断中
+      </p>
+      <p className="resume-choice-note">
+        {confirm
+          ? '本当に撤退しますか？ この戦闘は敗北として記録され、報酬は得られません。'
+          : '中断できる戦闘は一つだけです。新たに出撃するには、この戦闘に復帰するか完全に撤退してください。'}
+      </p>
+      <div className="modal-actions">
+        {confirm ? (
+          <>
+            <button className="pill-btn ghost" disabled={busy} onClick={() => (audio.play('back'), setConfirm(false))}>
+              やめる
+            </button>
+            <button
+              className="pill-btn warn"
+              disabled={busy}
+              onClick={() => {
+                setBusy(true)
+                audio.play('select')
+                onAbandon().finally(() => setBusy(false))
+              }}
+            >
+              撤退する（敗北）
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="pill-btn warn" onClick={() => (audio.play('tap'), setConfirm(true))}>
+              完全に撤退
+            </button>
+            <button className="pill-btn gold" onClick={() => (audio.play('select'), onResume())}>
+              戦闘に復帰
+            </button>
+          </>
+        )}
+      </div>
+    </Modal>
   )
 }
 

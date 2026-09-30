@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import { audio } from './audio'
 import { Stage } from './components/Stage'
-import { Toasts } from './components/ui'
+import { ResumeChoice, Toasts } from './components/ui'
 import { Battle } from './screens/Battle'
 import { Dock } from './screens/Dock'
 import { Formation } from './screens/Formation'
@@ -32,8 +32,9 @@ export function App() {
   const [scene, setScene] = useState<Scene>({ name: 'title' })
   const [curtain, setCurtain] = useState<'idle' | 'closing' | 'opening'>('idle')
   const [resumable, setResumable] = useState<MatchResponse | null>(null)
+  const [choosing, setChoosing] = useState(false)
   const timers = useRef<number[]>([])
-  const { refresh, session } = useGame()
+  const { refresh, session, setProfile, notify } = useGame()
 
   // Every scene change goes through a closing/opening shutter.
   const go = useCallback((next: Scene) => {
@@ -60,8 +61,8 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.signedIn])
 
-  // The server remembers the battle retreated from, so it can be resumed from
-  // the harbour or the sortie screens, on this device or another.
+  // The server keeps the one suspended battle, so it can be resumed or
+  // abandoned from the harbour or the sortie screens, on any device.
   useEffect(() => {
     if (scene.name === 'home') void refresh()
     if (scene.name !== 'home' && scene.name !== 'map') return
@@ -74,9 +75,29 @@ export function App() {
 
   const startBattle = (match: MatchResponse, resumed = false) => {
     setResumable(null)
+    setChoosing(false)
     go({ name: 'battle', match, resumed })
   }
-  const onResume = resumable ? () => startBattle(resumable, true) : undefined
+  // Leaving the suspended battle always goes through the resume-or-abandon choice.
+  const onResume = resumable ? () => setChoosing(true) : undefined
+  const abandon = async () => {
+    if (!resumable) return
+    try {
+      const res = await api.abandon(resumable.id)
+      if (res.profile) setProfile(res.profile)
+      setResumable(null)
+      setChoosing(false)
+      audio.play('back')
+      notify('艦隊は海域から撤退しました（敗北）')
+    } catch (e) {
+      notify((e as Error).message, 'error')
+      // It may have ended elsewhere meanwhile; show what the server has now.
+      api
+        .currentGame()
+        .then(setResumable)
+        .catch(() => setResumable(null))
+    }
+  }
 
   return (
     <Stage>
@@ -103,6 +124,9 @@ export function App() {
       {scene.name === 'gacha' && <Gacha onBack={() => go({ name: 'home' })} />}
       {scene.name === 'dock' && <Dock onBack={() => go({ name: 'home' })} />}
       {scene.name === 'missions' && <Missions onBack={() => go({ name: 'home' })} />}
+      {choosing && resumable && (
+        <ResumeChoice match={resumable} onResume={() => startBattle(resumable, true)} onAbandon={abandon} onClose={() => setChoosing(false)} />
+      )}
       <div className={`curtain ${curtain}`} aria-hidden>
         <div className="curtain-half top" />
         <div className="curtain-half bottom" />

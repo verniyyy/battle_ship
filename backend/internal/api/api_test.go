@@ -53,6 +53,9 @@ func (m *memStore) UpdatePlayer(_ context.Context, id string, fn func(*meta.Prof
 func (m *memStore) CreateMatch(_ context.Context, mt *meta.Match) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if _, _, err := m.current(mt.PlayerID); err == nil {
+		return "", store.ErrInBattle
+	}
 	m.n++
 	id := fmt.Sprintf("g%d", m.n)
 	m.games[id], _ = json.Marshal(mt)
@@ -100,7 +103,10 @@ func (m *memStore) ListFinished(context.Context, string, int) ([]store.Summary, 
 func (m *memStore) CurrentMatch(_ context.Context, pid string) (string, *meta.Match, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	// Games are numbered in creation order, which is good enough for "latest" here.
+	return m.current(pid)
+}
+
+func (m *memStore) current(pid string) (string, *meta.Match, error) {
 	for n := m.n; n > 0; n-- {
 		id := fmt.Sprintf("g%d", n)
 		mt, err := m.load(id)
@@ -216,6 +222,42 @@ func TestCurrentGame(t *testing.T) {
 	}
 	if code := do(t, ts, alice, "POST", "/api/games/"+created.ID+"/rematch", nil, nil); code != http.StatusBadRequest {
 		t.Fatalf("rematch mid-battle: got %d", code)
+	}
+}
+
+// TestAbandon holds a second sortie back while one battle is suspended, then
+// withdraws from it for good as a defeat that pays nothing.
+func TestAbandon(t *testing.T) {
+	ts := newTestServer(t)
+	var created matchResponse
+	do(t, ts, alice, "POST", "/api/games", createGameRequest{StageID: "1-1", Placements: placements}, &created)
+	if code := do(t, ts, alice, "POST", "/api/games", createGameRequest{StageID: "1-1", Placements: placements}, nil); code != http.StatusConflict {
+		t.Fatalf("second battle while one is suspended: got %d", code)
+	}
+	if code := do(t, ts, bob, "POST", "/api/games/"+created.ID+"/abandon", nil, nil); code != http.StatusNotFound {
+		t.Fatalf("abandoning another admiral's battle: got %d", code)
+	}
+	var res actionResponse
+	if code := do(t, ts, alice, "POST", "/api/games/"+created.ID+"/abandon", nil, &res); code != http.StatusOK {
+		t.Fatalf("abandon: got %d", code)
+	}
+	if res.Game.Status != game.StatusFinished || res.Game.Winner != game.SideCPU || res.Game.EndReason != game.EndAbandoned {
+		t.Fatalf("abandoned game: %+v", res.Game)
+	}
+	if res.Reward == nil || res.Reward.Win || res.Reward.Coins != 0 || res.Reward.Exp != 0 {
+		t.Fatalf("abandon reward: %+v", res.Reward)
+	}
+	if st := res.Profile.Stats; st.Battles != 1 || st.Losses != 1 {
+		t.Fatalf("abandon not counted as a loss: %+v", st)
+	}
+	if code := do(t, ts, alice, "POST", "/api/games/"+created.ID+"/abandon", nil, nil); code != http.StatusConflict {
+		t.Fatalf("abandoning twice: got %d", code)
+	}
+	if code := do(t, ts, alice, "GET", "/api/games/current", nil, nil); code != http.StatusNotFound {
+		t.Fatalf("abandoned battle is still current: got %d", code)
+	}
+	if code := do(t, ts, alice, "POST", "/api/games", createGameRequest{StageID: "1-1", Placements: placements}, nil); code != http.StatusCreated {
+		t.Fatalf("sortie after abandoning: got %d", code)
 	}
 }
 

@@ -693,6 +693,7 @@ const (
 	EndAnnihilated EndReason = "annihilated" // every ship sunk
 	EndDisarmed    EndReason = "disarmed"    // no way left to deal damage: strategic withdrawal
 	EndJudgment    EndReason = "judgment"    // turn limit reached
+	EndAbandoned   EndReason = "abandoned"   // the player walked away from a suspended battle
 )
 
 // Weather is the sea condition of a battle, rolled per sortie.

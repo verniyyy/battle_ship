@@ -70,6 +70,12 @@ export function Sortie({
   const ready = placements.length === n && placements.every((p) => p !== null)
 
   const deploy = async () => {
+    // Only one battle may be suspended: settle it before sailing again.
+    if (resumable && onResume) {
+      audio.play('tap')
+      onResume()
+      return
+    }
     setBusy(true)
     try {
       audio.play('charge')

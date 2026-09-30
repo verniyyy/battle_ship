@@ -195,6 +195,17 @@ func Settle(m *Match, p *Profile, rng *rand.Rand, now time.Time) *Reward {
 		return m.Reward
 	}
 	p.normalize()
+	if st.EndReason == game.EndAbandoned {
+		// Walking away counts as a defeat and pays nothing, so it can't be farmed.
+		p.Stats.Battles++
+		p.Stats.Losses++
+		p.Stats.Streak = 0
+		m.Reward = &Reward{
+			EndReason: st.EndReason, Turns: st.Turn, Rank: "E", MVP: -1, Picked: -1,
+			FromLevel: p.Level, FromExp: p.Exp, ToLevel: p.Level, ToExp: p.Exp,
+		}
+		return m.Reward
+	}
 	stage := m.Stage
 	win := st.Winner == game.SidePlayer
 	bs, score := battleStats(st)
