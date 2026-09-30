@@ -2,10 +2,6 @@
    Construction (gacha)
    ========================================================= */
 
-.gacha-screen .backdrop {
-  filter: hue-rotate(40deg) saturate(1.2);
-}
-
 .gacha-lobby {
   position: absolute;
   left: 24px;
@@ -250,7 +246,7 @@
   display: grid;
   place-items: center;
   cursor: pointer;
-  background: radial-gradient(circle, rgba(10, 20, 50, 0.7), rgba(0, 0, 0, 0.95));
+  background: radial-gradient(circle, rgba(10, 20, 50, 0.3), rgba(0, 0, 0, 0.8));
 }
 
 .dock-light {

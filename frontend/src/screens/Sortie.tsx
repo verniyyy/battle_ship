@@ -82,7 +82,7 @@ export function Sortie({
 
   return (
     <div className="screen sortie-screen">
-      <Backdrop scene="standby" dim={0.5} />
+      <Backdrop scene="standby" />
       <TopBar title="出撃準備" en="DEPLOYMENT" onBack={onBack} />
 
       <section className="fleet-list">

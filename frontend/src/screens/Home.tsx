@@ -100,7 +100,7 @@ export function Home({ go, onResume }: { go: (s: Scene) => void; onResume?: () =
 
   return (
     <div className="screen home-screen">
-      <Backdrop scene="home" dim={0.15} />
+      <Backdrop scene="home" />
       <div className="home-vignette" />
       <TopBar />
 

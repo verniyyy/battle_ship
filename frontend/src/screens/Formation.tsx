@@ -83,7 +83,7 @@ export function Formation({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="screen formation-screen">
-      <Backdrop scene="standby" dim={0.55} />
+      <Backdrop scene="standby" />
       <TopBar title="編成" en="FORMATION" onBack={onBack} />
 
       <section className="slots">

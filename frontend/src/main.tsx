@@ -7,6 +7,7 @@ import './styles.css'
 import './styles/meta.css'
 import './styles/battle.css'
 import './styles/gacha.css'
+import './styles/scenery.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

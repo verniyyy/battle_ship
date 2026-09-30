@@ -4,10 +4,23 @@ import { CLASS_INFO, KANJI, rarityName, type Look } from '../game'
 import { anchors, useGame } from '../state'
 import { backdropUrl, portraitOf, useAssets, type Backdrop as BackdropName } from '../theme'
 import type { ShipClass } from '../types'
+import { Scenery, type SceneryName } from './Scenery'
 import { PortraitImg, ShipArt } from './ShipArt'
+
+// Menu screens draw their own animated scenery; the rest use backdrop art
+// when a pack provides it.
+const SCENERY: Partial<Record<BackdropName, SceneryName>> = { home: 'harbor', gacha: 'dock', standby: 'chart' }
 
 export function Backdrop({ scene, dim = 0.35 }: { scene: BackdropName; dim?: number }) {
   const packs = useAssets()
+  const scenery = SCENERY[scene]
+  if (scenery) {
+    return (
+      <div className={`backdrop backdrop-${scene}`}>
+        <Scenery name={scenery} />
+      </div>
+    )
+  }
   const url = backdropUrl(scene, packs)
   return (
     <div

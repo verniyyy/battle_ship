@@ -56,16 +56,17 @@ export interface Packs {
   portraits: ReadonlyMap<string, Portrait>
 }
 
-export type Backdrop = 'title' | 'home' | 'standby' | 'battle' | 'result'
+export type Backdrop = 'title' | 'home' | 'standby' | 'gacha' | 'battle' | 'result'
 
 export function backdropUrl(scene: Backdrop, p: Packs): string | undefined {
   switch (scene) {
     case 'title':
       return p.legacy ? `${BASE}/img/title.png` : undefined
+    // Drawn by components/Scenery instead.
     case 'home':
-      return p.ui ? `${UI}/home.jpg` : p.legacy ? `${BASE}/img/standby.jpg` : undefined
     case 'standby':
-      return p.legacy ? `${BASE}/img/standby.jpg` : undefined
+    case 'gacha':
+      return undefined
     case 'battle':
       return p.ui ? `${UI}/battle.jpg` : p.legacy ? `${BASE}/img/battle.jpg` : undefined
     case 'result':

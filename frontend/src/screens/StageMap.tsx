@@ -67,7 +67,7 @@ export function StageMap({ area: initialArea, go }: { area?: number; go: (s: Sce
 
   return (
     <div className={`screen map-screen theme-${area === 5 ? 'endless' : areaInfo?.theme}`}>
-      <Backdrop scene="standby" dim={0.55} />
+      <Backdrop scene="standby" />
       <TopBar title="出撃" en="SORTIE" onBack={() => go({ name: 'home' })} />
 
       <nav className="area-tabs">

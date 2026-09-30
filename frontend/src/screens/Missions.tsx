@@ -97,7 +97,7 @@ export function Missions({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="screen missions-screen">
-      <Backdrop scene="standby" dim={0.6} />
+      <Backdrop scene="standby" />
       <TopBar title="任務" en="MISSIONS" onBack={onBack} />
       <nav className="dock-tabs">
         <button className={tab === 'daily' ? 'on' : ''} onClick={() => setTab('daily')}>

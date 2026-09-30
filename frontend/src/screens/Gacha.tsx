@@ -149,7 +149,7 @@ export function Gacha({ onBack }: { onBack: () => void }) {
 
   return (
     <div className={`screen gacha-screen phase-${phase}`}>
-      <Backdrop scene="standby" dim={0.6} />
+      <Backdrop scene="gacha" />
       <TopBar title="建造" en="CONSTRUCTION" onBack={phase === 'idle' || phase === 'summary' ? onBack : undefined} />
 
       {phase === 'idle' && (

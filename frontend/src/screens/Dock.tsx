@@ -25,7 +25,7 @@ export function Dock({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="screen dock-screen">
-      <Backdrop scene="standby" dim={0.6} />
+      <Backdrop scene="standby" />
       <TopBar title="艦隊" en="FLEET ROSTER" onBack={onBack} />
 
       <nav className="dock-tabs">
