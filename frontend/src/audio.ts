@@ -1963,7 +1963,8 @@ function readMuted() {
 }
 
 function readVolume(): Record<Channel, number> {
-  const v = { bgm: 1, se: 1 }
+  // First run starts at half volume: full scale is too loud before the player has set it.
+  const v = { bgm: 0.5, se: 0.5 }
   try {
     const saved = JSON.parse(localStorage.getItem(VOLUME_KEY) ?? '{}') as Partial<Record<Channel, unknown>>
     for (const ch of ['bgm', 'se'] as const) {
