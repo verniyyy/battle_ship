@@ -1,7 +1,0 @@
-{
-  "name": "types_pacckage",
-  "dependencies": {},
-  "globalDependencies": {
-    "createjs": "registry:dt/createjs#0.0.0+20160510010627"
-  }
-}

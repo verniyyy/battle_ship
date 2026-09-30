@@ -1,0 +1,40 @@
+name: portraitgen
+
+on:
+  push:
+    paths: ["tools/portraitgen/**", ".github/workflows/portraitgen.yml"]
+  pull_request:
+    paths: ["tools/portraitgen/**", ".github/workflows/portraitgen.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: tools/portraitgen
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: tools/portraitgen/uv.lock
+      # The tests fetch a tokenizer from Hugging Face and the Real-ESRGAN weights.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/torch
+          key: portraitgen-models-${{ hashFiles('tools/portraitgen/portraitgen/*.py') }}
+          restore-keys: portraitgen-models-
+      - run: uv sync --locked
+      - run: uv run pytest -q

@@ -1,0 +1,579 @@
+/* =========================================================
+   Scenery: the animated backdrops behind the menu screens.
+   Every moving layer animates transform/opacity only.
+   ========================================================= */
+
+.scenery {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.scenery > *,
+.scenery .sc-plate {
+  position: absolute;
+}
+
+.scenery .sc-plate {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Keeps the lower edge, where chips and tickers sit, readable. */
+.scenery-shade {
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, rgba(3, 8, 20, 0.35), transparent 14%, transparent 80%, rgba(3, 8, 20, 0.5));
+}
+
+/* ---------- harbor ---------- */
+
+.sc-harbor .sc-stars {
+  inset: 0;
+}
+
+.sc-harbor .sc-stars i {
+  position: absolute;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 4px #cfe3ff;
+  animation: star-twinkle 4s ease-in-out infinite;
+}
+
+@keyframes star-twinkle {
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.sc-harbor .sc-cloud-layer {
+  top: 0;
+  left: 0;
+  animation: cloud-drift linear infinite;
+}
+
+.sc-harbor .sc-cloud-layer.sc-far {
+  animation-duration: 260s;
+}
+
+.sc-harbor .sc-cloud-layer.sc-near {
+  animation-duration: 150s;
+}
+
+@keyframes cloud-drift {
+  to {
+    transform: translateX(-1280px);
+  }
+}
+
+.sc-harbor .sc-sun-pulse {
+  width: 240px;
+  height: 240px;
+  margin: -120px 0 0 -120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--light) 45%, transparent), transparent 65%);
+  animation: sun-pulse 6s ease-in-out infinite;
+}
+
+.sc-harbor.t-day .sc-sun-pulse {
+  opacity: 0.6;
+}
+
+@keyframes sun-pulse {
+  50% {
+    transform: scale(1.18);
+    opacity: 0.6;
+  }
+}
+
+/* Lighthouse beam: a cone sweeping across, foreshortened as it turns. */
+.sc-harbor .sc-beam {
+  width: 0;
+  height: 0;
+}
+
+.sc-harbor .sc-beam i {
+  position: absolute;
+  left: 0;
+  top: -46px;
+  width: 560px;
+  height: 92px;
+  transform-origin: 0 50%;
+  clip-path: polygon(0 45%, 100% 0, 100% 100%, 0 55%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--light) 70%, transparent), transparent 85%);
+  animation: beam-sweep 8s linear infinite;
+}
+
+@keyframes beam-sweep {
+  0% {
+    transform: scaleX(1);
+    opacity: 0.55;
+  }
+  22% {
+    opacity: 0.35;
+  }
+  25% {
+    transform: scaleX(0.02);
+    opacity: 0;
+  }
+  28% {
+    opacity: 0.35;
+  }
+  50% {
+    transform: scaleX(-1);
+    opacity: 0.55;
+  }
+  72% {
+    opacity: 0.3;
+  }
+  75% {
+    transform: scaleX(0.02);
+    opacity: 0.9;
+  }
+  78% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0.55;
+  }
+}
+
+.sc-harbor .sc-passing-ship {
+  left: 0;
+  margin-top: -30px;
+  animation: ship-pass 150s linear infinite;
+  animation-delay: -40s;
+}
+
+.sc-harbor .sc-passing-ship svg {
+  display: block;
+  animation: ship-bob 5s ease-in-out infinite;
+}
+
+@keyframes ship-pass {
+  from {
+    transform: translateX(1320px);
+  }
+  to {
+    transform: translateX(-120px);
+  }
+}
+
+@keyframes ship-bob {
+  50% {
+    transform: translateY(1px) rotate(-0.6deg);
+  }
+}
+
+/* Light laid on the water under the sun or moon. */
+.sc-harbor .sc-glints {
+  top: 0;
+  width: 0;
+  height: 100%;
+}
+
+.sc-harbor .sc-glints i {
+  position: absolute;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--glint) 30%, var(--glint) 70%, transparent);
+  opacity: 0.5;
+  animation: glint 2.4s ease-in-out infinite;
+}
+
+.sc-harbor.t-day .sc-glints i {
+  opacity: 0.25;
+}
+
+@keyframes glint {
+  0%,
+  100% {
+    transform: translateX(-6px) scaleX(0.7);
+    opacity: 0.15;
+  }
+  50% {
+    transform: translateX(6px) scaleX(1);
+    opacity: 0.7;
+  }
+}
+
+.sc-harbor .sc-wave-row {
+  top: 0;
+  left: 0;
+  animation: wave-roll linear infinite;
+}
+
+.sc-harbor .sc-wave-row.sc-rev {
+  animation-direction: reverse;
+}
+
+.sc-harbor .sc-wave-row svg {
+  display: block;
+  margin-left: calc(-1 * var(--period));
+}
+
+@keyframes wave-roll {
+  to {
+    transform: translateX(var(--period));
+  }
+}
+
+.sc-harbor .sc-gull {
+  left: 0;
+  top: 0;
+  animation: gull-fly linear infinite;
+}
+
+.sc-harbor .sc-gull svg {
+  display: block;
+  animation: gull-flap 0.9s ease-in-out infinite;
+}
+
+.sc-harbor .sc-gull.sc-g0 {
+  --y: 250px;
+  animation-duration: 38s;
+}
+
+.sc-harbor .sc-gull.sc-g1 {
+  --y: 280px;
+  animation-duration: 44s;
+  animation-delay: -6s;
+}
+
+.sc-harbor .sc-gull.sc-g1 svg {
+  animation-delay: -0.3s;
+  scale: 0.8;
+}
+
+.sc-harbor .sc-gull.sc-g2 {
+  --y: 212px;
+  animation-duration: 52s;
+  animation-delay: -30s;
+}
+
+.sc-harbor .sc-gull.sc-g2 svg {
+  animation-delay: -0.6s;
+  scale: 0.6;
+}
+
+@keyframes gull-fly {
+  from {
+    transform: translate(-60px, var(--y));
+  }
+  50% {
+    transform: translate(640px, calc(var(--y) - 40px));
+  }
+  to {
+    transform: translate(1340px, var(--y));
+  }
+}
+
+@keyframes gull-flap {
+  50% {
+    transform: scaleY(-0.6);
+  }
+}
+
+.sc-harbor.t-night .sc-gulls {
+  display: none;
+}
+
+/* ---------- construction dock ---------- */
+
+.sc-dock {
+  background:
+    radial-gradient(ellipse 60% 55% at 50% 52%, rgba(120, 70, 220, 0.45), transparent 70%),
+    radial-gradient(ellipse 80% 40% at 50% 100%, rgba(40, 180, 255, 0.25), transparent 70%), linear-gradient(180deg, #05041a, #0d0a2e 45%, #081530);
+}
+
+.sc-dock .sc-dock-floor {
+  left: -40%;
+  right: -40%;
+  top: 56%;
+  height: 90%;
+  overflow: hidden;
+  transform: perspective(520px) rotateX(72deg);
+  transform-origin: 50% 0;
+  mask-image: linear-gradient(180deg, transparent, #000 25%);
+}
+
+.sc-dock .sc-dock-floor i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -64px;
+  bottom: 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(90, 210, 255, 0.35) 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(0deg, rgba(90, 210, 255, 0.35) 0 1px, transparent 1px 64px);
+  animation: floor-scroll 3s linear infinite;
+}
+
+@keyframes floor-scroll {
+  to {
+    transform: translateY(64px);
+  }
+}
+
+.sc-dock .sc-rings {
+  inset: 0;
+  transition: transform 0.9s cubic-bezier(0.3, 1, 0.4, 1);
+}
+
+.sc-dock .sc-rings > * {
+  position: absolute;
+}
+
+/* In the lobby the circle turns behind the build buttons; a build pulls it to the centre. */
+.phase-idle .sc-dock .sc-rings {
+  transform: translateX(436px) scale(0.85);
+}
+
+.sc-dock .sc-dock-glow {
+  left: 50%;
+  top: 50%;
+  width: 900px;
+  height: 900px;
+  margin: -450px 0 0 -450px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 214, 120, 0.22), rgba(179, 136, 255, 0.12) 35%, transparent 62%);
+  animation: dock-glow 5s ease-in-out infinite;
+}
+
+@keyframes dock-glow {
+  50% {
+    transform: scale(1.08);
+    opacity: 0.7;
+  }
+}
+
+.sc-dock .sc-blueprint {
+  opacity: 0.22;
+}
+
+.sc-dock .sc-blueprint-scan {
+  top: 240px;
+  left: 0;
+  width: 160px;
+  height: 440px;
+  background: linear-gradient(90deg, transparent, rgba(110, 227, 255, 0.12) 70%, rgba(180, 245, 255, 0.4) 97%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 25%, #000 75%, transparent);
+  animation: blueprint-scan 7s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes blueprint-scan {
+  0% {
+    transform: translateX(-160px);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(1280px);
+    opacity: 0;
+  }
+}
+
+.sc-dock .sc-ring {
+  left: 50%;
+  top: 50%;
+  color: #f4c65a;
+}
+
+.sc-dock .sc-ring svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.sc-dock .sc-ring.sc-outer {
+  opacity: 0.35;
+  animation: ring-spin 120s linear infinite;
+}
+
+.sc-dock .sc-ring.sc-mid {
+  color: #7fe6ff;
+  opacity: 0.4;
+  animation: ring-spin 80s linear infinite reverse;
+}
+
+.sc-dock .sc-ring.sc-inner {
+  opacity: 0.3;
+  animation: ring-spin 50s linear infinite;
+}
+
+@keyframes ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sc-dock .sc-pillars {
+  inset: 0;
+}
+
+.sc-dock .sc-pillars i {
+  position: absolute;
+  bottom: 0;
+  width: 70px;
+  height: 100%;
+  margin-left: -35px;
+  background: linear-gradient(0deg, rgba(255, 220, 140, 0.35), rgba(179, 136, 255, 0.12) 50%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 40%, #000 60%, transparent);
+  transform-origin: 50% 100%;
+  animation: pillar 6s ease-in-out infinite;
+}
+
+@keyframes pillar {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scaleX(0.6);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scaleX(1.1);
+  }
+}
+
+.sc-dock .sc-sparks {
+  inset: 0;
+}
+
+.sc-dock .sc-sparks i {
+  position: absolute;
+  bottom: 40px;
+  border-radius: 50%;
+  background: #ffe39a;
+  box-shadow:
+    0 0 6px #ffcf4a,
+    0 0 12px rgba(255, 170, 60, 0.8);
+  opacity: 0;
+  animation: spark-rise linear infinite;
+}
+
+@keyframes spark-rise {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), -560px) scale(0.3);
+    opacity: 0;
+  }
+}
+
+/* While a build runs, the dock powers up. */
+.phase-rolling .sc-dock .sc-ring.sc-outer,
+.phase-rolling .sc-dock .sc-ring.sc-inner {
+  animation-duration: 6s;
+}
+
+.phase-rolling .sc-dock .sc-ring.sc-mid {
+  animation-duration: 4s;
+}
+
+.phase-rolling .sc-dock .sc-rings {
+  inset: 0;
+  transition: transform 0.9s cubic-bezier(0.3, 1, 0.4, 1);
+}
+
+.sc-dock .sc-rings > * {
+  position: absolute;
+}
+
+/* In the lobby the circle turns behind the build buttons; a build pulls it to the centre. */
+.phase-idle .sc-dock .sc-rings {
+  transform: translateX(436px) scale(0.85);
+}
+
+.sc-dock .sc-dock-glow {
+  animation-duration: 0.8s;
+}
+
+.phase-rolling .sc-dock .sc-pillars i {
+  animation-duration: 1s;
+}
+
+/* ---------- operations chart ---------- */
+
+.sc-chart {
+  background:
+    radial-gradient(ellipse 70% 60% at 75% 75%, rgba(40, 140, 220, 0.25), transparent 70%),
+    radial-gradient(ellipse 60% 50% at 10% 10%, rgba(70, 120, 200, 0.18), transparent 70%), linear-gradient(180deg, #0b1a30, #06101f);
+}
+
+.sc-chart .sc-chart-grid {
+  inset: 0;
+  background:
+    repeating-linear-gradient(0deg, rgba(120, 190, 255, 0.12) 0 1px, transparent 1px 160px),
+    repeating-linear-gradient(90deg, rgba(120, 190, 255, 0.12) 0 1px, transparent 1px 256px),
+    repeating-linear-gradient(0deg, rgba(120, 190, 255, 0.05) 0 1px, transparent 1px 32px),
+    repeating-linear-gradient(90deg, rgba(120, 190, 255, 0.05) 0 1px, transparent 1px 32px);
+  background-position: 0 16px;
+}
+
+.sc-chart .sc-sonar {
+  width: 1500px;
+  height: 1500px;
+  margin: -750px 0 0 -750px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 300deg,
+    rgba(70, 224, 255, 0.04) 320deg,
+    rgba(70, 224, 255, 0.22) 359deg,
+    rgba(160, 240, 255, 0.5) 360deg
+  );
+  mask-image: radial-gradient(circle, #000 30%, transparent 70%);
+  animation: sonar-sweep linear infinite;
+}
+
+@keyframes sonar-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sc-chart .sc-contact {
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: #7fefff;
+  box-shadow: 0 0 10px #46e0ff;
+  opacity: 0;
+  animation: contact-ping linear infinite;
+}
+
+.sc-chart .sc-contact.sc-enemy {
+  background: #ff8a7a;
+  box-shadow: 0 0 10px #ff5a4e;
+}
+
+@keyframes contact-ping {
+  0% {
+    opacity: 1;
+    transform: scale(1.6);
+  }
+  8% {
+    transform: scale(1);
+  }
+  60% {
+    opacity: 0.1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

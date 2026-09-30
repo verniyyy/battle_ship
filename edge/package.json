@@ -1,0 +1,14 @@
+{
+  "name": "battle-ship-edge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:frontend": "cd ../frontend && bun run build",
+    "deploy": "bun run build:frontend && wrangler deploy",
+    "dev": "wrangler dev",
+    "typecheck": "wrangler types && tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "battleship",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "preview_urls": false,
+
+  // The built SPA. Only /api/* runs the Worker; every other path is served
+  // from assets, which is free and unmetered, with index.html as the fallback.
+  "assets": {
+    "directory": "../frontend/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  "vars": {
+    // Production URL of the Vercel project that runs backend/.
+    "ORIGIN_URL": "https://battleship-api-eight.vercel.app",
+    // Keeps Vercel under its 1M requests/month free allowance (31 x 30,000).
+    "DAILY_API_LIMIT": "30000"
+  },
+  // ORIGIN_SECRET is a secret: `wrangler secret put ORIGIN_SECRET`.
+
+  "ratelimits": [
+    { "name": "IP_LIMITER", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "BUDGET", "class_name": "Budget" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Budget"] }],
+
+  // Daily probe that touches the database so the free Supabase project never
+  // sits idle long enough to be paused.
+  "triggers": { "crons": ["0 3 * * *"] },
+
+  "observability": { "enabled": true }
+}
