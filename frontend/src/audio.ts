@@ -88,6 +88,8 @@ const VOLUME_KEY = 'volume'
 
 // Bus levels at a volume setting of 1; the player's BGM/SE settings scale these.
 const MUSIC_LEVEL = 0.22
+// A mastered recording runs much hotter than the synthesised songs; this sits it at their level.
+const RECORDING_LEVEL = 0.5
 const SFX_LEVEL = 0.8
 const AMBIENCE_LEVEL = 0.25
 const MASTER_LEVEL = 0.9
@@ -135,6 +137,7 @@ interface Take {
 const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12)
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 const rnd = (a: number, b: number) => a + Math.random() * (b - a)
+const pick = <T>(xs: readonly T[]) => xs[Math.floor(Math.random() * xs.length)]
 /** A small random detune factor so repeated sounds never repeat exactly. */
 const vary = (amt = 0.04) => 1 + (Math.random() * 2 - 1) * amt
 
@@ -225,18 +228,24 @@ interface Song {
   comp?: { kind: 'ep' | 'stab' | 'bell'; hits: Hit[]; octave?: number }
   /** [step, semitones above the bar root, length] */
   bass?: { kind: 'round' | 'drive'; notes: Note[] }
-  arp?: { kind: 'pluck' | 'bell'; order: (number | null)[]; octave: number; min?: number }
+  arp?: { kind: 'pluck' | 'bell'; order: (number | null)[]; octave: number }
   /** [absolute step over the whole loop, MIDI note, length] */
-  lead?: { kind: 'brass' | 'flute' | 'dark' | 'bell'; notes: Note[]; min?: number }
+  lead?: { kind: 'brass' | 'flute' | 'dark' | 'bell'; notes: Note[] }
   drums?: Drums
-  /** Drums at the highest intensity. */
-  drumsHigh?: Drums
   /** Replaces the drums on the last bar of every four. */
   fill?: Drums
-  timpani?: boolean
 }
 
-const SONGS: Record<Track, Song> = {
+// Tracks the user supplies as recordings (frontend/public/bgm), looped instead of synthesised.
+// A track with several recordings picks one at random each time it starts.
+const FILES = {
+  battle: ['/bgm/battle.mp3', '/bgm/battle2.mp3'],
+  boss: ['/bgm/boss.mp3'],
+} satisfies Partial<Record<Track, string[]>>
+type FileTrack = keyof typeof FILES
+const isFileTrack = (t: Track): t is FileTrack => t in FILES
+
+const SONGS: Record<Exclude<Track, FileTrack>, Song> = {
   // Harbour: a warm, laid-back loop to sit in menus for a long time.
   home: {
     bpm: 84,
@@ -257,7 +266,6 @@ const SONGS: Record<Track, Song> = {
     bass: { kind: 'round', notes: [[0, 0, 5], [6, 7, 2], [10, 12, 3], [14, 7, 2]] },
     lead: {
       kind: 'flute',
-      min: 1,
       notes: [
         [64, 81, 3], [68, 78, 2], [70, 76, 2], [72, 74, 6], [78, 76, 2],
         [80, 78, 4], [84, 81, 4], [88, 85, 6], [94, 83, 2],
@@ -267,85 +275,6 @@ const SONGS: Record<Track, Song> = {
     },
     drums: { kick: 'x.........x.....', snare: '....x.......x...', hat: '..x...x...x...x.', shaker: 'xxxxxxxxxxxxxxxx' },
     fill: { kick: 'x.........x.....', snare: '....x.......x.x.', hat: '..x...x...x...x.', shaker: 'xxxxxxxxxxxxxxxx' },
-  },
-  // Main battle theme: heroic D minor with a brass lead that enters at intensity 1.
-  battle: {
-    bpm: 140,
-    chords: [
-      [50, 53, 57],
-      [46, 50, 53],
-      [48, 52, 55],
-      [45, 49, 52],
-      [50, 53, 57],
-      [46, 50, 53],
-      [43, 46, 50],
-      [45, 49, 52, 55],
-    ],
-    pad: 'strings',
-    padVol: 0.8,
-    bass: {
-      kind: 'drive',
-      notes: [[0, 0, 1], [2, 0, 1], [3, 12, 1], [4, 0, 1], [6, 0, 1], [7, 12, 1], [8, 0, 1], [10, 0, 1], [11, 12, 1], [12, 7, 1], [14, 10, 1], [15, 12, 1]],
-    },
-    arp: { kind: 'pluck', order: [0, 1, 2, 3, 2, 1, 0, 2, 0, 1, 2, 4, 5, 4, 2, 1], octave: 12 },
-    lead: {
-      kind: 'brass',
-      min: 1,
-      notes: [
-        [0, 69, 2], [2, 74, 2], [4, 76, 2], [6, 77, 6], [12, 76, 2], [14, 74, 2],
-        [16, 77, 6], [22, 74, 2], [24, 70, 4], [28, 74, 4],
-        [32, 76, 4], [36, 79, 4], [40, 84, 6], [46, 82, 2],
-        [48, 81, 12], [60, 76, 2], [62, 73, 2],
-        [64, 74, 2], [66, 77, 2], [68, 81, 6], [74, 79, 2], [76, 77, 2], [78, 76, 2],
-        [80, 77, 4], [84, 74, 4], [88, 77, 2], [90, 79, 2], [92, 81, 2], [94, 82, 2],
-        [96, 82, 6], [102, 81, 2], [104, 79, 4], [108, 82, 4],
-        [112, 81, 6], [118, 79, 2], [120, 76, 2], [122, 73, 2], [124, 69, 4],
-      ],
-    },
-    drums: { kick: 'x.....x.x.....x.', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', open: '..............x.' },
-    drumsHigh: { kick: 'x...x...x...x.x.', snare: '....x.......x...', hat: 'xxxxxxxxxxxxxxxx', open: '......x.......x.', tom: '.............x.x' },
-    fill: { kick: 'x.....x.x.......', snare: '....x...x.x.xxxx', hat: 'x.x.x.x.x.......', tom: '..........x.x...' },
-    timpani: true,
-  },
-  // Flagship battle: dark E phrygian, galloping bass, choir and taiko.
-  boss: {
-    bpm: 152,
-    chords: [
-      [40, 43, 47],
-      [41, 45, 48],
-      [40, 43, 47],
-      [38, 42, 45],
-      [40, 43, 47],
-      [41, 45, 48],
-      [43, 47, 50],
-      [47, 51, 54],
-    ],
-    pad: 'choir',
-    padVol: 0.9,
-    comp: { kind: 'stab', hits: [[0, 2], [3, 2], [6, 2], [10, 2]], octave: 12 },
-    bass: {
-      kind: 'drive',
-      notes: [[0, 0, 1], [1, 0, 1], [2, 0, 1], [3, 12, 1], [4, 0, 1], [5, 0, 1], [6, 1, 1], [7, 0, 1], [8, 0, 1], [9, 0, 1], [10, 0, 1], [11, 12, 1], [12, 0, 1], [13, 1, 1], [14, 0, 1], [15, 3, 1]],
-    },
-    arp: { kind: 'pluck', order: [0, 2, 4, 2, 5, 4, 2, 0, 0, 2, 4, 2, 6, 5, 4, 2], octave: 24, min: 2 },
-    lead: {
-      kind: 'dark',
-      min: 1,
-      notes: [
-        [0, 76, 4], [4, 77, 4], [8, 76, 2], [10, 74, 2], [12, 71, 4],
-        [16, 72, 6], [22, 69, 2], [24, 77, 6], [30, 76, 2],
-        [32, 79, 4], [36, 77, 2], [38, 76, 2], [40, 71, 8],
-        [48, 69, 4], [52, 74, 4], [56, 78, 4], [60, 81, 4],
-        [64, 83, 6], [70, 84, 2], [72, 83, 4], [76, 79, 4],
-        [80, 81, 6], [86, 84, 2], [88, 77, 4], [92, 81, 4],
-        [96, 83, 4], [100, 86, 4], [104, 79, 6], [110, 77, 2],
-        [112, 78, 4], [116, 75, 4], [120, 71, 8],
-      ],
-    },
-    drums: { kick: 'x..xx...x..xx..x', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', tom: '..............xx' },
-    drumsHigh: { kick: 'x.xxx.x.x.xxx.xx', snare: '....x.......x..x', hat: 'xxxxxxxxxxxxxxxx', open: '..x...x...x...x.', tom: '...........x.xxx' },
-    fill: { kick: 'x..x....x.......', snare: '....x.....xxxxxx', hat: 'x.x.x.x.........', tom: '........xx.x.x..' },
-    timpani: true,
   },
   // Gacha: glittering music box over a soft lydian pad, all anticipation.
   gacha: {
@@ -439,10 +368,12 @@ class AudioEngine {
   private track: Track | null = null
   private song?: Song
   private ch?: Channels
-  private intensity = 1
   private seqTimer?: number
   private nextTime = 0
   private step = 0
+
+  private recordings = new Map<string, Promise<AudioBuffer | null>>()
+  private recording?: { out: GainNode; src?: AudioBufferSourceNode }
 
   private ambience: Ambience | null = null
   private ambNodes: AudioNode[] = []
@@ -455,7 +386,7 @@ class AudioEngine {
     this.resume()
     void this.pump()
     const t = this.track
-    if (t && !this.seqTimer) {
+    if (t && !this.seqTimer && !this.recording) {
       this.track = null
       this.music(t)
     }
@@ -529,6 +460,8 @@ class AudioEngine {
     this.echoIn = seaEcho(ctx, this.sfxBus)
 
     this.noiseBufs = { white: this.noiseBuffer('white'), pink: this.noiseBuffer('pink'), brown: this.noiseBuffer('brown') }
+    // Fetched and decoded up front so a battle doesn't open in silence.
+    for (const url of Object.values(FILES).flat()) void this.loadRecording(url)
   }
 
   /** The context can be suspended after the first gesture (tab switch, device change); wake it on the next one. */
@@ -1671,6 +1604,7 @@ class AudioEngine {
     this.track = track
     this.fadeOut(this.ctx ? 0.9 : 0)
     if (!track || !this.ctx) return // started on unlock()
+    if (isFileTrack(track)) return this.playRecording(pick(FILES[track]))
     const song = SONGS[track]
     this.song = song
     this.ch = this.channels(song)
@@ -1682,18 +1616,6 @@ class AudioEngine {
     this.schedule()
   }
 
-  /** Sets how hard the battle music drives: 0 calm, 1 normal, 2 climax. */
-  setIntensity(level: number) {
-    const next = clamp(Math.round(level), 0, 2)
-    if (next === this.intensity) return
-    const rising = next > this.intensity
-    this.intensity = next
-    // A crash marks the gear change.
-    if (rising && this.ctx && this.ch && this.song?.drumsHigh && !this.muted) {
-      this.cymbal(this.ch.drums, this.nextTime, 0.16, 1.6)
-    }
-  }
-
   /** Fades the current music out; the next music() call starts fresh. */
   private fadeMusic(sec: number) {
     this.track = null
@@ -1703,6 +1625,18 @@ class AudioEngine {
   private fadeOut(sec: number) {
     if (this.seqTimer) clearInterval(this.seqTimer)
     this.seqTimer = undefined
+    const rec = this.recording
+    this.recording = undefined
+    if (rec && this.ctx) {
+      const t = this.ctx.currentTime
+      rec.out.gain.cancelScheduledValues(t)
+      rec.out.gain.setValueAtTime(rec.out.gain.value, t)
+      rec.out.gain.linearRampToValueAtTime(0, t + Math.max(sec, 0.02))
+      window.setTimeout(() => {
+        rec.src?.stop()
+        rec.out.disconnect()
+      }, (sec + 0.1) * 1000)
+    }
     const ch = this.ch
     this.ch = undefined
     if (!ch || !this.ctx) return
@@ -1711,6 +1645,43 @@ class AudioEngine {
     ch.out.gain.setValueAtTime(ch.out.gain.value, t)
     ch.out.gain.linearRampToValueAtTime(0, t + Math.max(sec, 0.02))
     window.setTimeout(() => ch.nodes.forEach((n) => n.disconnect()), (sec + 3) * 1000)
+  }
+
+  private loadRecording(url: string) {
+    let buf = this.recordings.get(url)
+    if (!buf) {
+      buf = fetch(url)
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
+        .then((data) => this.ctx!.decodeAudioData(data))
+        .catch(() => {
+          this.recordings.delete(url) // try again next time
+          return null
+        })
+      this.recordings.set(url, buf)
+    }
+    return buf
+  }
+
+  /** Loops a recording, fading it in once it has loaded (unless the music moved on meanwhile). */
+  private playRecording(url: string) {
+    const ctx = this.ctx!
+    const out = ctx.createGain()
+    out.gain.value = 0
+    out.connect(this.musicBus!)
+    const rec: { out: GainNode; src?: AudioBufferSourceNode } = { out }
+    this.recording = rec
+    void this.loadRecording(url).then((buf) => {
+      if (!buf || this.recording !== rec) return
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      src.loop = true
+      src.connect(out)
+      const t = ctx.currentTime
+      out.gain.setValueAtTime(0, t)
+      out.gain.linearRampToValueAtTime(RECORDING_LEVEL, t + 0.6)
+      src.start(t)
+      rec.src = src
+    })
   }
 
   /** Mixer strips for one song: each instrument has its own level, placement, delay and reverb sends. */
@@ -1788,7 +1759,6 @@ class AudioEngine {
   private voiceStep(song: Song, ch: Channels, s: number, bar: number, i: number, t: number, sd: number) {
     const chord = song.chords[bar]
     const root = chord[0]
-    const lvl = this.intensity
     const barLen = sd * 16
 
     // Pad: one long chord per bar.
@@ -1838,7 +1808,7 @@ class AudioEngine {
     }
 
     // Arpeggio.
-    if (song.arp && lvl >= (song.arp.min ?? 0)) {
+    if (song.arp) {
       const a = song.arp.order[i]
       if (a !== null) {
         const n = chord[a % chord.length] + 12 * Math.floor(a / chord.length) + song.arp.octave
@@ -1848,18 +1818,17 @@ class AudioEngine {
     }
 
     // Lead.
-    if (song.lead && lvl >= (song.lead.min ?? 0)) {
+    if (song.lead) {
       for (const [at, n, len] of song.lead.notes) {
         if (at !== s) continue
         const dur = len * sd * 0.95
         this.leadNote(ch.lead, song.lead.kind, t, n, dur)
-        if (lvl >= 2 && song.lead.kind !== 'flute') this.leadNote(ch.lead, song.lead.kind, t, n - 12, dur, 0.6)
       }
     }
 
     // Drums.
-    const d = bar % 4 === 3 && song.fill ? song.fill : lvl >= 2 && song.drumsHigh ? song.drumsHigh : song.drums
-    if (d && (lvl > 0 || i % 4 === 0)) {
+    const d = bar % 4 === 3 && song.fill ? song.fill : song.drums
+    if (d) {
       const on = (p?: string) => p?.[i] === 'x'
       if (on(d.kick)) {
         this.osc(ch.drums, t, { f: 150, f2: 45, glide: 0.09, vol: 0.55, dur: 0.35, d: 0.14 })
@@ -1874,10 +1843,6 @@ class AudioEngine {
       if (on(d.shaker)) this.noise(ch.drums, t, { filter: 'bandpass', f: 6500, q: 1.2, vol: i % 2 ? 0.012 : 0.02, a: 0.01, dur: 0.05, d: 0.02 })
       if (on(d.tom)) this.osc(ch.drums, t, { f: 120 - (i % 4) * 12, f2: 70, glide: 0.2, vol: 0.3, dur: 0.35, d: 0.14 })
     }
-
-    // Timpani on phrase starts, and a crash at the top of the loop when driving hard.
-    if (song.timpani && i === 0 && bar % 2 === 0 && lvl >= 1) this.timpani(ch.drums, t, root - 12, 0.35)
-    if (i === 0 && bar % 4 === 0 && lvl >= 2) this.cymbal(ch.drums, t, 0.12, 1.4)
   }
 
   private leadNote(dest: AudioNode, kind: 'brass' | 'flute' | 'dark' | 'bell', t: number, n: number, dur: number, gain = 1) {
@@ -1897,7 +1862,10 @@ class AudioEngine {
 
   // ---------------- ambience ----------------
 
-  /** Sea bed under the battle, shaped by the weather; null fades it out. */
+  /**
+   * Weather sounds under the battle; null fades them out. There is no constant sea bed:
+   * its endless filtered-noise hiss was reported as grating under the battle music.
+   */
   setAmbience(kind: Ambience | null) {
     if (this.ambience === kind && this.ambOut) return
     this.ambience = kind
@@ -1910,47 +1878,7 @@ class AudioEngine {
     out.gain.linearRampToValueAtTime(1, t + 2.5)
     out.connect(this.ambBus!)
     this.ambOut = out
-    const nodes: AudioNode[] = [out]
-
-    // A looping filtered noise whose cutoff and level swell slowly, like waves.
-    const bed = (color: Color, type: BiquadFilterType, f: number, vol: number, swell: number, rate: number, pan = 0, q = 0.6) => {
-      const src = ctx.createBufferSource()
-      src.buffer = this.noiseBufs[color]
-      src.loop = true
-      src.playbackRate.value = rnd(0.95, 1.05)
-      const filt = ctx.createBiquadFilter()
-      filt.type = type
-      filt.frequency.value = f
-      filt.Q.value = q
-      const g = ctx.createGain()
-      g.gain.value = vol
-      const p = ctx.createStereoPanner()
-      p.pan.value = pan
-      const lfo = ctx.createOscillator()
-      lfo.frequency.value = rate
-      const lf = ctx.createGain()
-      lf.gain.value = f * swell
-      const lg = ctx.createGain()
-      lg.gain.value = vol * swell
-      lfo.connect(lf).connect(filt.frequency)
-      lfo.connect(lg).connect(g.gain)
-      src.connect(filt).connect(g).connect(p).connect(out)
-      src.start(t, Math.random() * 2.5)
-      lfo.start(t)
-      nodes.push(src, filt, g, p, lfo, lf, lg)
-    }
-
-    const w = { clear: 1, fog: 0.8, night: 0.6, storm: 1.8 }[kind]
-    bed('brown', 'lowpass', 380, 0.22 * w, 0.5, 0.09, -0.4)
-    bed('brown', 'lowpass', 420, 0.2 * w, 0.5, 0.07, 0.4)
-    bed('pink', 'bandpass', 900, 0.05 * w, 0.8, 0.11, 0)
-    if (kind === 'storm') {
-      bed('white', 'highpass', 3500, 0.07, 0.15, 0.3, -0.5)
-      bed('white', 'highpass', 3800, 0.07, 0.15, 0.23, 0.5)
-      bed('pink', 'bandpass', 500, 0.08, 0.9, 0.05, 0, 1.2)
-    }
-    if (kind === 'night') bed('pink', 'bandpass', 250, 0.06, 0.6, 0.04, 0, 0.8)
-    this.ambNodes = nodes
+    this.ambNodes = [out]
 
     // Occasional events: thunder in a storm, a foghorn in fog, gulls on a clear day.
     const event = () => {

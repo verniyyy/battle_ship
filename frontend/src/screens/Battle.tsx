@@ -230,7 +230,6 @@ export function Battle({
     audio.setAmbience(initial.game.weather ?? 'clear')
     return () => {
       audio.setAmbience(null)
-      audio.setIntensity(1)
     }
   }, [initial.game.weather])
 
@@ -256,11 +255,6 @@ export function Battle({
     ])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [speed])
-
-  // The music drives harder once the fight is down to its last ship or last turns.
-  const alive = (ships: ShipView[]) => ships.filter((s) => s.hp > 0).length
-  const climax = game.status !== 'finished' && (alive(game.enemyShips) <= 1 || alive(game.playerShips) <= 1 || (!!game.maxTurns && game.maxTurns - game.turn <= 3))
-  useEffect(() => audio.setIntensity(climax ? 2 : 1), [climax])
 
   useEffect(() => {
     mounted.current = true
