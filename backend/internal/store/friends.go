@@ -136,8 +136,25 @@ func befriend(ctx context.Context, tx pgx.Tx, a, b string) error {
 	if _, err := tx.Exec(ctx, `DELETE FROM friend_requests WHERE (from_id, to_id) IN (($1, $2), ($2, $1))`, a, b); err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO friends (player_id, friend_id) VALUES ($1, $2), ($2, $1)`, a, b)
-	return err
+	if _, err := tx.Exec(ctx, `INSERT INTO friends (player_id, friend_id) VALUES ($1, $2), ($2, $1)`, a, b); err != nil {
+		return err
+	}
+	// Both profiles keep their peak friend count for the achievements.
+	for _, id := range []string{a, b} {
+		n, err := friendCount(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		prof, err := lockPlayer(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		prof.Befriended(n)
+		if err := savePlayer(ctx, tx, prof); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (p *Postgres) RequestFriend(ctx context.Context, playerID, code string) (bool, error) {
@@ -262,6 +279,11 @@ func (p *Postgres) CheerFriends(ctx context.Context, playerID, code string, now 
 			}
 			target = &id
 		}
+		// The sender's profile counts the cheers for missions and achievements.
+		prof, err := lockPlayer(ctx, tx, playerID)
+		if err != nil {
+			return err
+		}
 		tag, err := tx.Exec(ctx, `
 			INSERT INTO friend_cheers (from_id, to_id, day, sent_at)
 			SELECT $1, friend_id, $3::date, $4 FROM friends
@@ -273,7 +295,8 @@ func (p *Postgres) CheerFriends(ctx context.Context, playerID, code string, now 
 		sent = int(tag.RowsAffected())
 		switch {
 		case sent > 0:
-			return nil
+			prof.SentCheers(now, sent)
+			return savePlayer(ctx, tx, prof)
 		case target != nil:
 			return meta.Refusal("今日はもうエールを送りました")
 		default:

@@ -29,6 +29,10 @@ function achievementValue(p: Profile, stat: string): number {
       return p.level
     case 'endless':
       return p.endless
+    case 'friends':
+      return p.stats.peakFriends ?? 0
+    case 'cheers':
+      return p.stats.cheers ?? 0
   }
   return 0
 }
@@ -40,7 +44,7 @@ export function Missions({ onBack }: { onBack: () => void }) {
   if (!profile || !catalog) return null
 
   const daily = [...catalog.missions, catalog.dailyAll]
-  const dailyDone = catalog.missions.filter((m) => profile.daily.claimed[m.id]).length
+  const dailyDone = catalog.missions.filter((m) => !m.extra && profile.daily.claimed[m.id]).length
   const progress = (m: Mission) =>
     tab === 'daily' ? (m.id === catalog.dailyAll.id ? dailyDone : (profile.daily.progress[m.stat] ?? 0)) : achievementValue(profile, m.stat)
   const claimed = (m: Mission) => (tab === 'daily' ? !!profile.daily.claimed[m.id] : !!profile.achievements[m.id])

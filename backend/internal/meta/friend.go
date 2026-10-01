@@ -109,6 +109,15 @@ func (p *Profile) FriendProfile(code string, lastActive time.Time) FriendProfile
 	return v
 }
 
+// SentCheers records n cheers sent to friends, for missions and achievements.
+func (p *Profile) SentCheers(now time.Time, n int) {
+	p.Stats.Cheers += n
+	p.bump(now, StatCheers, n)
+}
+
+// Befriended records that the admiral now has n friends.
+func (p *Profile) Befriended(n int) { p.Stats.PeakFriends = max(p.Stats.PeakFriends, n) }
+
 // ReceiveCheers pays out n cheers from friends.
 func (p *Profile) ReceiveCheers(n int) Grant {
 	g := Grant{Coins: n * CheerCoins}

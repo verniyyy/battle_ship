@@ -60,3 +60,40 @@ func TestScoresKeepUnnamedAdmiralsOffTheBoards(t *testing.T) {
 		t.Fatalf("scores: %+v", s)
 	}
 }
+
+func TestFriendMissionsAndAchievements(t *testing.T) {
+	p := NewProfile("p", t0)
+	p.SentCheers(t0, 3)
+	if _, err := p.ClaimMission("d_cheer", t0); err != nil {
+		t.Fatal(err)
+	}
+	if p.Stats.Cheers != 3 {
+		t.Fatalf("cheers sent: %d", p.Stats.Cheers)
+	}
+	p.Befriended(5)
+	p.Befriended(2) // a friend left; the peak stays
+	if _, err := p.ClaimAchievement("a_friends_5"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.ClaimAchievement("a_cheers_10"); err == nil {
+		t.Fatal("claimed 10 cheers after sending 3")
+	}
+}
+
+// The all-clear bonus does not wait on the friend mission, so an admiral
+// without friends can still earn it.
+func TestDailyAllLeavesOutExtraMissions(t *testing.T) {
+	p := NewProfile("p", t0)
+	for _, m := range DailyMissions {
+		if m.Extra {
+			continue
+		}
+		p.bump(t0, m.Stat, m.Goal)
+		if _, err := p.ClaimMission(m.ID, t0); err != nil {
+			t.Fatalf("%s: %v", m.ID, err)
+		}
+	}
+	if _, err := p.ClaimMission(DailyAll.ID, t0); err != nil {
+		t.Fatal(err)
+	}
+}
