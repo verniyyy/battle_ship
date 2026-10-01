@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Cuts the title logo's fonts (the key-visual look of scripts/kv.css) down to the
-# glyphs the title screen uses, into frontend/src/fonts/. Rerun after changing the
-# title copy in frontend/src/screens/Title.tsx. Both fonts are under the SIL OFL 1.1.
+# glyphs the title screen and the harbour menu use, into frontend/src/fonts/. Rerun
+# after changing the title copy in frontend/src/screens/Title.tsx or the menu labels
+# in frontend/src/screens/Home.tsx. Both fonts are under the SIL OFL 1.1.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Every character the title logo draws in each font.
-MINCHO_TEXT='蒼海戦記見えざる艦隊を、撃滅せよ。―'
+# Every character the title logo and the harbour menu tiles draw in each font.
+MINCHO_TEXT='蒼海戦記見えざる艦隊を、撃滅せよ。―編成建造任務ログボフレンドランキング績要綱お知らせ'
 CINZEL_TEXT='ABCDEFGHIJKLMNOPQRSTUVWXYZ ×'
 
 SRC=https://raw.githubusercontent.com/google/fonts/main/ofl
