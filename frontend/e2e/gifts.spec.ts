@@ -1,11 +1,15 @@
 import { expect, test } from '@playwright/test'
 import { call, newAdmiral, toHome } from './helpers'
+import type { Profile } from '../src/types'
 
 const shots = 'e2e/results/shots'
 
 test('gifts: an admin sends a gift to one admiral, who collects it at the harbour', async ({ page, browser }) => {
   // The admiral who will be compensated. Players cannot open the console.
-  const player = await newAdmiral(page)
+  await newAdmiral(page)
+  // Gifts for everyone already in the local database are collected first, so
+  // only the one sent here waits in the box.
+  const { profile: player } = await call<{ profile: Profile }>(page, 'POST', '/gifts/claim', {})
   const res = await page.request.get('/api/admin/gifts')
   expect(res.status()).toBe(403)
 
@@ -45,7 +49,7 @@ test('gifts: an admin sends a gift to one admiral, who collects it at the harbou
   await op.screenshot({ path: `${shots}/admin-list.png` })
 
   // The admiral finds it waiting at the harbour.
-  await toHome(page)
+  await toHome(page, { gifts: true })
   await expect(page.locator('.gift-banner')).toBeVisible()
   const box = page.getByRole('dialog', { name: '贈り物' })
   await expect(box).toBeVisible()

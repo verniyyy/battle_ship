@@ -27,10 +27,13 @@ export async function newAdmiral(page: Page): Promise<Profile> {
 
 /**
  * Opens the harbour through the title screen. The latest news counts as
- * read unless news is set, so its popup stays out of the way.
+ * read unless news is set, and the gift box is empty unless gifts is set, so
+ * their popups stay out of the way: gifts for everyone left in the local
+ * database (say, from trying the admin console) would cover the harbour.
  */
-export async function toHome(page: Page, { news = false } = {}) {
+export async function toHome(page: Page, { news = false, gifts = false } = {}) {
   if (!news) await page.addInitScript((id) => localStorage.setItem('newsSeen', id), NEWS[0].id)
+  if (!gifts) await page.route('**/api/gifts', (r) => r.fulfill({ json: { gifts: [] } }))
   await page.goto('/')
   await page.locator('.title-screen').click()
   await expect(page.locator('.menu-tile').first()).toBeVisible()

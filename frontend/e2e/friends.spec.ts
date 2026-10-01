@@ -6,14 +6,11 @@ const shots = 'e2e/results/shots'
 
 test('friends: two admirals swap codes, become friends, cheer and part', async ({ page, browser }) => {
   const me = await newAdmiral(page)
-  // Gifts for everyone in the local database would pop up over the harbour.
-  await call(page, 'POST', '/gifts/claim', {})
 
   // The other admiral, in a browser of their own.
   const ctx = await browser.newContext()
   const other = await ctx.newPage()
   await newAdmiral(other)
-  await call(other, 'POST', '/gifts/claim', {})
   await call(other, 'POST', '/profile/name', { name: '僚艦提督', comment: 'よろしくお願いします！' })
   const { friends: theirs } = await call<{ friends: FriendList }>(other, 'GET', '/friends')
 
