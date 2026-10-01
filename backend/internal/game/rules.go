@@ -203,9 +203,15 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 					e.Marked = markRounds
 				}
 			}
-			if kind == SkillSonar && len(res.Revealed) > 0 {
-				p := ship.Pos
-				res.Emitter = &p
+			if kind == SkillSonar {
+				if len(res.Revealed) > 0 {
+					p := ship.Pos
+					res.Emitter = &p
+				} else {
+					// Nobody heard a ping that found nothing: like a watch, it goes
+					// unseen unless the enemy has the destroyer in sight.
+					res.Hidden = !st.tracking(side.Opponent(), ship.Pos)
+				}
 			}
 		}
 
@@ -499,8 +505,10 @@ func (st *State) score(side Side, res *Result) {
 	switch {
 	case hits > 0 || len(res.Revealed) > 0:
 		st.Combo[side]++
-	case res.Type == ActionMove || res.Type == ActionWatch:
-		// Repositioning or standing watch keeps the streak alive but does not extend it.
+	case res.Type == ActionMove || res.Type == ActionWatch || res.Skill == SkillSonar:
+		// Repositioning, standing watch or a ping that found nothing keeps the
+		// streak alive but does not extend it. (An unseen ping must not tell
+		// itself apart from an unseen watch by the combo it leaves.)
 	default:
 		st.Combo[side] = 0
 	}

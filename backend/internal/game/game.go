@@ -44,7 +44,8 @@
 // Flares and sonar lock on to every ship they find: until the end of the
 // next round, shots on a locked-on ship cannot be dodged and always crit.
 // A sonar that finds anything is heard in return: the enemy learns where the
-// destroyer pinged from that round, without tracking it.
+// destroyer pinged from that round, without tracking it. One that finds
+// nothing goes unheard, and like an unseen watch reads as an unknown order.
 //
 // Enemy ships side by side along a row or column always spot each other.
 // When no ship has taken damage for three rounds in a row, each side's
@@ -719,7 +720,8 @@ type Result struct {
 	Revealed []Sighting `json:"revealed,omitempty"`
 
 	// Move fields. Hidden moves (submarines) carry no direction or distance;
-	// a hidden watch is shown to the enemy as an unknown order (see Redact).
+	// a hidden watch or a sonar that found nothing unseen is shown to the
+	// enemy as an unknown order (see Redact).
 	// Distance is how far the ship actually sailed: Blocked moves stop short
 	// of the enemy ship in the way, possibly without leaving their cell.
 	Direction Direction `json:"direction,omitempty"`

@@ -296,6 +296,41 @@ func TestSonarThatFindsGivesItselfAway(t *testing.T) {
 	}
 }
 
+func TestSonarThatFindsNothingGoesUnseen(t *testing.T) {
+	st := fleetGame(t, []Spec{cv}, []Spec{dd, ca}, []Pos{{0, 0}}, []Pos{{4, 4}, {4, 0}})
+	st.Combo[SideCPU] = 2
+	res := apply(t, st, SideCPU, Action{ActionSkill, 0, Pos{4, 4}})
+	if len(res.Revealed) != 0 || !res.Hidden || res.Emitter != nil {
+		t.Fatalf("empty ping %+v, want it unseen", res)
+	}
+	// It keeps the combo like a watch would, so nothing tells the two apart.
+	if st.Combo[SideCPU] != 2 {
+		t.Fatalf("combo %d after an empty ping", st.Combo[SideCPU])
+	}
+	apply(t, st, SideCPU, Action{ActionWatch, 1, Pos{4, 0}})
+	v := st.PlayerView()
+	for i, r := range v.History {
+		if r.Type != ActionUnknown || r.ShipID != -1 || r.Combo != 2 {
+			t.Fatalf("player saw order %d as %+v", i, r)
+		}
+	}
+	// Nor do the enemy plates' counters give the orders away.
+	if e := v.EnemyShips; e[0].Skill != dd.Skill || e[1].Watches != 1 {
+		t.Fatalf("enemy counters skill %d watches %d", e[0].Skill, e[1].Watches)
+	}
+	if own := st.ViewFor(SideCPU); own.History[0].Type != ActionSkill || own.PlayerShips[0].Skill != dd.Skill-1 {
+		t.Fatalf("own view %+v", own.History[0])
+	}
+	// A destroyer the enemy tracks is seen pinging.
+	st.Intel[SidePlayer]["0"] = Sighting{ShipID: 0, Pos: Pos{4, 4}}
+	if res := apply(t, st, SideCPU, Action{ActionSkill, 0, Pos{4, 4}}); res.Hidden {
+		t.Fatal("a tracked destroyer's ping went unseen")
+	}
+	if e := st.PlayerView().EnemyShips[0]; e.Skill != dd.Skill-1 {
+		t.Fatalf("seen ping left skill %d, want one sortie counted", e.Skill)
+	}
+}
+
 func TestScoutingLocksOn(t *testing.T) {
 	dodgy := dd
 	dodgy.Evasion = 100
