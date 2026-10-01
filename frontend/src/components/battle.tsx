@@ -161,6 +161,7 @@ export function CutinLayer({ cutin, onSkip }: { cutin: Cutin; onSkip?: () => voi
           <div className="ult-sky" />
           <div className="ult-rays" />
           <div className="speedlines fast" />
+          <div className="ult-core" />
           <div className="letterbox top" />
           <div className="letterbox bottom" />
           <div className="ult-cards" style={{ ['--n' as string]: cutin.crew.length }}>
