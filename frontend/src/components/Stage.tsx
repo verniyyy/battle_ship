@@ -42,7 +42,7 @@ export function Stage({ children }: { children: ReactNode }) {
 
   return (
     <div className="viewport">
-      <div className="stage" ref={stage} style={{ transform: `scale(${view.scale})` }}>
+      <div className="stage" ref={stage} style={{ transform: `translate(-50%, -50%) scale(${view.scale})` }}>
         <div className="shaker" ref={shaker}>
           {children}
         </div>
