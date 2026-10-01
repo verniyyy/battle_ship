@@ -24,7 +24,7 @@ export function ago(iso: string, now = Date.now()) {
 }
 
 /** The admiral's face: their secretary ship's portrait in a disc. */
-function FriendFace({ secretary, big }: { secretary: string; big?: boolean }) {
+export function FriendFace({ secretary, big }: { secretary: string; big?: boolean }) {
   const { card } = useGame()
   const packs = useAssets()
   const c = card(secretary)

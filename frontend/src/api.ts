@@ -6,6 +6,7 @@ import type {
   Catalog,
   Chest,
   ClaimedGift,
+  Board,
   GameSummary,
   FriendList,
   FriendProfile,
@@ -17,6 +18,7 @@ import type {
   PlayerSummary,
   Pos,
   Profile,
+  Ranking,
   Reward,
 } from './types'
 
@@ -112,6 +114,8 @@ export const api = {
   gifts: () => request<{ gifts: Gift[] }>('/gifts'),
   /** Collects one gift, or every pending one without an id. */
   claimGifts: (id?: string) => post<WithProfile<{ claimed: ClaimedGift[] }>>('/gifts/claim', { id }),
+  /** The board's top 100 and where I stand on it. */
+  ranking: (board: Board) => request<{ ranking: Ranking }>(`/rankings/${board}`),
 }
 
 type WithFriends<T = object> = T & { friends: FriendList }
