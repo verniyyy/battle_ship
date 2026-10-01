@@ -85,8 +85,9 @@ func TestAttackTargetsFollowGunRange(t *testing.T) {
 	if len(bt) != 22 { // 5×5 minus itself, the destroyer and the submarine
 		t.Fatalf("battleship reaches %d cells, want 22", len(bt))
 	}
-	if dt := b.AttackTargets(1); len(dt) != 7 { // 8 neighbours minus the battleship
-		t.Fatalf("destroyer reaches %d cells, want 7", len(dt))
+	// columns 1–4 of every row, minus itself, the battleship and the submarine
+	if dt := b.AttackTargets(1); len(dt) != 17 {
+		t.Fatalf("destroyer reaches %d cells, want 17", len(dt))
 	}
 	if st := b.AttackTargets(2); len(st) != 0 {
 		t.Fatal("submarines have no guns")

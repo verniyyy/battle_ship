@@ -101,7 +101,7 @@ type ClassRule struct {
 var Classes = map[ShipClass]ClassRule{
 	Battleship: {GunRange: 2, MoveRange: 1, MinSpeed: 10},
 	Cruiser:    {GunRange: 2, MoveRange: 2, MinSpeed: 20},
-	Destroyer:  {GunRange: 1, MoveRange: 3, MinSpeed: 30},
+	Destroyer:  {GunRange: 2, MoveRange: 3, MinSpeed: 30},
 	Submarine:  {GunRange: 0, MoveRange: 2, MinSpeed: 15},
 	Carrier:    {GunRange: 1, MoveRange: 1, MinSpeed: 15},
 }

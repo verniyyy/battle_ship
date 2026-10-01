@@ -35,3 +35,19 @@ test('a ship sailing onto a wreck shares its cell without shifting the chart', a
   expect(box.height).toBeCloseTo(next.height, 0)
   expect(next.y).toBeCloseTo(box.y, 0)
 })
+
+test('a destroyer aims its guns up to two cells away', async ({ page }) => {
+  const p = await newAdmiral(page)
+  // Destroyer (fleet no. 2) at C3 in the middle of the 5×5 sea of 1-1.
+  await toBattle(page, [uidOf(p, 'bb_kurogane'), uidOf(p, 'dd_asanagi'), uidOf(p, 'ss_senryu')], [
+    { row: 0, col: 0 },
+    { row: 2, col: 2 },
+    { row: 4, col: 4 },
+  ])
+  await page.locator('[data-plate="p1"]').click()
+  await page.locator('.cmd-btn.attack').click()
+  // The whole sea minus itself and the two other ships of the fleet.
+  await expect(page.locator('.cell.target-attack')).toHaveCount(22)
+  await expect(cell(page, 0, 4)).toHaveClass(/target-attack/)
+  await page.screenshot({ path: `${shots}/destroyer-gun-range.png` })
+})

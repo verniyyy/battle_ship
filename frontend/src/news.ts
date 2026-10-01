@@ -25,6 +25,12 @@ export type NewsItem = {
 
 export const NEWS: NewsItem[] = [
   {
+    id: '2026-10-01-destroyer-gun-range',
+    date: '2026-10-01',
+    title: '駆逐艦の主砲射程を延長',
+    items: ['駆逐艦の主砲の射程を 1 から 2 に伸ばしました。足の速さを活かして、耐久の残り少ない敵を射程外から仕留められます。'],
+  },
+  {
     id: '2026-10-01-friend-missions',
     date: '2026-10-01',
     title: 'フレンド任務を追加',
