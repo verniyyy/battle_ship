@@ -41,6 +41,7 @@ type Store interface {
 	CurrentMatch(ctx context.Context, playerID string) (string, *meta.Match, error)
 	auth.Accounts
 	Gifts
+	Friends
 }
 
 // Gifts keeps the operators' presents and who has collected them.
