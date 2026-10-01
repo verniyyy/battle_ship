@@ -19,7 +19,15 @@ export const SKILL_INFO: Record<SkillKind, { name: string; short: string; desc: 
   flare: { name: '照明弾', short: '全域広域索敵', desc: '海域のどこでも、狙った地点から2マス以内（7×7以上の広い海域では5×5）を照らし水上艦を発見・捕捉（潜水艦は映らない）。捕捉した艦への攻撃は次のターンまで回避されず必ず会心', icon: '✦' },
   sonar: { name: 'ソナー', short: '縦横＋周囲索敵', desc: '自艦の縦横一列（7×7以上の広い海域では3列幅）と周囲1マスを探信し潜水艦も含め全艦を発見・捕捉。捕捉した艦への攻撃は次のターンまで回避されず必ず会心', icon: '◎' },
   spread: { name: '扇状雷撃', short: '3列魚雷', desc: '並んだ3本の魚雷を同時に放つ（雷装80%・後攻・発射位置が露見）', icon: '⋙' },
-  airstrike: { name: '航空攻撃', short: '全域爆撃', desc: '海域のどこでも1マスを爆撃。回避されにくいが敵の対空で減衰', icon: '✈' },
+  airstrike: { name: '航空攻撃', short: '全域爆撃', desc: '海域のどこでも1マスを爆撃。回避されにくいが敵の対空で減衰。敵の対空見張りに迎撃されると威力が落ち、艦載機を余分に失い位置も露見する', icon: '✈' },
+}
+
+// WATCH_INFO mirrors anti-air watch on the server (watchRounds, interceptPct).
+export const WATCH_INFO = {
+  name: '対空見張り',
+  icon: '▲',
+  rounds: 3,
+  desc: '戦艦・巡洋艦の号令。このターンから3ターンの間、艦隊全体への航空攻撃を迎撃し被害を30%に抑える（精密爆撃も含む）。迎撃すると敵空母の艦載機を余分に1回分削り、飛来方向から空母の位置を割り出して捕捉する。見張り中の艦は移動しかできない。1戦闘1回、迎撃に成功すると再使用可。敵に追跡されていなければ号令は敵に伏せられる',
 }
 
 export const TORPEDO_INFO = { name: '雷撃', icon: '➤', desc: '縦横に海の端まで直進し、最初の水上艦に命中。必ず後攻になり、雷跡で発射位置が露見する' }
@@ -163,6 +171,11 @@ export function describe(r: Result, game: GameView): LogLine {
     if (!mine) return line(`敵の索敵機に${seen.map((v) => game.playerShips[v.shipId]?.name).join('・')}が発見された`, 'bad')
     return line(`索敵機が${seen.map((v) => game.enemyShips[v.shipId]?.name).join('・')}を発見！（${seen.map((v) => posLabel(v.pos)).join('・')}）`, 'great')
   }
+  if (r.type === 'unknown') return line('敵艦隊に不審な動き。何らかの号令が下されたようだ', 'info')
+  if (r.type === 'watch') {
+    if (!mine) return line(`${actor}が${WATCH_INFO.name}についた。航空攻撃が迎撃される`, 'info')
+    return line(`${actor}、${WATCH_INFO.name}につく！${r.hidden ? '（敵には伏せられた）' : '（敵に察知された）'}`, 'good')
+  }
   if (r.type === 'move') {
     const contact = (r.late ? '（航行中のため後手）' : '') + (r.contact ? '　敵艦と接触！' : '')
     if (r.hidden) return line(`${actor}、潜航して移動（${r.blocked ? '敵艦に阻まれ停止' : '位置不明'}）${contact}`, 'info')
@@ -203,7 +216,8 @@ export function describe(r: Result, game: GameView): LogLine {
   if (!parts.length) parts.push(shots.some((s) => s.splash) ? '水しぶき！付近に艦影' : torpedo ? '魚雷は外れた' : '外れ')
   if (r.columns?.length) parts.push('水柱で足止め')
   if (torpedo && !mine) parts.push('（雷跡で位置判明）')
-  const tone: Tone = hits.length ? (mine ? (sunk.length ? 'great' : 'good') : 'bad') : 'info'
+  if (r.intercepted) parts.unshift(mine ? '対空砲火に迎撃された！（位置露見）' : '対空見張りが迎撃！空母の位置を逆探知！')
+  const tone: Tone = r.intercepted && !mine ? 'great' : hits.length ? (mine ? (sunk.length ? 'great' : 'good') : 'bad') : 'info'
   return line(`${actor}の${how}${at ? ' → ' + at : ''} ${parts.join(' ')}`, tone)
 }
 
@@ -268,6 +282,8 @@ export const TIPS = [
   '潜水艦はソナーでしか見つからず、移動も秘匿。ただし魚雷を撃つと雷跡で位置がばれます。',
   '駆逐艦の砲撃は潜水艦に 2 倍のダメージ。潜水艦狩りは駆逐艦の仕事です。',
   '空母の爆撃は敵艦隊の対空合計で弱まります。対空の高い艦から沈めるのも手。',
+  '戦艦・巡洋艦の「対空見張り」は3ターンの間、艦隊全体を爆撃から守ります。迎撃すれば敵空母の位置も割れます。',
+  '敵に追跡されていない艦の対空見張りは敵に伏せられます。見えない空母には見えない見張りで。',
   '海況は出撃ごとに変わります。夜戦は魚雷が冴え、艦載機が鈍る海。',
   '攻撃手段が尽きた艦隊は戦略的撤退。弾薬の使いどころを見極めましょう。',
 ]

@@ -33,6 +33,8 @@ function achievementValue(p: Profile, stat: string): number {
       return p.stats.peakFriends ?? 0
     case 'cheers':
       return p.stats.cheers ?? 0
+    case 'intercepts':
+      return p.stats.intercepts ?? 0
   }
   return 0
 }

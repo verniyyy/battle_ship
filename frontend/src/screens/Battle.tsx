@@ -7,7 +7,7 @@ import { Board, CellOverlay } from '../components/Board'
 import { CutinLayer, DamageTally, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, tallyTier, type Cutin, type Float, type Tally } from '../components/battle'
 import { Backdrop, ShipToken, SoundToggle } from '../components/ui'
 import { fx, RAINBOW } from '../fx'
-import { CLASS_INFO, describe, footprint, historyLog, lookOfShip, SKILL_INFO, SPECIAL_INFO, stageLabel, TORPEDO_INFO, WEATHER_INFO, WIDE_SEA, type Look, type LogLine } from '../game'
+import { CLASS_INFO, describe, footprint, historyLog, lookOfShip, SKILL_INFO, SPECIAL_INFO, stageLabel, TORPEDO_INFO, WATCH_INFO, WEATHER_INFO, WIDE_SEA, type Look, type LogLine } from '../game'
 import { useGame } from '../state'
 import { posLabel, samePos, type ActionType, type DuelResponse, type DuelView, type GameView, type MatchResponse, type Pos, type Result, type Reward, type Shot, type ShipClass, type ShipView, type Special } from '../types'
 import { DuelResult, duelEndLine } from './Duel'
@@ -63,9 +63,12 @@ function patchMeta(g: GameView, r: Result): GameView {
   if (r.cancelled) return g
   if (r.type === 'attack') own((s) => ({ ...s, ammo: s.ammo - 1 }))
   if (r.type === 'torpedo') own((s) => ({ ...s, torps: s.torps - 1 }))
-  if (r.type === 'skill') own((s) => ({ ...s, skill: s.skill - 1 }))
-  // A torpedo wake gives the launcher away.
-  if (!mine && r.origin) own((s) => ({ ...s, pos: r.origin, spotted: true }))
+  // An intercepted airstrike costs the carrier a second sortie.
+  if (r.type === 'skill') own((s) => ({ ...s, skill: Math.max(s.skill - (r.intercepted ? 2 : 1), 0) }))
+  if (r.type === 'watch') own((s) => ({ ...s, watch: WATCH_INFO.rounds, watches: Math.max((s.watches ?? 1) - 1, 0) }))
+  // A torpedo wake gives the launcher away, and so does a flight path the watch traced back.
+  if (!mine && r.origin) own((s) => ({ ...s, pos: r.origin, spotted: true, marked: s.marked || !!r.intercepted }))
+  if (mine && r.intercepted) own((s) => ({ ...s, marked: true }))
   if (r.type === 'move') {
     // The server settles where a blocked move stopped; a dive shows up with the round's final state.
     if (mine) own((s) => (r.hidden || !s.pos ? s : { ...s, pos: shift(s.pos, r.direction, r.distance ?? 0) }))
@@ -314,7 +317,15 @@ export function Battle({
     mode === 'ultimate'
       ? allCells
       : ship && mode
-        ? ((mode === 'attack' ? ship.attackTargets : mode === 'torpedo' ? ship.torpedoTargets : mode === 'move' ? ship.moveTargets : ship.skillTargets) ?? [])
+        ? ((mode === 'attack'
+            ? ship.attackTargets
+            : mode === 'torpedo'
+              ? ship.torpedoTargets
+              : mode === 'move'
+                ? ship.moveTargets
+                : mode === 'watch'
+                  ? ship.watchTargets
+                  : ship.skillTargets) ?? [])
         : []
   const markers = lastRoundMarkers(game)
   const turn = game.turn + (finished ? 0 : 1)
@@ -322,7 +333,7 @@ export function Battle({
   // Once a target is chosen the preview stays on it; hovering only aims before that.
   const aim = target ?? (hover && targets.some((t) => samePos(t, hover)) ? hover : null)
   const actorPos = mode === 'ultimate' ? flagship?.pos : ship?.pos
-  const preview = aim && mode && mode !== 'move' && actorPos ? footprint(game.boardSize, mode, ship?.skillKind, ship?.class, actorPos, aim) : []
+  const preview = aim && mode && mode !== 'move' && mode !== 'watch' && actorPos ? footprint(game.boardSize, mode, ship?.skillKind, ship?.class, actorPos, aim) : []
   const special = predictSpecial(game, ship, mode, aim)
   // The cell the fleet just shelled: big guns firing there again get spotting fire.
   const spotCell = mode === 'attack' && (ship?.class === 'battleship' || ship?.class === 'cruiser') ? game.lastGun : undefined
@@ -348,7 +359,7 @@ export function Battle({
     audio.play('tap')
     setMode(m)
     setTarget(null)
-    if (m === 'skill' && ship?.skillKind === 'sonar' && ship.pos) setTarget(ship.pos)
+    if (((m === 'skill' && ship?.skillKind === 'sonar') || m === 'watch') && ship?.pos) setTarget(ship.pos)
   }
 
   const onCell = (p: Pos) => {
@@ -602,6 +613,21 @@ export function Battle({
       await show({ kind: 'notice', side: r.side, text: line.text }, 1100)
       return
     }
+    if (r.type === 'watch' || r.type === 'unknown') {
+      if (r.type === 'watch') {
+        audio.play(mine ? 'order' : 'warn')
+        const at = (mine ? after.playerShips : after.enemyShips)[r.shipId]?.pos
+        if (at && (mine || !r.hidden)) {
+          const p = cellPt(at)
+          fx.ring(p.x, p.y, '#9fe8ff', 420, 1.1)
+          float(at, WATCH_INFO.name, mine ? 'found' : 'hurt')
+        }
+      } else audio.play('tap')
+      setLog((l) => [line, ...l])
+      setGame((g) => patchMeta(g, r))
+      await show({ kind: 'notice', side: r.side, text: line.text }, mine ? 900 : 1000)
+      return
+    }
     if (r.type === 'move') {
       audio.play(r.hidden ? 'dive' : 'move')
       if (r.hidden && r.side === 'player' && from) fx.bubbles(from.x, from.y, 10)
@@ -655,7 +681,20 @@ export function Battle({
       audio.play('airstrike')
       const to = cellPt(r.target!)
       await flyPlane(layer, to, ms(900))
+      if (r.intercepted) {
+        // Flak meets the planes over the target before the bombs drop.
+        audio.play(mine ? 'warn' : 'reveal')
+        fx.ring(to.x, to.y, '#ffe36b', 300, 1)
+        fx.sparkle(to.x, to.y, '#ffd36b', 16, 80)
+        float(r.target!, '迎撃！', mine ? 'hurt' : 'found')
+        await wait(ms(300))
+      }
       if (shots[0]) await impact(shots[0], mine)
+      if (r.intercepted && r.origin) {
+        const p = cellPt(r.origin)
+        fx.ring(p.x, p.y, '#ff6b6b', 360, 1.1)
+        float(r.origin, mine ? '位置露見！' : '逆探知！', mine ? 'hurt' : 'found')
+      }
     } else if (torpedo) {
       audio.play('torpedo', { pan: panOf(mine ? actor?.pos : r.origin), far: !mine })
       if (!mine && r.origin) float(r.origin, '雷跡！', 'found')
@@ -727,6 +766,13 @@ export function Battle({
     if (mine && r.combo >= 2 && (hits || r.revealed?.length)) {
       setCombo({ n: r.combo, key: Date.now() })
       audio.play('combo', { pitch: r.combo })
+    }
+    if (r.intercepted) {
+      await wait(250)
+      if (!mine) {
+        audio.play('rare')
+        await show({ kind: 'banner', text: '対空迎撃！', sub: '敵空母の位置を逆探知・捕捉！', tone: 'blue' }, 1300)
+      } else await show({ kind: 'banner', text: '迎撃された…', sub: '艦載機を失い、空母の位置が露見', tone: 'red' }, 1200)
     }
     const sunk = shots.filter((s) => s.sunk)
     if (sunk.length) {
@@ -946,7 +992,7 @@ export function Battle({
     }
   }
 
-  // Keyboard: 1-4 ships, A/T/M/S/U modes, Enter fires, Esc cancels.
+  // Keyboard: 1-4 ships, A/T/M/S/W/U modes, Enter fires, Esc cancels.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (busy || finished) return
@@ -956,6 +1002,7 @@ export function Battle({
       else if (e.key === 't' && ship && ship.torpedoTargets?.length) chooseMode('torpedo')
       else if (e.key === 'm' && ship) chooseMode('move')
       else if (e.key === 's' && ship) chooseMode('skill')
+      else if (e.key === 'w' && ship && ship.watchTargets?.length) chooseMode('watch')
       else if (e.key === 'u' && canUlt) chooseMode('ultimate')
       else if (e.key === 'Enter') void execute()
       else if (e.key === 'Escape') {
@@ -1206,6 +1253,18 @@ export function Battle({
                       {skill!.short} 残{ship.skill}
                     </small>
                   </button>
+                  {(ship.class === 'battleship' || ship.class === 'cruiser') && (
+                    <button
+                      className={`cmd-btn watch ${mode === 'watch' ? 'on' : ''}`}
+                      disabled={busy || !ship.watchTargets?.length}
+                      onClick={() => chooseMode('watch')}
+                      title={WATCH_INFO.desc}
+                      data-testid="cmd-watch"
+                    >
+                      <b>{WATCH_INFO.icon}見張り</b>
+                      <small>{ship.watch ? `対空 残${ship.watch}T` : ship.watches ? `対空 ${WATCH_INFO.rounds}T` : '使用済み'}</small>
+                    </button>
+                  )}
                 </>
               ) : (
                 <p className="dock-hint">{busy ? '交戦中……' : '◀ 艦を選択（1〜4キー）'}</p>
@@ -1218,8 +1277,16 @@ export function Battle({
               )}
               <button className={`cmd-btn go ${target ? 'ready' : ''} ${special ? 'special' : ''}`} disabled={busy || !target} onClick={() => void execute()}>
                 {special && <em className="special-hint">{SPECIAL_INFO[special].name}！</em>}
-                <b>{target ? (mode === 'move' ? '航行！' : mode === 'torpedo' ? '発射！' : '撃て！') : '決定'}</b>
-                <small>{target ? `${posLabel(target)} ${mode === 'move' ? 'へ移動' : 'を目標'}` : mode ? 'マスを選択' : '行動を選択'}</small>
+                <b>{target ? (mode === 'move' ? '航行！' : mode === 'torpedo' ? '発射！' : mode === 'watch' ? '見張れ！' : '撃て！') : '決定'}</b>
+                <small>
+                  {target
+                    ? mode === 'watch'
+                      ? `${WATCH_INFO.rounds}ターン艦隊を守る`
+                      : `${posLabel(target)} ${mode === 'move' ? 'へ移動' : 'を目標'}`
+                    : mode
+                      ? 'マスを選択'
+                      : '行動を選択'}
+                </small>
               </button>
             </>
           )}
