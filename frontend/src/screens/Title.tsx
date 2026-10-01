@@ -70,9 +70,11 @@ export function Title({ onStart }: { onStart: () => void }) {
         <p className="title-kicker">NAVAL TACTICS × FLEET COLLECTION</p>
         <h1>
           <span className="title-jp">蒼海戦記</span>
-          <span className="title-en">BATTLE SHIP</span>
+          <span className="title-en">
+            <span>BATTLE SHIP</span>
+          </span>
         </h1>
-        <p className="title-sub">― 見えざる艦隊を撃滅せよ ―</p>
+        <p className="title-sub">見えざる艦隊を、撃滅せよ。</p>
       </div>
       {session && !signedIn ? (
         <div className="login-panel" onClick={(e) => e.stopPropagation()}>
