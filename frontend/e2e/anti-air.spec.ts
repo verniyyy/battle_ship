@@ -13,6 +13,14 @@ const placements = [
 
 test('a battleship stands anti-air watch and can then only sail', async ({ page }) => {
   const p = await newAdmiral(page)
+  // Torpedoes stocked on the battleship stand in for a cruiser's: on watch
+  // the server offers no launch, so the button must not either.
+  await page.route('**/api/games/*/actions', async (route) => {
+    const res = await route.fetch()
+    const r = (await res.json()) as ActionResponse
+    Object.assign(r.game.playerShips[0], { torps: 2, maxTorps: 2 })
+    await route.fulfill({ response: res, json: r })
+  })
   await toBattle(page, starters(p), placements)
 
   // Destroyers have no watch to stand.
@@ -36,6 +44,7 @@ test('a battleship stands anti-air watch and can then only sail', async ({ page 
   await expect(page.getByTestId('cmd-watch')).toBeDisabled()
   await expect(page.getByTestId('cmd-watch')).toContainText('残2T')
   await expect(page.locator('.cmd-btn.attack')).toBeDisabled()
+  await expect(page.locator('.cmd-btn.torp')).toBeDisabled()
   await expect(page.locator('.cmd-btn.skill')).toBeDisabled()
   await expect(page.locator('.cmd-btn.move')).toBeEnabled()
   await page.screenshot({ path: `${shots}/watch-standing.png` })

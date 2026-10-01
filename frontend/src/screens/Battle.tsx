@@ -1220,7 +1220,7 @@ export function Battle({
                   {ship.maxTorps > 0 && (
                     <button
                       className={`cmd-btn torp ${mode === 'torpedo' ? 'on' : ''}`}
-                      disabled={busy || ship.torps <= 0}
+                      disabled={busy || ship.torps <= 0 || !ship.torpedoTargets?.length}
                       onClick={() => chooseMode('torpedo')}
                       title={TORPEDO_INFO.desc}
                     >
