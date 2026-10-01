@@ -11,7 +11,11 @@
 //
 // Effects are layered (transient, body, tail), slightly randomised so repeats
 // don't sound mechanical, placed in stereo by where they happen on the board,
-// and big moments duck the music so they land.
+// and big moments duck the music so they land. Gunfire and detonations are the
+// exception to the node graph: they are modelled sample by sample (blast.ts),
+// echoes and tail included, so they barely use the shared hall or the sea echo.
+
+import { blast, blastLength, type BlastOpts } from './blast'
 
 export type Sfx =
   | 'tap'
@@ -112,7 +116,8 @@ const BAKE: Partial<Record<Sfx, (o: PlayOpts) => string>> = {
   cannon: (o) => `${calibre(o)}${o.far ? 'f' : ''}`,
   shell: (o) => `${flight(o)}${o.far ? 'f' : ''}`,
   boom: (o) => (o.far ? 'f' : ''),
-  bigboom: () => '',
+  bigboom: (o) => (o.far ? 'f' : ''),
+  ultboom: (o) => (o.far ? 'f' : ''),
   splash: () => '',
   miss: () => '',
   crit: () => '',
@@ -122,6 +127,8 @@ const BAKE: Partial<Record<Sfx, (o: PlayOpts) => string>> = {
 /** Takes kept per sound, so a salvo doesn't repeat one sample over and over. */
 const TAKES: Partial<Record<Sfx, number>> = { cannon: 2, boom: 2, splash: 2 }
 const BAKE_RATE = 24000
+/** Explosions are modelled at the bake rate live too: there is little above 12kHz in them. */
+const BLAST_RATE = BAKE_RATE
 const BAKE_SECONDS = 4.5
 
 const calibre = (o: PlayOpts) => Math.round(clamp(o.size ?? 1, 0, 2))
@@ -364,6 +371,12 @@ class AudioEngine {
   private baking = false
   /** Set while a sound is being rendered offline: collects its music ducks instead of applying them. */
   private moves?: Take['moves']
+  /** Set while a sound is being built offline: the explosions it is waiting on before it can render. */
+  private blasts?: Promise<void>[]
+
+  private blaster?: Worker
+  private blastSeq = 0
+  private blastJobs = new Map<number, { o: BlastOpts; done: (pair: [Float32Array<ArrayBuffer>, Float32Array<ArrayBuffer>]) => void }>()
 
   private track: Track | null = null
   private song?: Song
@@ -782,6 +795,57 @@ class AudioEngine {
     }
   }
 
+  /**
+   * A modelled explosion (blast.ts) played into `dest` at `t`. It is computed in a worker:
+   * an offline render waits for it, live playback starts as soon as it arrives.
+   */
+  private explode(dest: AudioNode, t: number, o: BlastOpts) {
+    const ctx = this.ctx!
+    const src = ctx.createBufferSource()
+    src.connect(dest)
+    const offline = !!this.blasts
+    const ready = this.renderBlast(o).then(([l, r]) => {
+      const buf = ctx.createBuffer(2, l.length, BLAST_RATE)
+      buf.copyToChannel(l, 0)
+      buf.copyToChannel(r, 1)
+      src.buffer = buf
+      src.start(offline ? t : Math.max(t, ctx.currentTime))
+    })
+    this.blasts?.push(ready)
+    this.group.push(src)
+    // Live, allow for the render's latency before the strip is freed.
+    this.groupEnd = Math.max(this.groupEnd, t + blastLength(o) + (offline ? 0 : 1))
+  }
+
+  private renderBlast(o: BlastOpts) {
+    return new Promise<[Float32Array<ArrayBuffer>, Float32Array<ArrayBuffer>]>((done) => {
+      if (!this.blaster) {
+        try {
+          this.blaster = new Worker(new URL('./blast.worker.ts', import.meta.url), { type: 'module' })
+          this.blaster.onmessage = (e: MessageEvent<{ id: number; l: Float32Array<ArrayBuffer>; r: Float32Array<ArrayBuffer> }>) => {
+            const job = this.blastJobs.get(e.data.id)
+            this.blastJobs.delete(e.data.id)
+            job?.done([e.data.l, e.data.r])
+          }
+          // No worker (blocked or failed to load): finish its jobs here, and every later one.
+          this.blaster.onerror = () => {
+            this.blaster?.terminate()
+            this.blaster = undefined
+            this.blastSeq = -1
+            for (const job of this.blastJobs.values()) job.done(blast(job.o, BLAST_RATE))
+            this.blastJobs.clear()
+          }
+        } catch {
+          this.blastSeq = -1
+        }
+      }
+      if (this.blastSeq < 0 || !this.blaster) return done(blast(o, BLAST_RATE))
+      const id = ++this.blastSeq
+      this.blastJobs.set(id, { o, done })
+      this.blaster.postMessage({ id, o, rate: BLAST_RATE })
+    })
+  }
+
   // ---------------- mix helpers ----------------
 
   /**
@@ -952,12 +1016,15 @@ class AudioEngine {
     this.moves = moves
     this.copies = 1
     const dur = name === 'shell' ? flight(opt) / 20 : opt.dur
+    const blasts: Promise<void>[] = (this.blasts = [])
     try {
       this.synth(name, { ...opt, dur, pan: 0, panTo: undefined }, 0, 1)
     } finally {
       Object.assign(this, live)
       this.moves = undefined
+      this.blasts = undefined
     }
+    await Promise.all(blasts)
 
     const full = await off.startRendering()
     // Cut the tail once it is 60dB under the peak, with a short fade, so the bank stays small.
@@ -1070,28 +1137,13 @@ class AudioEngine {
 
       // ---- gunnery ----
       case 'cannon': {
-        // A naval gun, not a drum: no pitched body at all. A supersonic crack, an
-        // overdriven broadband blast, a pressure wave felt in the chest, and a rumble
-        // that rolls away over the water (the sea echo carries it to the horizon).
-        // Heavier calibres are darker, longer and wider; the enemy's guns are further off.
+        // A naval gun as a microphone hears it (see blast.ts): the blast wave, the
+        // fireball's roar, the sea's reflection and the echoes rolling back off the
+        // water. Heavier calibres push a longer, deeper wave and roll on longer; the
+        // enemy's guns are kilometres off, a dull thump with the tail carrying it.
         const size = clamp(opt.size ?? 1, 0, 2)
-        const weight = [0.72, 1, 1.4][size]
-        const tone = vary(0.05) * [1.35, 1, 0.72][size]
-        const d = fx(far ? 0.5 : 0.28, { echo: far ? 0.55 : 0.35 + size * 0.1, lp: far ? 2600 : undefined, vol: far ? 0.72 : 1 })
-        this.noise(d, t, { filter: 'highpass', f: 1500 * tone, vol: 0.75, dur: 0.007, d: 0.003, drive: 5 })
-        this.noise(d, t, { color: 'pink', filter: 'bandpass', f: 2400 * tone, q: 0.6, vol: 0.55, dur: 0.025, d: 0.01, drive: 3 })
-        this.noise(d, t, { color: 'pink', f: 9000, f2: 600 * tone, fT: 0.3 * weight, vol: 1.2 * weight, dur: 0.24 * weight, d: 0.07 * weight, drive: 3, width: 0.3 })
-        this.noise(d, t, { filter: 'bandpass', f: 1100 * tone, f2: 500 * tone, fT: 0.2, q: 0.8, vol: 0.5 * weight, dur: 0.12 * weight, d: 0.05 * weight, drive: 4 })
-        this.noise(d, t, { color: 'brown', f: 240 * tone, vol: 1 * weight, a: 0.003, dur: 0.25 * weight, d: 0.11 * weight, drive: 1.5 })
-        this.noise(d, t + 0.04, { color: 'brown', f: 520 * tone, f2: 130, fT: 1.4 * weight, vol: 0.5 * weight, a: 0.05, dur: 0.4 + weight * 0.6, d: 0.45 * weight, r: 0.4, trem: 0.5, tremRate: rnd(4, 7), width: 0.5 })
-        if (!far) {
-          // The shell tears the air as it leaves, and the breech slams back on recoil.
-          this.noise(d, t + 0.015, { color: 'pink', filter: 'bandpass', f: 2600, f2: 700, fT: 0.3, q: 1.4, vol: 0.14, a: 0.01, dur: 0.3, d: 0.12 })
-          if (size) {
-            this.fm(d, t + 0.14, { f: rnd(170, 200) / weight, ratio: 2.76, index: 3.5, index2: 0.2, indexT: 0.08, vol: 0.05, dur: 0.12, d: 0.035 })
-            this.noise(d, t + 0.14, { filter: 'bandpass', f: 1400, q: 2.5, vol: 0.12, dur: 0.02, d: 0.008 })
-          }
-        }
+        const d = fx(far ? 0.08 : 0.04, { vol: (far ? 0.88 : 1) * [0.58, 0.85, 1.3][Math.round(size)] })
+        this.explode(d, t, { kind: 'gun', size, far })
         break
       }
       case 'shell': {
@@ -1111,46 +1163,18 @@ class AudioEngine {
         break
       }
       case 'boom': {
-        // A shell hitting a ship: armour struck, then the detonation, the fireball
-        // and shrapnel raining down. Hits on our own ships also ring the hull around us.
-        const d = fx(0.3, { echo: 0.3 })
-        const k = vary(0.07)
-        this.fm(d, t, { f: 430 * k, ratio: 1.73, index: 6, index2: 0.4, indexT: 0.05, vol: 0.16, dur: 0.05, d: 0.018 })
-        this.noise(d, t, { filter: 'highpass', f: 1800, vol: 0.7, dur: 0.008, d: 0.004, drive: 5 })
-        const at = t + 0.012
-        this.noise(d, at, { color: 'pink', f: 9000, f2: 380, fT: 0.3, vol: 1.15, dur: 0.3, d: 0.08, drive: 3, width: 0.3 })
-        this.noise(d, at, { color: 'brown', f: 260, vol: 1.3, a: 0.004, dur: 0.35, d: 0.15, drive: 1.5 })
-        this.noise(d, at + 0.03, { color: 'pink', filter: 'bandpass', f: 800, f2: 260, fT: 0.8, q: 0.7, vol: 0.4, a: 0.06, dur: 0.8, d: 0.3, trem: 0.35, tremRate: 11, width: 0.5 })
-        this.crackle(d, at + 0.08, 10, 0.8, 0.14)
-        for (let i = 0; i < 3; i++) this.fm(d, at + rnd(0.15, 0.8), { f: rnd(1800, 3400), ratio: 1.41, index: 2, vol: rnd(0.015, 0.03), dur: 0.04, d: 0.03 })
-        if (!far) {
-          this.fm(d, at, { f: 115 * k, ratio: 1.414, index: 5, index2: 0.3, indexT: 0.6, vol: 0.1, dur: 1.1, d: 0.3 })
-          this.noise(d, at + 0.04, { filter: 'bandpass', f: 1600, q: 1.5, vol: 0.1, dur: 0.35, d: 0.12, trem: 0.8, tremRate: 26 })
-        }
+        // A shell detonating on a ship: the blast and fireball, then shrapnel and
+        // fittings raining down on the decks and into the sea. A hit on our own
+        // ships also booms through the hull around us.
+        const d = fx(0.06)
+        this.explode(d, t, { kind: 'hit', far })
         break
       }
       case 'bigboom': {
-        // A devastating hit: the magazine goes, secondaries follow and the steel groans.
+        // A devastating hit: the magazine goes, secondaries follow and the hull creaks.
         this.duck(0.3, 0.35, 1.6)
-        const d = fx(0.45, { echo: 0.45 })
-        const k = vary(0.05)
-        this.fm(d, t, { f: 380 * k, ratio: 1.73, index: 7, index2: 0.4, indexT: 0.06, vol: 0.16, dur: 0.06, d: 0.02 })
-        this.noise(d, t, { filter: 'highpass', f: 2000, vol: 0.85, dur: 0.012, d: 0.005, drive: 6 })
-        this.noise(d, t, { color: 'pink', f: 10000, f2: 260, fT: 0.7, vol: 1.2, dur: 0.6, d: 0.16, drive: 3.5, width: 0.4 })
-        this.noise(d, t, { color: 'brown', f: 200, vol: 1.5, a: 0.004, dur: 0.8, d: 0.35, drive: 2 })
-        this.osc(d, t, { f: 46 * k, vol: 0.45, dur: 0.6, d: 0.3 })
-        this.fm(d, t, { f: 150 * k, ratio: 1.414, index: 5, index2: 0.4, indexT: 0.6, vol: 0.08, dur: 1, d: 0.3 })
-        // Secondary detonations as magazines go up, off to either side.
-        for (const [at, v, side] of [[0.22, 0.75, -0.4], [0.5, 0.5, 0.45], [0.85, 0.3, -0.1]] as const) {
-          const s = this.out(this.sfxBus!, { pan: pan + side, send: 0.45, echo: 0.3, vol: level })
-          this.noise(s, t + at, { filter: 'highpass', f: 1600, vol: v * 0.6, dur: 0.01, d: 0.004, drive: 4 })
-          this.noise(s, t + at, { color: 'pink', f: 7000, f2: 300, fT: 0.4, vol: v, dur: 0.3, d: 0.1, drive: 2.5 })
-          this.noise(s, t + at, { color: 'brown', f: 220, vol: v * 1.1, dur: 0.35, d: 0.14 })
-        }
-        // Steel groaning as the hull gives.
-        this.osc(d, t + 0.4, { f: 72, f2: 44, glide: 1.6, type: 'sawtooth', voices: 3, spread: 22, vol: 0.09, a: 0.3, dur: 1.4, d: 0.8, r: 0.4, lp: 380, q: 3 })
-        this.crackle(d, t + 0.06, 18, 1.5, 0.14)
-        this.noise(d, t + 0.1, { color: 'brown', f: 320, vol: 0.5, a: 0.1, dur: 2.6, d: 1.1, r: 0.6, trem: 0.4, tremRate: 5, width: 0.6 })
+        const d = fx(0.08, { vol: 1.55 })
+        this.explode(d, t, { kind: 'magazine', far })
         break
       }
       case 'founder': {
@@ -1301,21 +1325,8 @@ class AudioEngine {
         // The barrage's last shells land together: the sea itself goes up, a chain of
         // detonations rolls out to both sides, and the fanfare (or the dirge) rises over it.
         this.duck(0.15, 2.2, 1.6)
+        this.explode(fx(0.08, { vol: 1.15 }), t, { kind: 'barrage', far })
         const d = fx(0.55, { echo: 0.5 })
-        this.noise(d, t, { filter: 'highpass', f: 1800, vol: 1, dur: 0.015, d: 0.006, drive: 7 })
-        this.noise(d, t, { color: 'pink', f: 11000, f2: 200, fT: 1, vol: 1.3, dur: 0.9, d: 0.25, drive: 4, width: 0.6 })
-        this.noise(d, t, { color: 'brown', f: 180, vol: 1.7, a: 0.004, dur: 1.4, d: 0.6, drive: 2.4 })
-        this.osc(d, t, { f: 52, f2: 26, glide: 1.2, vol: 0.7, dur: 1.4, d: 0.6, drive: 1.6 })
-        for (let i = 0; i < 7; i++) {
-          const s = this.out(this.sfxBus!, { pan: (i % 2 ? 1 : -1) * (0.25 + i * 0.1), send: 0.5, echo: 0.35, vol: level })
-          const at = t + 0.12 + i * rnd(0.09, 0.15)
-          const v = 0.8 - i * 0.08
-          this.noise(s, at, { filter: 'highpass', f: 1600, vol: v * 0.6, dur: 0.01, d: 0.004, drive: 4 })
-          this.noise(s, at, { color: 'pink', f: 8000, f2: 300, fT: 0.4, vol: v, dur: 0.35, d: 0.12, drive: 2.5 })
-          this.noise(s, at, { color: 'brown', f: 240, vol: v * 1.1, dur: 0.4, d: 0.16 })
-        }
-        this.crackle(d, t + 0.1, 40, 2.4, 0.16)
-        this.noise(d, t + 0.2, { color: 'brown', f: 300, vol: 0.6, a: 0.2, dur: 3.2, d: 1.4, r: 0.8, trem: 0.4, tremRate: 4, width: 0.7 })
         const fan = t + 0.5
         if (far) {
           this.brass(d, fan, [38, 41, 44, 50], 1.8, 0.05, 2600)

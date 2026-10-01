@@ -244,14 +244,17 @@ export function Battle({
       ['boom', { far: true }],
       ['splash', {}],
       ['miss', {}],
-      ['bigboom', {}],
+      ['bigboom', { far: true }],
       ['crit', {}],
       ['founder', { far: true }],
       ...guns(initial.game.enemyShips, true),
       ...shells(true),
       ['boom', {}],
+      ['bigboom', {}],
       ['evade', {}],
       ['founder', {}],
+      ['ultboom', {}],
+      ['ultboom', { far: true }],
     ])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [speed])

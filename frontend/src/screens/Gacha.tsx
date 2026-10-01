@@ -33,6 +33,8 @@ export function Gacha({ onBack }: { onBack: () => void }) {
   const featured = catalog?.cards.filter((c) => c.rarity >= 3) ?? []
 
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
+  // The fake-out upgrade's explosion is modelled in a worker: render it before a pull needs it.
+  useEffect(() => audio.prewarm([['bigboom', {}]]), [])
 
   // Auto-advance, held off for a while after the admiral picks a ship themselves.
   useEffect(() => {
