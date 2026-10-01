@@ -1,100 +1,145 @@
 <!doctype html>
 <!-- Source of og.png (the link preview for X etc.). Not linked from the app.
-     Regenerate with `just og` after the portraits change. -->
+     Regenerate with `just og` after the portraits change (needs the local portraits and network for the web fonts). -->
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
     <meta name="robots" content="noindex" />
+    <link rel="stylesheet" href="kv.css" />
     <style>
+      :root {
+        --horizon: 60%;
+        --sun-x: 74%;
+      }
       html,
       body {
-        margin: 0;
         width: 1200px;
         height: 630px;
-        overflow: hidden;
-        background: #050c18;
-        font-family: 'Noto Serif JP', 'Noto Sans JP', 'Hiragino Mincho ProN', serif;
-      }
-      .sea {
-        position: absolute;
-        inset: 0;
-        background:
-          radial-gradient(ellipse 60% 70% at 72% 40%, rgba(120, 190, 255, 0.35), transparent 70%),
-          linear-gradient(180deg, #0b2447 0%, #0a1a33 55%, #050c18 100%);
-      }
-      .horizon {
-        position: absolute;
-        left: 0;
-        right: 0;
-        top: 58%;
-        height: 2px;
-        background: linear-gradient(90deg, transparent, rgba(191, 233, 255, 0.6), transparent);
-      }
-      .crew {
-        position: absolute;
-        right: 0;
-        bottom: 0;
-        height: 630px;
-        width: 660px;
-      }
-      .crew img {
-        position: absolute;
-        bottom: -40px;
-        filter: drop-shadow(0 0 24px rgba(0, 0, 0, 0.6));
-      }
-      .fade {
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(90deg, #050c18 0%, rgba(5, 12, 24, 0.85) 38%, transparent 62%);
       }
       .logo {
-        position: absolute;
-        left: 72px;
-        top: 150px;
-        color: #eef4fb;
+        left: 64px;
+        top: 112px;
+        width: 560px;
       }
       .kicker {
-        margin: 0 0 18px;
-        font: 600 20px/1 system-ui, sans-serif;
-        letter-spacing: 0.3em;
-        color: #7fd0ff;
+        font-size: 15px;
       }
-      h1 {
-        margin: 0;
-        font-size: 124px;
-        font-weight: 900;
-        line-height: 1;
-        letter-spacing: 0.06em;
-        text-shadow: 0 0 30px rgba(127, 208, 255, 0.55);
+      .jp {
+        margin: 22px 0 14px -6px;
+        font-size: 134px;
       }
       .en {
-        display: block;
-        margin-top: 14px;
-        font: 700 40px/1 system-ui, sans-serif;
-        letter-spacing: 0.42em;
-        color: #f4c65a;
+        font-size: 34px;
       }
-      .sub {
-        margin: 40px 0 0;
-        font-size: 30px;
-        letter-spacing: 0.12em;
-        color: #cfe2f5;
+      .en::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        margin-left: -12px;
+        background: linear-gradient(90deg, rgba(244, 198, 90, 0.8), transparent);
+      }
+      .tagline {
+        margin-top: 34px;
+        font-size: 25px;
+      }
+      .plates {
+        position: absolute;
+        left: 64px;
+        bottom: 54px;
+        display: flex;
+        gap: 14px;
+      }
+      .plate {
+        font-size: 17px;
+      }
+      .hud-tl {
+        position: absolute;
+        left: 64px;
+        top: 50px;
+        font-size: 12px;
+      }
+      .hud-br {
+        position: absolute;
+        right: 40px;
+        bottom: 30px;
+        font-size: 11px;
+        text-align: right;
+        color: rgba(150, 225, 255, 0.6);
       }
     </style>
   </head>
   <body>
-    <div class="sea"></div>
-    <div class="horizon"></div>
-    <div class="crew">
-      <img src="../frontend/public/portraits/ca_tsukuyomi.webp" style="height: 610px; left: -40px; opacity: 0.9" />
-      <img src="../frontend/public/portraits/bb_susanoo.webp" style="height: 640px; left: 380px; opacity: 0.9" />
-      <img src="../frontend/public/portraits/bb_amaterasu.webp" style="height: 700px; left: 90px" />
+    <div class="layer sky"></div>
+    <svg class="layer clouds" width="1200" height="630">
+      <filter id="cloud" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.0035 0.016" numOctaves="5" seed="7" />
+        <feColorMatrix values="0 0 0 0 1  0 0 0 0 0.82  0 0 0 0 0.7  0 0 0 2.4 -1.25" />
+      </filter>
+      <linearGradient id="cloud-fade" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity="0.15" />
+        <stop offset="0.5" stop-color="#fff" stop-opacity="1" />
+        <stop offset="0.6" stop-color="#fff" stop-opacity="0" />
+      </linearGradient>
+      <mask id="cloud-mask"><rect width="1200" height="630" fill="url(#cloud-fade)" /></mask>
+      <rect width="1200" height="630" filter="url(#cloud)" mask="url(#cloud-mask)" />
+    </svg>
+    <div class="layer sea"></div>
+    <svg class="layer glint" width="1200" height="252" viewBox="0 0 1200 252" preserveAspectRatio="none">
+      <filter id="glint">
+        <feTurbulence type="fractalNoise" baseFrequency="0.09 0.6" numOctaves="2" seed="3" />
+        <feColorMatrix values="0 0 0 0 1  0 0 0 0 0.85  0 0 0 0 0.6  0 0 0 9 -5.6" />
+      </filter>
+      <radialGradient id="glint-fade" cx="0.74" cy="0" r="0.6" gradientTransform="translate(0.74 0) scale(0.35 1) translate(-0.74 0)">
+        <stop offset="0" stop-color="#fff" />
+        <stop offset="1" stop-color="#fff" stop-opacity="0" />
+      </radialGradient>
+      <mask id="glint-mask"><rect width="1200" height="252" fill="url(#glint-fade)" /></mask>
+      <rect width="1200" height="252" filter="url(#glint)" mask="url(#glint-mask)" />
+    </svg>
+    <div class="layer grid"><i></i></div>
+    <div class="layer horizon-line"></div>
+
+    <div class="layer rays"></div>
+
+    <div class="layer crew">
+      <img class="mid" src="../frontend/public/portraits/bb_susanoo.webp" style="left: 806px; top: -14px; height: 780px" />
+      <img class="mid" src="../frontend/public/portraits/bb_guren.webp" style="left: 856px; top: 52px; height: 800px" />
+      <img class="front" src="../frontend/public/portraits/bb_amaterasu.webp" style="left: 520px; top: -28px; height: 920px" />
     </div>
-    <div class="fade"></div>
+    <div class="layer embers" data-count="46" data-area="560 0 640 630"></div>
+
+    <div class="layer floor"></div>
+    <div class="layer vignette"></div>
+    <svg class="layer grain" width="1200" height="630">
+      <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="1" /></filter>
+      <rect width="1200" height="630" filter="url(#grain)" />
+    </svg>
+
+    <div class="hud hud-tl">SECTOR 07 ── FLEET ENGAGEMENT</div>
+    <div class="hud hud-br">TGT LOCK  E-7<br />RANGE 18,400</div>
+    <div class="corner tl" style="left: 24px; top: 24px"></div>
+    <div class="corner tr" style="right: 24px; top: 24px"></div>
+    <div class="corner bl" style="left: 24px; bottom: 24px"></div>
+    <div class="corner br" style="right: 24px; bottom: 24px"></div>
+
     <div class="logo">
       <p class="kicker">NAVAL TACTICS × FLEET COLLECTION</p>
-      <h1>蒼海戦記<span class="en">BATTLE SHIP</span></h1>
-      <p class="sub">― 見えざる艦隊を撃滅せよ ―</p>
+      <h1>
+        <span class="jp">蒼海戦記</span>
+        <span class="en">BATTLE SHIP</span>
+      </h1>
+      <p class="tagline">見えざる艦隊を、撃滅せよ。</p>
     </div>
+    <!-- target lock on the open sea -->
+    <div class="lock" style="left: 420px; top: 452px">
+      <div class="reticle" style="inset: 0"></div>
+      <div class="reticle inner" style="inset: 18px"></div>
+      <span class="hud">E-7</span>
+    </div>
+    <div class="plates">
+      <span class="plate">ブラウザで即出撃</span>
+      <span class="plate">基本プレイ無料</span>
+    </div>
+    <script src="kv.js"></script>
   </body>
 </html>
