@@ -38,6 +38,9 @@ func (p *Profile) ClaimLogin(now time.Time) (int, Grant, error) {
 }
 
 // ---- daily missions ----
+//
+// When a feature lands, consider a mission or achievement for it here; see
+// "機能追加時の任務" in CLAUDE.md for the rules.
 
 // Stat keys shared by missions, achievements and battle settlement.
 const (
