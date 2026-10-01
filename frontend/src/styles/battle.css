@@ -3017,3 +3017,54 @@
     transform: translateX(200px) skewX(-20deg) scale(1.6);
   }
 }
+
+/* Where an enemy sonar pinged from last round: heard, not tracked. */
+.sonar-echo {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(127, 255, 255, 0.3), transparent 70%);
+}
+
+.sonar-echo::before,
+.sonar-echo::after {
+  content: '';
+  position: absolute;
+  inset: 18%;
+  border-radius: 50%;
+  border: 2px solid #7ff;
+  box-shadow:
+    0 0 10px #7ff,
+    inset 0 0 8px rgba(127, 255, 255, 0.6);
+  animation: echo-pulse 1.6s ease-out infinite;
+}
+
+.sonar-echo::after {
+  animation-delay: 0.8s;
+}
+
+.sonar-echo b {
+  position: absolute;
+  bottom: 2px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #022;
+  background: #7ff;
+  box-shadow: 0 0 10px #7ff;
+}
+
+@keyframes echo-pulse {
+  from {
+    scale: 0.4;
+    opacity: 1;
+  }
+  to {
+    scale: 1.6;
+    opacity: 0;
+  }
+}

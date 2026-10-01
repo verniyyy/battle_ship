@@ -203,6 +203,10 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 					e.Marked = markRounds
 				}
 			}
+			if kind == SkillSonar && len(res.Revealed) > 0 {
+				p := ship.Pos
+				res.Emitter = &p
+			}
 		}
 
 	case ActionWatch:

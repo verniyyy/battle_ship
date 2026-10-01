@@ -43,6 +43,8 @@
 //
 // Flares and sonar lock on to every ship they find: until the end of the
 // next round, shots on a locked-on ship cannot be dodged and always crit.
+// A sonar that finds anything is heard in return: the enemy learns where the
+// destroyer pinged from that round, without tracking it.
 //
 // Enemy ships side by side along a row or column always spot each other.
 // When no ship has taken damage for three rounds in a row, each side's
@@ -704,6 +706,10 @@ type Result struct {
 	// Origin is where torpedoes were launched from, or where intercepted
 	// planes flew in from; either gives the launcher away.
 	Origin *Pos `json:"origin,omitempty"`
+	// Emitter is where a sonar that found enemy ships pinged from. Their crews
+	// hear the ping, so the destroyer's position is given away for the moment,
+	// but not tracked: unlike Origin it adds no intel.
+	Emitter *Pos `json:"emitter,omitempty"`
 	// Paths are the torpedo tracks up to where each one stopped.
 	Paths [][]Pos `json:"paths,omitempty"`
 	// Columns are the cells where a battleship shell threw up a water column.

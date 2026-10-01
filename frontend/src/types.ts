@@ -120,6 +120,8 @@ export interface Result {
   target?: Pos
   shots?: Shot[]
   origin?: Pos
+  /** Where an enemy-finding sonar pinged from: heard by the enemy, but not tracked. */
+  emitter?: Pos
   paths?: Pos[][]
   columns?: Pos[]
   scanned?: Pos[]

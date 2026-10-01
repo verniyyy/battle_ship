@@ -31,6 +31,12 @@ function lastRoundMarkers(game: GameView): Map<string, Marker> {
   return m
 }
 
+// sonarEchoes lists where enemy sonars that found the fleet pinged from last
+// round. The ping gives a destroyer away until the next round, untracked.
+function sonarEchoes(game: GameView): Pos[] {
+  return game.history.filter((r) => r.round === game.turn && r.side === 'cpu' && r.emitter).map((r) => r.emitter!)
+}
+
 // ---- intermediate views while an action plays out ----
 
 function patchShot(g: GameView, shot: Shot, mine: boolean): GameView {
@@ -158,6 +164,8 @@ export function Battle({
   const [cutin, setCutin] = useState<Cutin | null>(null)
   const [floats, setFloats] = useState<Float[]>([])
   const [lit, setLit] = useState<{ cells: Pos[]; kind: 'flare' | 'sonar' } | null>(null)
+  // Enemy sonar pings heard in the round playing out.
+  const [pings, setPings] = useState<Pos[]>([])
   const [log, setLog] = useState<LogLine[]>(() => historyLog(initial.game))
   const [showResult, setShowResult] = useState(initial.game.status === 'finished')
   const [speed, setSpeed] = useState(loadSpeed)
@@ -328,6 +336,7 @@ export function Battle({
                   : ship.skillTargets) ?? [])
         : []
   const markers = lastRoundMarkers(game)
+  const echoes = busy ? pings : sonarEchoes(game)
   const turn = game.turn + (finished ? 0 : 1)
   const turnsLeft = game.maxTurns ? game.maxTurns - game.turn : undefined
   // Once a target is chosen the preview stays on it; hovering only aims before that.
@@ -591,7 +600,7 @@ export function Battle({
     const c = mine ? card(actor?.key ?? '') : undefined
     const line = describe(r, after)
     const layer = layerRef.current
-    const from = mine && actor ? cellPt(game.playerShips[r.shipId].pos ?? actor.pos!) : r.origin ? cellPt(r.origin) : undefined
+    const from = mine && actor ? cellPt(game.playerShips[r.shipId].pos ?? actor.pos!) : (r.origin ?? r.emitter) ? cellPt((r.origin ?? r.emitter)!) : undefined
 
     if (r.cancelled) {
       audio.play('miss')
@@ -741,6 +750,23 @@ export function Battle({
       if (!r.revealed?.length) float(r.target!, '反応なし', 'miss')
       await wait(700)
       if (mounted.current) setLit(null)
+      // A ping that found ships is heard back: the destroyer gives itself away.
+      if (r.emitter) {
+        if (mine) {
+          float(r.emitter, '探信音を聴知された', 'hurt')
+        } else {
+          audio.play('reveal')
+          setPings((p) => [...p, r.emitter!])
+          const p = cellPt(r.emitter)
+          for (let i = 0; i < 3; i++) {
+            fx.ring(p.x, p.y, '#7ff', 260 + i * 120, 1.2 - i * 0.2)
+            await wait(ms(160))
+          }
+          fx.sparkle(p.x, p.y, '#7ff', 16, 80)
+          float(r.emitter, '探信源！', 'found')
+          await wait(ms(500))
+        }
+      }
     } else if (shots.length) {
       // Main guns and the barrage: every shell flies from the ship.
       if (from) fx.sparkle(from.x, from.y, '#ffd36b', 6, 50)
@@ -839,6 +865,7 @@ export function Battle({
 
   // playRound plays a round's results out on the board, then settles on the view after it.
   const playRound = async (results: Result[], after: GameView, onEnd?: () => void) => {
+    setPings([])
     for (const r of results) {
       if (!mounted.current) return
       await play(r, after)
@@ -1155,6 +1182,11 @@ export function Battle({
                 <>
                   {marker && !busy && <span className={`marker ${marker}`} />}
                   {spotCell && samePos(spotCell, p) && <span className="spot-sign">観測</span>}
+                  {echoes.some((q) => samePos(q, p)) && (
+                    <span className="sonar-echo" title="敵ソナーの発信源。追跡はできていないので、次のターンには見失う">
+                      <b>探信源</b>
+                    </span>
+                  )}
                   {enemy && (
                     <ShipToken look={looks.enemy[enemy.id]} no={enemy.id + 1} sunk={enemy.hp <= 0} spotted={enemy.spotted && !finished} marked={enemy.marked && !finished} />
                   )}

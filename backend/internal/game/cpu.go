@@ -33,6 +33,11 @@ func (st *State) observe(r Result) {
 		case ActionAttack:
 			// Guns only reach so far from the ship that fired them.
 			m.Hints = append(m.Hints, Hint{*r.Target, st.Boards[r.Side].Ships[r.ShipID].Spec.Rule().GunRange})
+		case ActionSkill:
+			// A sonar that found us was heard: the destroyer was right there.
+			if r.Emitter != nil {
+				m.Hints = append(m.Hints, Hint{*r.Emitter, 0})
+			}
 		case ActionMove:
 			// We cannot tell which hints came from the moved ship, so forget them all.
 			m.Hints = nil
@@ -94,6 +99,9 @@ func (st *State) heat(side Side) map[Pos]float64 {
 	m := st.Memory[side]
 	for _, hint := range m.Hints {
 		cells := ring(hint.Pos, hint.R)
+		if hint.R == 0 {
+			cells = []Pos{hint.Pos}
+		}
 		for _, n := range cells {
 			h[n] += 80 / float64(len(cells))
 		}

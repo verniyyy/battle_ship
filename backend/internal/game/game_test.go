@@ -273,6 +273,29 @@ func TestFlareMissesSubmarinesSonarDoesNot(t *testing.T) {
 	}
 }
 
+func TestSonarThatFindsGivesItselfAway(t *testing.T) {
+	st := fleetGame(t, []Spec{ca, dd}, std, []Pos{{0, 0}, {2, 0}}, []Pos{{1, 1}, {0, 1}, {2, 3}})
+	res := apply(t, st, SidePlayer, Action{ActionSkill, 1, Pos{2, 0}})
+	if res.Emitter == nil || *res.Emitter != (Pos{2, 0}) {
+		t.Fatalf("sonar that found ships emitted from %v, want the destroyer's cell", res.Emitter)
+	}
+	// Heard, not tracked: the enemy gets no intel on the destroyer.
+	if _, ok := st.Intel[SideCPU][key(1)]; ok {
+		t.Fatal("the pinging destroyer is tracked")
+	}
+	if v := st.ViewFor(SideCPU); v.EnemyShips[1].Pos != nil {
+		t.Fatal("the pinging destroyer is shown to the enemy")
+	}
+	if h := st.heat(SideCPU); h[Pos{2, 0}] <= 0 {
+		t.Fatal("the CPU did not hear the ping")
+	}
+	// A ping that finds nothing goes unheard.
+	st = fleetGame(t, []Spec{dd}, []Spec{ca}, []Pos{{0, 0}}, []Pos{{4, 4}})
+	if res := apply(t, st, SidePlayer, Action{ActionSkill, 0, Pos{0, 0}}); res.Emitter != nil {
+		t.Fatalf("an empty ping gave the destroyer away: %v", res.Emitter)
+	}
+}
+
 func TestScoutingLocksOn(t *testing.T) {
 	dodgy := dd
 	dodgy.Evasion = 100
