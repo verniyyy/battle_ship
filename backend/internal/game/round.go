@@ -35,11 +35,13 @@ func (st *State) Resolve(acts map[Side]Action, rng *rand.Rand) []Result {
 	return append(out, st.endRound(out)...)
 }
 
-// Initiative orders the sides: late actions (torpedo launches, moves by a
-// ship still under way) go last, then faster ships first; ties are a coin flip.
+// Initiative orders the sides: anti-air watch goes first, late actions
+// (torpedo launches, moves by a ship still under way) go last, then faster
+// ships first; ties are a coin flip.
 func (st *State) Initiative(acts map[Side]Action, rng *rand.Rand) []Side {
 	type entry struct {
 		side  Side
+		early bool
 		late  bool
 		speed int
 		coin  int
@@ -50,7 +52,7 @@ func (st *State) Initiative(acts map[Side]Action, rng *rand.Rand) []Side {
 		if !ok {
 			continue
 		}
-		e := entry{side: side, coin: rng.IntN(1 << 16)}
+		e := entry{side: side, early: a.Early(), coin: rng.IntN(1 << 16)}
 		if s, err := st.Boards[side].ship(a.ShipID); err == nil {
 			e.late, e.speed = a.Late(s), s.Spec.Speed
 		}
@@ -58,6 +60,11 @@ func (st *State) Initiative(acts map[Side]Action, rng *rand.Rand) []Side {
 	}
 	slices.SortFunc(es, func(a, b entry) int {
 		switch {
+		case a.early != b.early:
+			if a.early {
+				return -1
+			}
+			return 1
 		case a.late != b.late:
 			if a.late {
 				return 1
@@ -79,14 +86,14 @@ func (st *State) cancel(side Side, a Action) Result {
 	res := Result{Side: side, Type: a.Type, ShipID: a.ShipID, Round: st.Turn + 1, Cancelled: true,
 		Combo: st.Combo[side], Gauge: st.Gauge[side]}
 	if s, err := st.Boards[side].ship(a.ShipID); err == nil {
-		res.Speed, res.Late = s.Spec.Speed, a.Late(s)
+		res.Speed, res.Late, res.Early = s.Spec.Speed, a.Late(s), a.Early()
 	}
 	st.History = append(st.History, res)
 	return res
 }
 
-// endRound counts the round, lets water columns settle and ships come to
-// rest, sends scout planes out after a quiet spell and, when the turn limit
+// endRound counts the round, lets water columns settle, ships come to rest
+// and anti-air watches run down, sends scout planes out after a quiet spell and, when the turn limit
 // is reached, judges the battle on the share of hull left. It returns the
 // scout reports.
 func (st *State) endRound(played []Result) []Result {
@@ -100,6 +107,7 @@ func (st *State) endRound(played []Result) []Result {
 			s.Pinned = max(s.Pinned-1, 0)
 			s.Sailed = max(s.Sailed-1, 0)
 			s.Marked = max(s.Marked-1, 0)
+			s.Watch = max(s.Watch-1, 0)
 		}
 	}
 	if st.Status == StatusInProgress && st.MaxTurns > 0 && st.Turn >= st.MaxTurns {

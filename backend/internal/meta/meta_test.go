@@ -398,3 +398,26 @@ func TestEndlessUnlocksAfterCampaign(t *testing.T) {
 		t.Fatal("next sortie should go one floor deeper")
 	}
 }
+
+func TestSettleCountsAntiAirWatch(t *testing.T) {
+	p := NewProfile("p1", t0)
+	m := newMatch(t, p, "1-1")
+	playOut(t, m, true)
+	m.Game.History = append(m.Game.History,
+		game.Result{Side: game.SidePlayer, Type: game.ActionWatch, ShipID: 0},
+		game.Result{Side: game.SideCPU, Type: game.ActionSkill, Skill: game.SkillAirstrike, Intercepted: true},
+		game.Result{Side: game.SidePlayer, Type: game.ActionSkill, Skill: game.SkillAirstrike, Intercepted: true})
+	rw := Settle(m, p, rng(1), t0)
+	if rw.Stats.Watches != 1 || rw.Stats.Intercepts != 1 || p.Stats.Watches != 1 || p.Stats.Intercepts != 1 {
+		t.Fatalf("battle stats %+v, profile %+v", rw.Stats, p.Stats)
+	}
+	if _, err := p.ClaimMission("d_watch", t0); err != nil {
+		t.Fatalf("watch mission: %v", err)
+	}
+	if _, err := p.ClaimAchievement("a_intercepts_1"); err != nil {
+		t.Fatalf("intercept achievement: %v", err)
+	}
+	if _, err := p.ClaimAchievement("a_intercepts_10"); err == nil {
+		t.Fatal("claimed 10 intercepts after one")
+	}
+}

@@ -60,6 +60,9 @@ const (
 	StatEndless   = "endless"
 	StatCheers    = "cheers"
 	StatFriends   = "friends"
+	// StatWatches counts anti-air watches stood, StatIntercepts the airstrikes they met.
+	StatWatches    = "watches"
+	StatIntercepts = "intercepts"
 )
 
 type Mission struct {
@@ -82,6 +85,7 @@ var DailyMissions = []Mission{
 	{ID: "d_skill", Title: "スキルを使う", Stat: StatSkills, Goal: 3, Coins: 1500},
 	{ID: "d_crit", Title: "クリティカルを出す", Stat: StatCrits, Goal: 3, Gems: 40},
 	{ID: "d_ult", Title: "全艦斉射を放つ", Stat: StatUltimates, Goal: 1, Gems: 50},
+	{ID: "d_watch", Title: "対空見張りにつく", Stat: StatWatches, Goal: 1, Coins: 1000},
 	{ID: "d_train", Title: "艦を強化する", Stat: StatTrain, Goal: 3, Coins: 1000},
 	{ID: "d_pull", Title: "建造する", Stat: StatPulls, Goal: 1, Gems: 30},
 	{ID: "d_cheer", Title: "フレンドにエールを送る", Stat: StatCheers, Goal: 1, Coins: 1000, Extra: true},
@@ -183,6 +187,7 @@ var Achievements = func() []Mission {
 	add(StatCrits, "クリティカル通算 %d 回", []int{5, 25, 100}, []int{50, 150, 400})
 	add(StatCombo, "%d コンボを達成", []int{3, 5, 8}, []int{80, 200, 500})
 	add(StatUltimates, "全艦斉射を通算 %d 回", []int{1, 10, 30}, []int{50, 150, 400})
+	add(StatIntercepts, "航空攻撃を通算 %d 回迎撃", []int{1, 10, 30}, []int{50, 150, 400})
 	add(StatPulls, "建造を通算 %d 回", []int{10, 50, 100, 300}, []int{100, 200, 300, 800})
 	add(StatCollect, "%d 種類の艦を集める", []int{5, 10, 15, len(Cards)}, []int{100, 200, 400, 1500})
 	add(StatStars, "海域の★を %d 個集める", []int{6, 18, 30, 3 * len(Stages)}, []int{100, 200, 400, 1000})
@@ -205,6 +210,8 @@ func (p *Profile) statValue(stat string) int {
 		return p.Stats.MaxCombo
 	case StatUltimates:
 		return p.Stats.Ultimates
+	case StatIntercepts:
+		return p.Stats.Intercepts
 	case StatPulls:
 		return p.Gacha.Pulls
 	case StatCollect:

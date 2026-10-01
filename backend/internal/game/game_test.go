@@ -249,12 +249,13 @@ func TestAirstrikeAntiAirAndPrecision(t *testing.T) {
 	st := fleetGame(t, []Spec{cv}, []Spec{bb, dd}, []Pos{{0, 0}}, []Pos{{4, 4}, {3, 3}})
 	res := apply(t, st, SidePlayer, Action{ActionSkill, 0, Pos{4, 4}})
 	aa := float64(aaScale) / float64(aaScale+bb.AA+dd.AA)
-	if !between(res.Shots[0].Damage, 300, 20, aa) || res.Special != "" {
+	air := cv.Air * airPct / 100
+	if !between(res.Shots[0].Damage, air, 20, aa) || res.Special != "" {
 		t.Fatalf("blind bombing %+v, want anti-air reduced", res)
 	}
 	// Now tracked: precision bombing ignores anti-air.
 	res = apply(t, st, SidePlayer, Action{ActionSkill, 0, Pos{4, 4}})
-	if res.Special != SpecialPrecision || !between(res.Shots[0].Damage, 300, 20, 1) {
+	if res.Special != SpecialPrecision || !between(res.Shots[0].Damage, air, 20, 1) {
 		t.Fatalf("precision bombing %+v", res)
 	}
 }
@@ -661,5 +662,117 @@ func TestScoutPlanesBreakAQuietSpell(t *testing.T) {
 	}
 	if _, ok := st.Intel[SidePlayer]["1"]; !ok {
 		t.Fatalf("player intel %v, want the destroyer found next", st.Intel[SidePlayer])
+	}
+}
+
+func TestAntiAirWatchInterceptsAirstrikes(t *testing.T) {
+	st := fleetGame(t, []Spec{cv, dd}, []Spec{ca, dd}, []Pos{{0, 0}, {0, 4}}, []Pos{{4, 4}, {3, 0}})
+	// Only battleships and cruisers stand watch.
+	if err := st.Legal(SideCPU, Action{ActionWatch, 1, Pos{3, 0}}); err == nil {
+		t.Fatal("a destroyer stood anti-air watch")
+	}
+	// The player tracks the destroyer, so a precision strike on it is due.
+	st.Intel[SidePlayer]["1"] = Sighting{ShipID: 1, Pos: Pos{3, 0}}
+	out := st.Resolve(map[Side]Action{
+		SidePlayer: {ActionSkill, 0, Pos{3, 0}},
+		SideCPU:    {ActionWatch, 0, Pos{4, 4}},
+	}, rng())
+	watch, strike := out[0], out[1]
+	if watch.Side != SideCPU || !watch.Early || !watch.Hidden {
+		t.Fatalf("watch %+v, want it first and unseen", watch)
+	}
+	air := cv.Air * airPct / 100
+	if !strike.Intercepted || strike.Special != SpecialPrecision || !between(strike.Shots[0].Damage, air, 0, interceptPct/100.0) {
+		t.Fatalf("strike %+v, want precision bombing intercepted", strike)
+	}
+	carrier, cruiser := st.Boards[SidePlayer].Ships[0], st.Boards[SideCPU].Ships[0]
+	if carrier.Skill != cv.Skill-2 || carrier.Marked == 0 {
+		t.Fatalf("carrier skill %d marked %d, want two sorties lost and a lock-on", carrier.Skill, carrier.Marked)
+	}
+	if seen, ok := st.Intel[SideCPU]["0"]; !ok || seen.Pos != carrier.Pos {
+		t.Fatal("the intercept did not give the carrier away")
+	}
+	if cruiser.Watches != 1 || st.Gauge[SideCPU] < gaugeScout || st.Combo[SideCPU] != 1 {
+		t.Fatalf("watches %d gauge %d combo %d, want the order back and a scouting reward", cruiser.Watches, st.Gauge[SideCPU], st.Combo[SideCPU])
+	}
+	// On watch the cruiser can only sail, and the watch cannot be stacked.
+	v := st.ViewFor(SideCPU)
+	cs := v.PlayerShips[0]
+	if cs.Watch != watchRounds-1 || len(cs.AttackTargets)+len(cs.TorpedoTargets)+len(cs.SkillTargets)+len(cs.WatchTargets) > 0 || len(cs.MoveTargets) == 0 {
+		t.Fatalf("cruiser on watch %+v", cs)
+	}
+	// The player saw an unknown order, not the watch.
+	if r := st.PlayerView().History[0]; r.Type != ActionUnknown || r.ShipID != -1 || r.Early {
+		t.Fatalf("player saw %+v", r)
+	}
+	if r := st.ViewFor(SideCPU).History[0]; r.Type != ActionWatch {
+		t.Fatalf("the watch is hidden from its own side: %+v", r)
+	}
+	// The watch holds two more rounds, then runs out.
+	for i := 0; i < 2; i++ {
+		st.Resolve(map[Side]Action{SidePlayer: {ActionMove, 1, Pos{0, 3 - i}}}, rng())
+	}
+	if cruiser.onWatch() || len(st.Boards[SideCPU].AttackTargets(0)) == 0 {
+		t.Fatal("the watch did not run out")
+	}
+	strike = apply(t, st, SidePlayer, Action{ActionSkill, 0, Pos{3, 0}})
+	if strike.Intercepted {
+		t.Fatal("an airstrike was intercepted after the watch ran out")
+	}
+}
+
+func TestAntiAirWatchSeenWhenTracked(t *testing.T) {
+	st := fleetGame(t, []Spec{cv}, []Spec{bb}, []Pos{{0, 0}}, []Pos{{4, 4}})
+	st.Intel[SidePlayer]["0"] = Sighting{ShipID: 0, Pos: Pos{4, 4}}
+	res := apply(t, st, SideCPU, Action{ActionWatch, 0, Pos{4, 4}})
+	if res.Hidden {
+		t.Fatal("a watch by a tracked ship went unseen")
+	}
+	v := st.PlayerView()
+	if v.History[0].Type != ActionWatch || v.EnemyShips[0].Watch != watchRounds {
+		t.Fatalf("player view %+v / %+v", v.History[0], v.EnemyShips[0])
+	}
+	// An unspotted watcher does not show its watch.
+	delete(st.Intel[SidePlayer], "0")
+	if st.PlayerView().EnemyShips[0].Watch != 0 {
+		t.Fatal("watch shown on an unspotted ship")
+	}
+}
+
+func TestUnusedWatchIsSpent(t *testing.T) {
+	st := fleetGame(t, []Spec{ca}, []Spec{cv}, []Pos{{0, 0}}, []Pos{{4, 4}})
+	for i := 0; i < watchRounds; i++ {
+		a := Action{ActionMove, 0, Pos{1 - i%2, 0}}
+		if i == 0 {
+			a = Action{ActionWatch, 0, Pos{0, 0}}
+		}
+		st.Resolve(map[Side]Action{SidePlayer: a}, rng())
+	}
+	if s := st.Boards[SidePlayer].Ships[0]; s.onWatch() || s.Watches != 0 || len(st.Boards[SidePlayer].WatchTargets(0)) != 0 {
+		t.Fatalf("watch %d left %d, want it spent", s.Watch, s.Watches)
+	}
+}
+
+func TestInitiativeWatchFirst(t *testing.T) {
+	st := fleetGame(t, []Spec{dd}, []Spec{ca}, []Pos{{0, 0}}, []Pos{{4, 4}})
+	order := st.Initiative(map[Side]Action{SidePlayer: {Type: ActionAttack, ShipID: 0}, SideCPU: {Type: ActionWatch, ShipID: 0}}, rng())
+	if order[0] != SideCPU {
+		t.Fatal("anti-air watch should go before a faster ship's action")
+	}
+}
+
+func TestCPUStandsWatchAgainstTrackingCarrier(t *testing.T) {
+	st := fleetGame(t, []Spec{cv, dd}, []Spec{ca, dd}, []Pos{{0, 0}, {0, 4}}, []Pos{{4, 4}, {3, 0}})
+	st.AI.Level = 3
+	st.Intel[SidePlayer]["1"] = Sighting{ShipID: 1, Pos: Pos{3, 0}}
+	st.History = append(st.History, Result{Side: SidePlayer, Type: ActionSkill, Skill: SkillAirstrike, ShipID: 0})
+	watched := 0
+	for i := 0; i < 20; i++ {
+		if a := st.Decide(SideCPU, rand.New(rand.NewPCG(uint64(i), 3))); a.Type == ActionWatch {
+			watched++
+		}
+	}
+	if watched == 0 {
+		t.Fatal("the CPU never stood watch against a carrier that was bombing it")
 	}
 }

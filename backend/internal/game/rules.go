@@ -26,7 +26,18 @@ const (
 	sailRounds    = 2   // a ship that moved is under way for the rest of this round and the next
 	reconAfter    = 3   // quiet rounds before scout planes report an enemy ship
 	markRounds    = 2   // a scouting lock-on holds for the rest of this round and the next
+	airPct        = 125 // airstrike power, as a share of the carrier's air stat
+	watchRounds   = 3   // anti-air watch holds for the rest of this round and the next two
+	interceptPct  = 30  // share of an airstrike's damage that gets through anti-air watch
 )
+
+// watchUses is how many times a ship can stand anti-air watch per battle.
+func watchUses(sp Spec) int {
+	if sp.CanWatch() {
+		return 1
+	}
+	return 0
+}
 
 // Gauge gains. Shooting gains are scaled by the running combo.
 const (
@@ -46,7 +57,9 @@ type strike struct {
 	evadeDiv  int
 	halfArmor bool // torpedoes strike below the belt
 	aircraft  bool // reduced by the defending fleet's anti-air
-	antiSub   bool // destroyer guns hit submarines harder
+	// intercepted aircraft flew into anti-air watch, which even precision bombing cannot slip past.
+	intercepted bool
+	antiSub     bool // destroyer guns hit submarines harder
 }
 
 // Legal reports whether side may take action a right now.
@@ -76,6 +89,8 @@ func (st *State) Legal(side Side, a Action) error {
 		targets = own.MoveTargets(a.ShipID)
 	case ActionSkill:
 		targets = own.SkillTargets(a.ShipID)
+	case ActionWatch:
+		targets = own.WatchTargets(a.ShipID)
 	case ActionUltimate:
 		if st.Gauge[side] < GaugeMax {
 			return fmt.Errorf("%w: gauge is not full", ErrInvalidAction)
@@ -101,7 +116,7 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 	ship := st.Boards[side].Ships[a.ShipID]
 	sp := ship.Spec
 	t := a.Target
-	res := Result{Side: side, Type: a.Type, ShipID: a.ShipID, Round: st.Turn + 1, Speed: sp.Speed, Late: a.Late(ship)}
+	res := Result{Side: side, Type: a.Type, ShipID: a.ShipID, Round: st.Turn + 1, Speed: sp.Speed, Late: a.Late(ship), Early: a.Early()}
 	gun := func() strike {
 		return strike{power: sp.Firepower, crit: sp.Crit, evadeDiv: 1, antiSub: sp.Class == Destroyer}
 	}
@@ -171,6 +186,10 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 				res.Special = SpecialPrecision
 				s.evadeDiv, s.aircraft = 0, false
 			}
+			if w := st.Boards[side.Opponent()].watcher(); w != nil {
+				st.intercept(side, ship, w, &res)
+				s.intercepted = true
+			}
 			res.Shots = []Shot{st.fire(side, t, s, rng)}
 		case SkillSpread:
 			st.launch(side, ship, &res, ActionSkill, kind, t, torpedo(spreadPct), rng)
@@ -185,6 +204,12 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 				}
 			}
 		}
+
+	case ActionWatch:
+		ship.Watches--
+		ship.Watch = watchRounds
+		// The order goes unseen unless the enemy has the ship in sight.
+		res.Hidden = !st.tracking(side.Opponent(), ship.Pos)
 
 	case ActionUltimate:
 		// Every gun in the fleet at once: armour-piercing, impossible to dodge,
@@ -234,6 +259,23 @@ func ultPct(aim, c Pos) int {
 		return ultInnerPct
 	}
 	return ultOuterPct
+}
+
+// intercept has watcher's anti-air watch meet the planes carrier launched:
+// another sortie is lost, the flight path gives the carrier away and locks on
+// to it, the guarded fleet's gauge and combo grow as if it had scouted, and
+// the watch, having paid off, can be ordered again.
+func (st *State) intercept(side Side, carrier, watcher *Ship, res *Result) {
+	res.Intercepted = true
+	carrier.Skill = max(carrier.Skill-1, 0)
+	carrier.Marked = markRounds
+	origin := carrier.Pos
+	res.Origin = &origin
+	watcher.Watches = watchUses(watcher.Spec)
+	opp := side.Opponent()
+	st.Gauge[opp] = min(st.Gauge[opp]+gaugeScout, GaugeMax)
+	st.Combo[opp]++
+	st.MaxCombo[opp] = max(st.MaxCombo[opp], st.Combo[opp])
 }
 
 // launch runs torpedoes from ship along the lanes of its aim. Each stops at
@@ -340,10 +382,11 @@ func (st *State) torpedoPower(sp Spec) int {
 }
 
 func (st *State) airPower(sp Spec) int {
+	p := sp.Air * airPct / 100
 	if st.Weather == Night {
-		return sp.Air / 2
+		return p / 2
 	}
-	return sp.Air
+	return p
 }
 
 // ultimatePower is the per-cell power of the all-fleet barrage: the average
@@ -428,6 +471,9 @@ func (st *State) damage(s strike, target *Ship, fleet *Board, rng *rand.Rand) (i
 	if s.aircraft {
 		dmg = dmg * aaScale / float64(aaScale+fleet.AA())
 	}
+	if s.intercepted {
+		dmg = dmg * interceptPct / 100
+	}
 	return max(int(dmg+0.5), 1), crit
 }
 
@@ -449,8 +495,8 @@ func (st *State) score(side Side, res *Result) {
 	switch {
 	case hits > 0 || len(res.Revealed) > 0:
 		st.Combo[side]++
-	case res.Type == ActionMove:
-		// Repositioning keeps the streak alive but does not extend it.
+	case res.Type == ActionMove || res.Type == ActionWatch:
+		// Repositioning or standing watch keeps the streak alive but does not extend it.
 	default:
 		st.Combo[side] = 0
 	}

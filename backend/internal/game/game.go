@@ -17,6 +17,7 @@
 //     moving again resolves late, after the other side's action, so it cannot
 //     dodge a shot aimed at where it is;
 //   - skill: the ship's class skill, a limited number of times per battle;
+//   - watch: a battleship or cruiser stands anti-air watch (see below);
 //   - ultimate: once the fleet gauge is full, an all-fleet barrage anywhere:
 //     the 3×3 around the aim point and two cells out along its row and column
 //     (on a wide sea the whole 5×5), heaviest at the centre.
@@ -31,6 +32,14 @@
 // bombing a ship the fleet is tracking (precision bombing), torpedoing a
 // ship at most two cells away (point-blank torpedo), and hitting a ship a
 // scouting skill has locked on to (marked fire).
+//
+// Anti-air watch guards the whole fleet from the round it is ordered, before
+// anything else that round, through the next two rounds; the ship on watch can
+// only sail meanwhile. Every airstrike on a guarded fleet is intercepted: it
+// does a fraction of its damage, the carrier loses another sortie, and the
+// planes' flight path gives the carrier away and locks on to it. A watch that
+// intercepts gives its ship the order back. The order is only announced when
+// the enemy is tracking the ship, and a ship seen on watch shows it.
 //
 // Flares and sonar lock on to every ship they find: until the end of the
 // next round, shots on a locked-on ship cannot be dodged and always crit.
@@ -217,11 +226,21 @@ type Ship struct {
 	// Marked counts the round ends left during which a scouting skill's lock-on
 	// makes every shot on the ship unavoidable and critical.
 	Marked int `json:"marked,omitempty"`
+	// Watch counts the round ends left of the ship's anti-air watch.
+	Watch int `json:"watch,omitempty"`
+	// Watches is how many more times the ship can stand anti-air watch.
+	Watches int `json:"watches,omitempty"`
 }
+
+// CanWatch reports whether the ship's class can stand anti-air watch.
+func (sp Spec) CanWatch() bool { return sp.Class == Battleship || sp.Class == Cruiser }
 
 func (s *Ship) Alive() bool { return s.HP > 0 }
 
 func (s *Ship) canGun() bool { return s.Ammo > 0 && s.Spec.Rule().GunRange > 0 }
+
+// onWatch reports whether the ship is standing anti-air watch: it can only sail.
+func (s *Ship) onWatch() bool { return s.Alive() && s.Watch > 0 }
 
 // CanStrike reports whether the ship can still deal damage on its own.
 // Torpedoes only count while the enemy has a surface ship for them to hit.
@@ -289,6 +308,16 @@ func (b *Board) AA() int {
 	return n
 }
 
+// watcher is the living ship standing anti-air watch for the fleet, if any.
+func (b *Board) watcher() *Ship {
+	for _, s := range b.Ships {
+		if s.onWatch() {
+			return s
+		}
+	}
+	return nil
+}
+
 // hull is the share of total hit points left, used to judge a timed-out battle.
 func (b *Board) hull() float64 {
 	hp, maxHP := 0, 0
@@ -350,7 +379,7 @@ func (b *Board) neighbours4(p Pos) []Pos {
 // gun range, and not occupied by a friendly living ship.
 func (b *Board) AttackTargets(id int) []Pos {
 	s, err := b.ship(id)
-	if err != nil || !s.Alive() || !s.canGun() {
+	if err != nil || !s.Alive() || !s.canGun() || s.onWatch() {
 		return []Pos{}
 	}
 	out := []Pos{}
@@ -366,10 +395,19 @@ func (b *Board) AttackTargets(id int) []Pos {
 // each picks the direction the torpedo runs.
 func (b *Board) TorpedoTargets(id int) []Pos {
 	s, err := b.ship(id)
-	if err != nil || !s.Alive() || s.Torps <= 0 {
+	if err != nil || !s.Alive() || s.Torps <= 0 || s.onWatch() {
 		return []Pos{}
 	}
 	return b.neighbours4(s.Pos)
+}
+
+// WatchTargets is the ship's own cell while it can stand anti-air watch.
+func (b *Board) WatchTargets(id int) []Pos {
+	s, err := b.ship(id)
+	if err != nil || !s.Alive() || !s.Spec.CanWatch() || s.Watches <= 0 || b.watcher() != nil {
+		return []Pos{}
+	}
+	return []Pos{s.Pos}
 }
 
 // MoveRange is how far the ship may sail this round.
@@ -403,7 +441,7 @@ func (b *Board) MoveTargets(id int) []Pos {
 // cell in the direction of travel.
 func (b *Board) SkillTargets(id int) []Pos {
 	s, err := b.ship(id)
-	if err != nil || !s.Alive() || s.Skill <= 0 {
+	if err != nil || !s.Alive() || s.Skill <= 0 || s.onWatch() {
 		return []Pos{}
 	}
 	switch s.Spec.SkillKind() {
@@ -552,7 +590,7 @@ func NewBoard(size int, specs []Spec, placements []Pos) (*Board, error) {
 		seen[p] = true
 		sp := specs[id]
 		sp.Speed = max(sp.Speed, sp.Rule().MinSpeed)
-		b.Ships = append(b.Ships, &Ship{ID: id, Spec: sp, Pos: p, HP: sp.HP, Ammo: sp.Ammo, Torps: sp.Torps, Skill: sp.Skill})
+		b.Ships = append(b.Ships, &Ship{ID: id, Spec: sp, Pos: p, HP: sp.HP, Ammo: sp.Ammo, Torps: sp.Torps, Skill: sp.Skill, Watches: watchUses(sp)})
 	}
 	return b, nil
 }
@@ -565,9 +603,13 @@ const (
 	ActionMove     ActionType = "move"
 	ActionSkill    ActionType = "skill"
 	ActionUltimate ActionType = "ultimate"
+	ActionWatch    ActionType = "watch"
 	// ActionRecon is not chosen by a player: it reports what scout planes
 	// found after a quiet spell. Its ShipID is -1.
 	ActionRecon ActionType = "recon"
+	// ActionUnknown is an enemy order that went unseen (a hidden anti-air
+	// watch), as Redact shows it. Its ShipID is -1.
+	ActionUnknown ActionType = "unknown"
 )
 
 type Action struct {
@@ -575,6 +617,10 @@ type Action struct {
 	ShipID int        `json:"shipId"`
 	Target Pos        `json:"target"`
 }
+
+// Early reports whether the action resolves before the other side's: anti-air
+// watch is up before the bombs fall.
+func (a Action) Early() bool { return a.Type == ActionWatch }
 
 // Late reports whether the action resolves after the other side's: torpedo
 // launches, and a move by a ship still under way from the previous round.
@@ -642,9 +688,11 @@ type Result struct {
 	// Round is the 1-based round the action was played in.
 	Round int `json:"round"`
 	// Speed is the acting ship's speed; Late marks torpedoes and moves by a
-	// ship still under way, which go after the other side's action.
+	// ship still under way, which go after the other side's action, Early an
+	// anti-air watch, which goes before it.
 	Speed int  `json:"speed"`
 	Late  bool `json:"late,omitempty"`
+	Early bool `json:"early,omitempty"`
 	// Cancelled actions never happened: the ship was sunk earlier in the round.
 	Cancelled bool    `json:"cancelled,omitempty"`
 	Special   Special `json:"special,omitempty"`
@@ -653,7 +701,8 @@ type Result struct {
 	Target *Pos `json:"target,omitempty"`
 	// Shots lists every cell that took fire, in order.
 	Shots []Shot `json:"shots,omitempty"`
-	// Origin is where torpedoes were launched from; their wake gives it away.
+	// Origin is where torpedoes were launched from, or where intercepted
+	// planes flew in from; either gives the launcher away.
 	Origin *Pos `json:"origin,omitempty"`
 	// Paths are the torpedo tracks up to where each one stopped.
 	Paths [][]Pos `json:"paths,omitempty"`
@@ -663,13 +712,17 @@ type Result struct {
 	Scanned  []Pos      `json:"scanned,omitempty"`
 	Revealed []Sighting `json:"revealed,omitempty"`
 
-	// Move fields. Hidden moves (submarines) carry no direction or distance.
+	// Move fields. Hidden moves (submarines) carry no direction or distance;
+	// a hidden watch is shown to the enemy as an unknown order (see Redact).
 	// Distance is how far the ship actually sailed: Blocked moves stop short
 	// of the enemy ship in the way, possibly without leaving their cell.
 	Direction Direction `json:"direction,omitempty"`
 	Distance  int       `json:"distance,omitempty"`
 	Hidden    bool      `json:"hidden,omitempty"`
 	Blocked   bool      `json:"blocked,omitempty"`
+
+	// Intercepted marks an airstrike flown into the enemy's anti-air watch.
+	Intercepted bool `json:"intercepted,omitempty"`
 
 	// Contact marks that the action left enemy ships side by side, which
 	// spots them to each other.

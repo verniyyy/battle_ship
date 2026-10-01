@@ -7,7 +7,7 @@ import { PortraitImg, ShipArt } from '../components/ShipArt'
 import { Backdrop, Badge, Modal, ResumeBanner, TopBar } from '../components/ui'
 import { fx } from '../fx'
 import { markNewsSeen, newsFor, unreadNews, type NewsItem } from '../news'
-import { lookOfCard, SKILL_INFO, SPECIAL_INFO, CLASS_INFO, TIPS, TORPEDO_INFO } from '../game'
+import { lookOfCard, SKILL_INFO, SPECIAL_INFO, CLASS_INFO, TIPS, TORPEDO_INFO, WATCH_INFO } from '../game'
 import { celebrateGrant, useGame } from '../state'
 import { portraitOf, useAssets } from '../theme'
 import { hasFeature, type Catalog, type FriendList, type GameSummary, type Gift, type Grant, type MatchResponse, type Profile } from '../types'
@@ -662,6 +662,10 @@ function RulesDialog({ onClose }: { onClose: () => void }) {
           </span>
           <span className="rule-skill">
             <em>移動</em>縦横に艦種ごとの距離まで（戦艦・空母 1、巡洋艦・潜水艦 2、駆逐艦 3）。方角と距離は敵に通知されます（潜水艦は秘匿）。2 ターン続けて動くと後攻になり、狙われた位置から逃げ切れません。
+          </span>
+          <span className="rule-skill">
+            {WATCH_INFO.icon} <em>{WATCH_INFO.name}</em>
+            {WATCH_INFO.desc}。
           </span>
         </li>
         <li>

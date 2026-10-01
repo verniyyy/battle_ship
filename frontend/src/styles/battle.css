@@ -584,6 +584,8 @@
   gap: 8px;
   align-items: stretch;
   min-height: 64px;
+  width: 100%;
+  justify-content: center;
 }
 
 .dock-hint {
@@ -594,7 +596,9 @@
 
 .cmd-btn {
   position: relative;
-  width: 116px;
+  /* A cruiser's five orders, the barrage and the go button share the dock: buttons give way. */
+  flex: 0 1 116px;
+  min-width: 0;
   display: grid;
   place-content: center;
   justify-items: center;
@@ -609,6 +613,7 @@
 
 .cmd-btn b {
   font-size: 17px;
+  white-space: nowrap;
 }
 
 .cmd-btn small {
@@ -647,8 +652,20 @@
     0 0 18px rgba(179, 136, 255, 0.9);
 }
 
+.cmd-btn.watch {
+  background: linear-gradient(180deg, rgba(30, 110, 130, 0.95), rgba(8, 40, 56, 0.95));
+  border-color: rgba(159, 232, 255, 0.6);
+}
+
+.cmd-btn.watch.on {
+  border-color: #fff;
+  box-shadow:
+    0 4px 0 #04202c,
+    0 0 18px rgba(159, 232, 255, 0.9);
+}
+
 .cmd-btn.ultimate {
-  width: 132px;
+  flex-basis: 132px;
   border-color: #fff;
   background:
     linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%) -200px 0 / 200px 100% no-repeat,
@@ -671,7 +688,7 @@
 }
 
 .cmd-btn.go {
-  width: 140px;
+  flex: 0 0.5 140px;
   color: #3a2400;
   background: linear-gradient(180deg, var(--gold-hi), var(--gold) 45%, var(--gold-2));
   border-color: #fff4cf;
@@ -2768,6 +2785,15 @@
   color: #3a2400;
   background: #ffd24a;
   animation: blink 0.8s infinite;
+}
+
+.watch-tag {
+  font-style: normal;
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 3px;
+  color: #06223a;
+  background: #9fe8ff;
 }
 
 .pin-tag {

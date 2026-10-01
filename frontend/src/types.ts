@@ -1,7 +1,7 @@
 export type Side = 'player' | 'cpu'
 export type ShipClass = 'battleship' | 'cruiser' | 'destroyer' | 'submarine' | 'carrier'
 export type SkillKind = 'barrage' | 'flare' | 'sonar' | 'spread' | 'airstrike'
-export type ActionType = 'attack' | 'torpedo' | 'move' | 'skill' | 'ultimate'
+export type ActionType = 'attack' | 'torpedo' | 'move' | 'skill' | 'ultimate' | 'watch'
 export type Special = 'spotting' | 'precision' | 'pointblank' | 'marked'
 export type Weather = 'clear' | 'fog' | 'storm' | 'night'
 export type Direction = 'north' | 'south' | 'east' | 'west'
@@ -66,6 +66,10 @@ export interface ShipView {
   pinned?: boolean
   /** A flare or sonar locked on: hits on it cannot miss and always crit, until the end of next round. */
   marked?: boolean
+  /** Rounds left of the ship's anti-air watch, counting this one. Shown for enemy ships only while spotted. */
+  watch?: number
+  /** How many more times the ship can stand anti-air watch. */
+  watches?: number
   /** Moved last round: moving again resolves late. */
   underWay?: boolean
   pos?: Pos
@@ -75,6 +79,7 @@ export interface ShipView {
   torpedoTargets?: Pos[]
   moveTargets?: Pos[]
   skillTargets?: Pos[]
+  watchTargets?: Pos[]
 }
 
 export interface Shot {
@@ -97,13 +102,19 @@ export interface Sighting {
 
 export interface Result {
   side: Side
-  /** 'recon' is a scout-plane report after a quiet spell; its shipId is -1. */
-  type: ActionType | 'recon'
+  /**
+   * 'recon' is a scout-plane report after a quiet spell; 'unknown' an enemy
+   * order that went unseen (an anti-air watch by an untracked ship). Both have
+   * shipId -1.
+   */
+  type: ActionType | 'recon' | 'unknown'
   shipId: number
   skill?: SkillKind
   round: number
   speed: number
   late?: boolean
+  /** Anti-air watch: goes before the other side's action. */
+  early?: boolean
   cancelled?: boolean
   special?: Special
   target?: Pos
@@ -117,6 +128,8 @@ export interface Result {
   distance?: number
   hidden?: boolean
   blocked?: boolean
+  /** An airstrike flown into the enemy's anti-air watch; origin is where the carrier was. */
+  intercepted?: boolean
   contact?: boolean
   combo: number
   gauge: number
@@ -331,6 +344,8 @@ export interface Profile {
     ssrs: number
     peakFriends: number
     cheers: number
+    watches?: number
+    intercepts?: number
   }
   badges: { login: boolean; missions: number; achievements: number; freeTen: boolean }
   created: string

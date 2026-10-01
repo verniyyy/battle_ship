@@ -381,6 +381,7 @@ func (s *Server) act(w http.ResponseWriter, r *http.Request, pid string) {
 		s.fail(w, err)
 		return
 	}
+	resp.Results = game.Redact(game.SidePlayer, resp.Results)
 	resp.Game = m.Game.PlayerView()
 	if m.Reward != nil {
 		resp.Reward = m.Reward.Public()
