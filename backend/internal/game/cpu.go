@@ -126,6 +126,13 @@ func (st *State) Decide(side Side, rng *rand.Rand) Action {
 		return 1
 	}
 	aa := float64(aaScale) / float64(aaScale+enemy.AA())
+	// A watch the enemy is seen standing intercepts every airstrike.
+	guarded := false
+	for _, seen := range st.Intel[side] {
+		if enemy.Ships[seen.ShipID].onWatch() {
+			guarded = true
+		}
+	}
 
 	type cand struct {
 		action Action
@@ -272,6 +279,10 @@ func (st *State) Decide(side Side, rng *rand.Rand) Action {
 				} else {
 					sc = max(pos(h, t)/100*p*aa, blind([]Pos{t})*2)
 				}
+				if guarded && lvl >= 1 {
+					// Flying into a watch costs two sorties and gives the carrier away.
+					sc = sc*interceptPct/100 - 20
+				}
 			case SkillSpread:
 				lanes := footprintLanes(st.Size, ActionSkill, kind, sp.Class, s.Pos, t)
 				sc = max(torpedoValue(s.Pos, lanes, float64(st.torpedoPower(sp))*spreadPct/100), blind(lanes...))*0.9 - 8
@@ -292,6 +303,10 @@ func (st *State) Decide(side Side, rng *rand.Rand) Action {
 				consider(Action{ActionSkill, s.ID, t}, sc+jitter())
 			}
 		}
+	}
+
+	if a, sc, ok := st.watchValue(side, lvl); ok {
+		consider(a, sc+jitter())
 	}
 
 	// A promising lead: take the shot.
@@ -335,8 +350,50 @@ func (st *State) Actions(side Side) []Action {
 		add(ActionTorpedo, own.TorpedoTargets(s.ID))
 		add(ActionMove, own.MoveTargets(s.ID))
 		add(ActionSkill, own.SkillTargets(s.ID))
+		add(ActionWatch, own.WatchTargets(s.ID))
 	}
 	return out
+}
+
+// watchValue scores standing anti-air watch: the airstrikes it could blunt
+// while it holds, weighed up when the enemy carriers can bomb our ships
+// precisely or have just bombed us. The ship with the fewest shells left
+// stands it, since it cannot fire meanwhile.
+func (st *State) watchValue(side Side, lvl int) (Action, float64, bool) {
+	own, enemy := st.Boards[side], st.Boards[side.Opponent()]
+	if lvl < 1 {
+		return Action{}, 0, false
+	}
+	sorties, air := 0, 0
+	for _, e := range enemy.Ships {
+		if e.Alive() && e.Spec.SkillKind() == SkillAirstrike && e.Skill > 0 {
+			sorties += e.Skill
+			air = max(air, st.airPower(e.Spec))
+		}
+	}
+	var by *Ship
+	for _, s := range own.Ships {
+		if len(own.WatchTargets(s.ID)) > 0 && (by == nil || s.Ammo < by.Ammo) {
+			by = s
+		}
+	}
+	if sorties == 0 || by == nil {
+		return Action{}, 0, false
+	}
+	through := float64(aaScale) / float64(aaScale+own.AA())
+	for _, seen := range st.Intel[side.Opponent()] {
+		if own.Ships[seen.ShipID].Alive() {
+			through = 1 // a tracked ship invites precision bombing
+		}
+	}
+	sc := float64(min(sorties, watchRounds)*air) * through * (100 - interceptPct) / 100 * 0.12
+	for i := len(st.History) - 1; i >= 0 && i >= len(st.History)-4; i-- {
+		if r := st.History[i]; r.Side != side && r.Skill == SkillAirstrike {
+			sc *= 1.5
+			break
+		}
+	}
+	return Action{ActionWatch, by.ID, by.Pos}, sc, true
 }
 
 // evade moves a ship the enemy is tracking when that is worth a turn:

@@ -93,6 +93,7 @@ func (sv ShipView) mirrored(size int) ShipView {
 	sv.TorpedoTargets = mirrorAll(sv.TorpedoTargets, size)
 	sv.MoveTargets = mirrorAll(sv.MoveTargets, size)
 	sv.SkillTargets = mirrorAll(sv.SkillTargets, size)
+	sv.WatchTargets = mirrorAll(sv.WatchTargets, size)
 	return sv
 }
 

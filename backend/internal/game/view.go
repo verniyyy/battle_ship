@@ -32,6 +32,11 @@ type ShipView struct {
 	Pinned bool `json:"pinned,omitempty"`
 	// Marked: a scouting skill has locked on to the ship. Shown for enemy ships only while spotted.
 	Marked bool `json:"marked,omitempty"`
+	// Watch is the rounds left of the ship's anti-air watch, counting this one.
+	// Shown for enemy ships only while spotted.
+	Watch int `json:"watch,omitempty"`
+	// Watches is how many more times the ship can stand anti-air watch.
+	Watches int `json:"watches,omitempty"`
 	// UnderWay: the ship moved last round, so moving again resolves late.
 	UnderWay    bool `json:"underWay,omitempty"`
 	Pos         *Pos `json:"pos,omitempty"`
@@ -42,6 +47,7 @@ type ShipView struct {
 	TorpedoTargets []Pos `json:"torpedoTargets,omitempty"`
 	MoveTargets    []Pos `json:"moveTargets,omitempty"`
 	SkillTargets   []Pos `json:"skillTargets,omitempty"`
+	WatchTargets   []Pos `json:"watchTargets,omitempty"`
 }
 
 type View struct {
@@ -91,7 +97,7 @@ func (st *State) ViewFor(me Side) View {
 		AA:         own.AA(),
 		EnemyAA:    foe.AA(),
 		LastGun:    st.LastGun[me],
-		History:    st.History,
+		History:    Redact(me, st.History),
 	}
 	inProgress := st.Status == StatusInProgress
 	for _, s := range own.Ships {
@@ -99,11 +105,15 @@ func (st *State) ViewFor(me Side) View {
 		sv.Pinned = s.Pinned > 0 && s.Alive()
 		sv.UnderWay = s.Sailed > 0 && s.Alive()
 		sv.Marked = s.Marked > 0 && s.Alive()
+		if s.onWatch() {
+			sv.Watch = s.Watch
+		}
 		if inProgress {
 			sv.AttackTargets = own.AttackTargets(s.ID)
 			sv.TorpedoTargets = own.TorpedoTargets(s.ID)
 			sv.MoveTargets = own.MoveTargets(s.ID)
 			sv.SkillTargets = own.SkillTargets(s.ID)
+			sv.WatchTargets = own.WatchTargets(s.ID)
 		}
 		v.PlayerShips = append(v.PlayerShips, sv)
 	}
@@ -116,6 +126,7 @@ func (st *State) ViewFor(me Side) View {
 				sv.Pos, sv.Spotted, sv.SpottedTurn = &p, true, seen.Turn
 				sv.Pinned = s.Pinned > 0
 				sv.Marked = s.Marked > 0
+				sv.Watch = s.Watch
 			}
 			// Every move is announced, so whether a ship is under way is public.
 			sv.UnderWay = s.Sailed > 0
@@ -136,7 +147,22 @@ func shipView(s *Ship, b *Board) ShipView {
 		HP: s.HP, MaxHP: sp.HP, Ammo: s.Ammo, MaxAmmo: sp.Ammo, Torps: s.Torps, MaxTorps: sp.Torps,
 		SkillKind: sp.SkillKind(), Skill: s.Skill, MaxSkill: sp.Skill,
 		Firepower: sp.Firepower, Torpedo: sp.Torpedo, Air: sp.Air, AA: sp.AA, Armor: sp.Armor, Speed: sp.Speed,
-		Crit: sp.Crit, Evasion: sp.Evasion, GunRange: sp.Rule().GunRange, MoveRange: b.MoveRange(s),
+		Watches: s.Watches,
+		Crit:    sp.Crit, Evasion: sp.Evasion, GunRange: sp.Rule().GunRange, MoveRange: b.MoveRange(s),
 		Pos: &p,
 	}
+}
+
+// Redact returns results as side me may see them: an anti-air watch ordered
+// by a ship the enemy was not tracking shows up as an unknown order, without
+// the ship or its initiative.
+func Redact(me Side, rs []Result) []Result {
+	out := make([]Result, len(rs))
+	for i, r := range rs {
+		if r.Side != me && r.Type == ActionWatch && r.Hidden {
+			r = Result{Side: r.Side, Type: ActionUnknown, ShipID: -1, Round: r.Round, Combo: r.Combo, Gauge: r.Gauge}
+		}
+		out[i] = r
+	}
+	return out
 }
