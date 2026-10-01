@@ -392,6 +392,33 @@ func TestAbandon(t *testing.T) {
 	}
 }
 
+// TestStaleTurnIsRefused: a second device still showing an earlier turn must
+// not have its action applied to a board it has not seen.
+func TestStaleTurnIsRefused(t *testing.T) {
+	ts := newTestServer(t)
+	var m matchResponse
+	do(t, ts, alice, "POST", "/api/games", createGameRequest{StageID: "1-1", Placements: placements}, &m)
+	target := m.Game.PlayerShips[1].AttackTargets[0]
+	at := func(turn int) actRequest {
+		return actRequest{Action: game.Action{Type: game.ActionAttack, ShipID: 1, Target: target}, Turn: &turn}
+	}
+	var resp actionResponse
+	if code := do(t, ts, alice, "POST", "/api/games/"+m.ID+"/actions", at(0), &resp); code != http.StatusOK || resp.Game.Turn != 1 {
+		t.Fatalf("first device: %d, turn %d", code, resp.Game.Turn)
+	}
+	// The other device still shows turn 0.
+	if code := do(t, ts, alice, "POST", "/api/games/"+m.ID+"/actions", at(0), nil); code != http.StatusConflict {
+		t.Fatalf("stale action: got %d", code)
+	}
+	var now matchResponse
+	if do(t, ts, alice, "GET", "/api/games/"+m.ID, nil, &now); now.Game.Turn != 1 {
+		t.Fatalf("the stale action was played: turn %d", now.Game.Turn)
+	}
+	if code := do(t, ts, alice, "POST", "/api/games/"+m.ID+"/actions", at(1), nil); code != http.StatusOK {
+		t.Fatalf("up-to-date action: got %d", code)
+	}
+}
+
 // TestPlayToTheEnd plays random legal moves until the battle ends, then checks
 // the reward, the chest and the profile it paid into.
 func TestPlayToTheEnd(t *testing.T) {

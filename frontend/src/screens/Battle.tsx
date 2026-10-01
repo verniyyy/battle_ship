@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Scene } from '../App'
-import { api } from '../api'
+import { api, ApiError } from '../api'
 import { audio, type PlayOpts, type Sfx } from '../audio'
 import { Board, CellOverlay } from '../components/Board'
 import { CutinLayer, DamageTally, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, tallyTier, type Cutin, type Float, type Tally } from '../components/battle'
@@ -109,7 +109,8 @@ function predictSpecial(g: GameView, ship: ShipView | null, mode: ActionType | n
     if (near && spotted(near)!.marked) return 'marked'
     return undefined
   }
-  const offensive = mode === 'attack' || mode === 'ultimate' || (mode === 'skill' && (ship.skillKind === 'barrage' || ship.skillKind === 'airstrike'))
+  // The all-fleet barrage always plays its own cut-in, whatever it hits.
+  const offensive = mode === 'attack' || (mode === 'skill' && (ship.skillKind === 'barrage' || ship.skillKind === 'airstrike'))
   if (offensive && cells.some((c) => spotted(c)?.marked)) return 'marked'
   return undefined
 }
@@ -137,7 +138,7 @@ export function Battle({
   onRematch: (m: MatchResponse) => void
   go: (s: Scene) => void
 }) {
-  const { catalog, card, setProfile } = useGame()
+  const { catalog, card, setProfile, refresh } = useGame()
   const gameId = initial.id
   const stage = initial.stage
   const [game, setGame] = useState(initial.game)
@@ -587,12 +588,7 @@ export function Battle({
 
     // Cut-in.
     const torpedo = r.type === 'torpedo' || r.skill === 'spread'
-    if (r.special) {
-      audio.play(mine ? 'charge' : 'menace')
-      fx.flash(mine ? '#fff6c0' : '#ff3050', 380, 0.7)
-      fx.shake(10, 300)
-      await show({ kind: 'special', special: r.special, look: actorLook, line: mine ? (c?.attack ?? '撃てっ！') : '……捉えた。', enemy: !mine }, 1500)
-    } else if (r.type === 'ultimate') {
+    if (r.type === 'ultimate') {
       // Every living ship takes its bow before the title stamps down (timed in CSS to the same beats).
       const crew = (mine ? game.playerShips : game.enemyShips)
         .filter((s) => s.hp > 0)
@@ -603,6 +599,11 @@ export function Battle({
       for (let i = 0; i < 4; i++) window.setTimeout(() => mounted.current && audio.play('stamp'), ms(1100 + i * 100))
       window.setTimeout(() => mounted.current && fx.shake(22, 500), ms(1050))
       await show({ kind: 'ultimate', crew, enemy: !mine, speed: speedRef.current }, 2700)
+    } else if (r.special) {
+      audio.play(mine ? 'charge' : 'menace')
+      fx.flash(mine ? '#fff6c0' : '#ff3050', 380, 0.7)
+      fx.shake(10, 300)
+      await show({ kind: 'special', special: r.special, look: actorLook, line: mine ? (c?.attack ?? '撃てっ！') : '……捉えた。', enemy: !mine }, 1500)
     } else if (mine) {
       const title =
         r.type === 'skill'
@@ -723,6 +724,26 @@ export function Battle({
     }
   }
 
+  // resync reloads the battle as the server has it, e.g. after it was played on from another device.
+  const resync = async () => {
+    try {
+      const m = await api.getGame(gameId)
+      if (!mounted.current) return
+      setSelected(null)
+      setMode(null)
+      setTarget(null)
+      setGame(m.game)
+      setLog(historyLog(m.game))
+      setReward(m.reward)
+      if (m.game.status === 'finished') {
+        void refresh()
+        setShowResult(true)
+      }
+    } catch {
+      // The notice already told the admiral; the next action will try again.
+    }
+  }
+
   const execute = async () => {
     if (!mode || !target || busy) return
     const shipId = mode === 'ultimate' ? flagship?.id : selected
@@ -730,7 +751,7 @@ export function Battle({
     setBusy(true)
     setHover(null)
     try {
-      const res = await api.act(gameId, mode, shipId, target)
+      const res = await api.act(gameId, mode, shipId, target, game.turn)
       setSelected(null)
       setMode(null)
       setTarget(null)
@@ -767,6 +788,8 @@ export function Battle({
       audio.play('error')
       setCutin({ kind: 'notice', side: 'cpu', text: (e as Error).message })
       window.setTimeout(() => mounted.current && setCutin(null), 1500)
+      // 409: the battle moved on (or ended) on another device; catch up with it.
+      if (e instanceof ApiError && e.status === 409) await resync()
     } finally {
       if (mounted.current) setBusy(false)
     }

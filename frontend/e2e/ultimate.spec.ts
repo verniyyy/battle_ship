@@ -30,12 +30,12 @@ function barrage(side: Result['side'], aim: Pos, hit: Pos, round: number, damage
   }
 }
 
-async function doctor(page: Page, who: Result['side']) {
+async function doctor(page: Page, who: Result['side'], { marked = false } = {}) {
   await page.route('**/api/games/current', async (route) => {
     const res = await route.fetch()
     const m = (await res.json()) as MatchResponse
     m.game.gauge = 100
-    Object.assign(m.game.enemyShips[0], { spotted: true, spottedTurn: 1, pos: { row: 2, col: 3 } })
+    Object.assign(m.game.enemyShips[0], { spotted: true, spottedTurn: 1, marked, pos: { row: 2, col: 3 } })
     await route.fulfill({ response: res, json: m })
   })
   await page.route('**/api/games/*/actions', async (route) => {
@@ -47,6 +47,8 @@ async function doctor(page: Page, who: Result['side']) {
       who === 'player'
         ? [barrage('player', { row: 2, col: 2 }, { row: 2, col: 3 }, round, 186)]
         : [barrage('cpu', { row: 1, col: 1 }, { row: 0, col: 0 }, round, 140)]
+    // As an older server billed a barrage over a locked-on ship.
+    if (marked) Object.assign(r.results[0], { special: 'marked' })
     await route.fulfill({ response: res, json: r })
   })
 }
@@ -113,4 +115,29 @@ test("the enemy's all-fleet barrage gets the red treatment", async ({ page }) =>
   await page.waitForTimeout(300)
   await page.screenshot({ path: `${shots}/ultimate-enemy-finale.png` })
   await expect(page.locator('.battle-screen.ult-active')).toHaveCount(0, { timeout: 8_000 })
+})
+
+test('a barrage over a locked-on enemy keeps its own cut-in, not the locked-on one', async ({ page }) => {
+  await doctor(page, 'player', { marked: true })
+  await deploy(page)
+  await expect(cell(page, 2, 3).locator('.ship-token.marked')).toBeVisible()
+
+  await page.locator('.cmd-btn.ultimate').click()
+  await cell(page, 2, 2).click()
+  await expect(page.locator('.cmd-btn.go')).toHaveClass(/ready/)
+  await expect(page.locator('.special-hint')).toHaveCount(0)
+  await page.screenshot({ path: `${shots}/ultimate-marked-aim.png` })
+
+  // Watch every cut-in that plays: the locked-on one must never show up.
+  await page.evaluate(() => {
+    const seen: string[] = ((window as unknown as { cutins: string[] }).cutins = [])
+    new MutationObserver(() => document.querySelectorAll('.cutin').forEach((el) => seen.push(el.className))).observe(document.body, { childList: true, subtree: true })
+  })
+  await page.locator('.cmd-btn.go').click()
+  await page.waitForSelector('.cutin.ultimate')
+  await page.screenshot({ path: `${shots}/ultimate-marked-cutin.png`, animations: 'disabled' })
+  await expect(page.locator('.battle-log li').first()).toContainText('全艦斉射', { timeout: 20_000 })
+  const seen = await page.evaluate(() => (window as unknown as { cutins: string[] }).cutins)
+  expect(seen.some((c) => c.includes('ultimate'))).toBeTruthy()
+  expect(seen.filter((c) => c.includes('special'))).toEqual([])
 })

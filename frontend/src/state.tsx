@@ -87,6 +87,17 @@ export function GameDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.signedIn])
 
+  // The same admiral may be playing on another device too: coming back to this
+  // tab picks up whatever was spent or earned there meanwhile.
+  useEffect(() => {
+    if (!session?.signedIn) return
+    const onShow = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    document.addEventListener('visibilitychange', onShow)
+    return () => document.removeEventListener('visibilitychange', onShow)
+  }, [session?.signedIn, refresh])
+
   const signOut = useCallback(async () => {
     await auth.logout()
     setProfile(null)

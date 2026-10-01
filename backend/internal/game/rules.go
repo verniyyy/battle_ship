@@ -200,7 +200,9 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 		st.waterColumns(side, &res)
 	}
 
-	if res.Special == "" && slices.ContainsFunc(res.Shots, func(s Shot) bool { return s.Marked && s.Damage > 0 }) {
+	// The all-fleet barrage keeps its own cut-in: locked-on shells still crit,
+	// but the finishing move is never billed as a mere locked-on shot.
+	if res.Special == "" && a.Type != ActionUltimate && slices.ContainsFunc(res.Shots, func(s Shot) bool { return s.Marked && s.Damage > 0 }) {
 		res.Special = SpecialMarked
 	}
 	st.LastGun[side] = lastGun

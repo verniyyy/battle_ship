@@ -99,8 +99,9 @@ export const api = {
       if (e instanceof ApiError && e.status === 404) return null
       throw e
     }),
-  act: (id: string, type: ActionType, shipId: number, target: Pos) =>
-    post<ActionResponse>(`/games/${id}/actions`, { type, shipId, target }),
+  /** turn is the round count the action was chosen on; the server refuses it (409) once the battle has moved on elsewhere. */
+  act: (id: string, type: ActionType, shipId: number, target: Pos, turn: number) =>
+    post<ActionResponse>(`/games/${id}/actions`, { type, shipId, target, turn }),
   /** Withdraw from the suspended battle for good; it is settled as a defeat. */
   abandon: (id: string) => post<ActionResponse>(`/games/${id}/abandon`),
   /** A fresh battle on the same stage with the fleet deployed as in game id. */
