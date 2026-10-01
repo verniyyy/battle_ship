@@ -109,7 +109,7 @@ test('a ten-pull with a UR and an SSR plays the full top-rarity show', async ({ 
   await page.screenshot({ path: `${shots}/gacha-omen-glitch.png` })
   await expect(page.locator('.dock-light.o4')).toBeVisible({ timeout: 10_000 })
   await expect(page.locator('.step-pips i.on')).toHaveCount(3)
-  await expect(page.locator('.roll-text')).toHaveText('超・確定！！！')
+  await expect(page.locator('.roll-text')).toHaveText('未知の艦影…！？')
   await page.screenshot({ path: `${shots}/gacha-roll-prism.png` })
 
   // The reveal holds its breath over the SSR before turning it.
@@ -142,7 +142,7 @@ test('a ten-pull with a UR and an SSR plays the full top-rarity show', async ({ 
   expect(errors).toEqual([])
 })
 
-test('an SSR single pull can open on the 激熱 omen', async ({ page }) => {
+test('an SSR single pull can open on the 旗艦 omen', async ({ page }) => {
   await newAdmiral(page)
   await rigPulls(page, [3])
   await toHome(page)
@@ -151,11 +151,11 @@ test('an SSR single pull can open on the 激熱 omen', async ({ page }) => {
   await page.evaluate(() => (Math.random = () => 0.69))
   await recordShow(page)
   await page.locator('.pull-btn.one').click()
-  await expect(page.locator('.omen-kanji.hot b')).toHaveText('激熱')
+  await expect(page.locator('.omen-kanji.hot b')).toHaveText('旗艦')
   await page.waitForTimeout(1500)
   await page.screenshot({ path: `${shots}/gacha-omen-kanji.png` })
   await expect(page.locator('.dock-light.o3')).toBeVisible({ timeout: 10_000 })
-  await expect(page.locator('.roll-text')).toHaveText('確定！！')
+  await expect(page.locator('.roll-text')).toHaveText('大型艦の艦影！')
   // Skipping still lands on the cut-in, and the card still turns before the ship's stage.
   await page.locator('.gacha-roll').click()
   await page.locator('.gacha-results').click()

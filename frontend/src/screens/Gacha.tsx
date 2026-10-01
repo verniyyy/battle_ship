@@ -14,7 +14,7 @@ type Phase = 'idle' | 'rolling' | 'reveal' | 'cutin' | 'spotlight' | 'summary'
 type Omen = 'alert' | 'bolt' | 'kanji' | 'glitch'
 
 const ORB_COLOR = ['#8fb8ff', '#4fc3ff', '#ffcf4a', '#ffffff', '#ffffff'] as const
-const ROLL_TEXT = ['建造中…', '建造中…', '激アツ！', '確定！！', '超・確定！！！']
+const ROLL_TEXT = ['建造中…', '建造中…', '船体が光を帯びる…', '大型艦の艦影！', '未知の艦影…！？']
 const OMEN_MS: Record<Omen, number> = { alert: 1400, bolt: 1300, kanji: 1750, glitch: 2100 }
 const STEP_MS = 520
 const PRISM = ['#b388ff', '#4fd5ff', '#ffffff', '#ff7ae0', '#9effe6']
@@ -577,8 +577,8 @@ export function Gacha({ onBack }: { onBack: () => void }) {
           {omen === 'bolt' && <div className="omen omen-bolt" />}
           {omen === 'kanji' && (
             <div className={`omen omen-kanji ${(plan?.top ?? 0) >= 3 ? 'hot' : ''}`}>
-              <small>ただならぬ気配……</small>
-              <b>{(plan?.top ?? 0) >= 3 ? '激熱' : '好機'}</b>
+              <small>工廠に異変……</small>
+              <b>{(plan?.top ?? 0) >= 3 ? '旗艦' : '精鋭'}</b>
             </div>
           )}
           {omen === 'glitch' && (
