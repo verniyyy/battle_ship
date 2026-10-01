@@ -63,14 +63,9 @@ type FriendCard struct {
 
 // FriendCard shows the admiral under their friend code.
 func (p *Profile) FriendCard(code string, lastActive time.Time) FriendCard {
-	c := FriendCard{Code: code, Name: p.Name, Comment: p.Comment, Level: p.Level, LastActive: lastActive}
+	c := FriendCard{Code: code, Name: p.Name, Comment: p.Comment, Level: p.Level, FleetPower: p.FleetPower(), LastActive: lastActive}
 	if s := p.Ship(p.Secretary); s != nil {
 		c.Secretary = s.Card
-	}
-	for _, u := range p.Fleet {
-		if s := p.Ship(u); s != nil {
-			c.FleetPower += Power(s.Spec())
-		}
 	}
 	return c
 }

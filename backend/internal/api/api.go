@@ -65,6 +65,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/friends/{code}/cheer", s.player(s.cheerFriends))
 	mux.HandleFunc("POST /api/friends/cheers/claim", s.player(s.claimCheers))
 
+	mux.HandleFunc("GET /api/rankings/{board}", s.player(s.ranking))
+
 	mux.HandleFunc("POST /api/games", s.player(s.createGame))
 	mux.HandleFunc("GET /api/games", s.player(s.listGames))
 	mux.HandleFunc("GET /api/games/current", s.player(s.currentGame))
