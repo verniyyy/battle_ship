@@ -234,9 +234,11 @@ just versions        # 手元・公開中の frontend（/version.json）・backe
 
 管理者は Google アカウントの `sub`（変わらない ID）で指定します。メールアドレスは使いません。
 
-1. 管理者にしたいアカウントで一度ログインする
-2. DB で `sub` を調べる: `SELECT subject FROM accounts WHERE provider = 'google' AND email = 'you@example.com';`
-3. `google:` を付けて登録し、反映する（複数人ならカンマ区切り）
+1. `sub` を調べる。`sub` はアプリによらずアカウントで共通なので、[OAuth 2.0 Playground](https://developers.google.com/oauthplayground) で取れます
+   - Step 1 にスコープ `openid email` を入れて「Authorize APIs」を押し、管理者にしたいアカウントでログイン
+   - Step 2 で「Exchange authorization code for tokens」
+   - Step 3 の Request URI に `https://openidconnect.googleapis.com/v1/userinfo` を入れて送信すると、返ってきた JSON に `sub` がある
+2. `google:` を付けて登録し、反映する（複数人ならカンマ区切り）
 
    ```sh
    cd backend
@@ -244,7 +246,7 @@ just versions        # 手元・公開中の frontend（/version.json）・backe
    cd .. && just deploy-api
    ```
 
-4. 管理者はログインし直す（それ以前のセッションには `sub` が入っていないため）
+3. 管理者はログインし直す（それ以前のセッションには `sub` が入っていないため）
 
 外すときは `ADMIN_SUBJECTS` から消して `just deploy-api` します。リストは毎リクエスト確認するので、反映した時点で管理画面に入れなくなります。ローカルの docker compose では、タイトル画面の「開発用ログイン（管理者）」で管理者 `dev:admin` として入れます。
 
