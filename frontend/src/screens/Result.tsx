@@ -126,7 +126,7 @@ export function ResultOverlay({
       if (c.tier === 2) fx.confetti(80)
       // The ones you didn't pick: show what you missed.
       const missed = r.reward.chests.some((ch, j) => j !== i && ch.tier === 2) && c.tier < 2
-      if (missed) window.setTimeout(() => notify('惜しい！隣の宝箱が大当たりだった…！', 'gold'), 900)
+      if (missed) window.setTimeout(() => notify('惜しい！隣の宝箱に大物が入っていた…！', 'gold'), 900)
     } catch (e) {
       notify((e as Error).message, 'error')
       setOpening(null)

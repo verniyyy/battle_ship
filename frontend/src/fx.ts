@@ -1,7 +1,7 @@
 // Screen-space juice: a canvas particle system laid over the whole stage, plus
 // shake, hit-stop and flash helpers. Coordinates are stage pixels (1280x720).
 
-type Kind = 'spark' | 'ember' | 'smoke' | 'debris' | 'ring' | 'glow' | 'drop' | 'confetti' | 'star' | 'coin' | 'bubble' | 'ray' | 'shard' | 'bolt'
+type Kind = 'spark' | 'ember' | 'smoke' | 'debris' | 'ring' | 'glow' | 'drop' | 'confetti' | 'star' | 'coin' | 'bubble' | 'ray' | 'shard'
 
 interface Particle {
   kind: Kind
@@ -23,8 +23,6 @@ interface Particle {
   ty?: number
   delay: number
   additive: boolean
-  /** A lightning bolt's jagged path, as x, y pairs. */
-  pts?: number[]
 }
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a)
@@ -314,20 +312,6 @@ class FxEngine {
     }
   }
 
-  /** A lightning strike from the top of the screen down to a point. */
-  lightning(x: number, y: number, color = '#cfe6ff') {
-    let cx = x + rand(-260, 260)
-    let cy = -20
-    const pts = [cx, cy]
-    while (cy < y) {
-      cy = Math.min(y, cy + rand(28, 70))
-      cx += rand(-50, 50) + (x - cx) * 0.18
-      pts.push(cx, cy)
-    }
-    this.add({ kind: 'bolt', x, y, max: 0.45, size: 6, color, pts })
-    this.add({ kind: 'glow', x, y, size: 160, max: 0.35, color, grow: 2 })
-  }
-
   /** Coins raining from the top of the screen. */
   coinRain(n = 60, color = '#ffd24a') {
     for (let i = 0; i < n; i++) {
@@ -542,21 +526,6 @@ class FxEngine {
         ctx.lineWidth = 1.5
         ctx.stroke()
         ctx.restore()
-        break
-      }
-      case 'bolt': {
-        const pts = p.pts ?? []
-        // Flickers as it fades, like a real strike's return strokes.
-        ctx.globalAlpha = Math.max(0, fade) * (Math.random() < 0.3 ? 0.35 : 1)
-        ctx.lineCap = 'round'
-        ctx.lineJoin = 'round'
-        for (const [w, c] of [[p.size * 4, p.color], [p.size, '#fff']] as const) {
-          ctx.lineWidth = w
-          ctx.strokeStyle = c
-          ctx.beginPath()
-          for (let i = 0; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1])
-          ctx.stroke()
-        }
         break
       }
       case 'ray': {
