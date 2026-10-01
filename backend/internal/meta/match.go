@@ -107,6 +107,9 @@ type BattleStats struct {
 	Skills    int `json:"skills"`
 	Ultimates int `json:"ultimates"`
 	MaxCombo  int `json:"maxCombo"`
+	// Watches are anti-air watches stood, Intercepts the enemy airstrikes they met.
+	Watches    int `json:"watches"`
+	Intercepts int `json:"intercepts"`
 }
 
 type Reward struct {
@@ -146,6 +149,9 @@ func battleStats(st *game.State) (BattleStats, []int) {
 	var bs BattleStats
 	score := make([]int, len(st.Boards[game.SidePlayer].Ships))
 	for _, r := range st.History {
+		if r.Side == game.SideCPU && r.Intercepted {
+			bs.Intercepts++
+		}
 		if r.Side != game.SidePlayer || r.Type == game.ActionRecon {
 			continue
 		}
@@ -158,6 +164,8 @@ func battleStats(st *game.State) (BattleStats, []int) {
 			bs.Skills++
 		case game.ActionUltimate:
 			bs.Ultimates++
+		case game.ActionWatch:
+			bs.Watches++
 		}
 		score[r.ShipID] += 2*r.Hits() + 3*r.Sinks() + r.Crits() + len(r.Revealed)
 	}
@@ -238,10 +246,12 @@ func Settle(m *Match, p *Profile, rng *rand.Rand, now time.Time) *Reward {
 	p.Stats.Sunk += bs.Sunk
 	p.Stats.Skills += bs.Skills
 	p.Stats.Ultimates += bs.Ultimates
+	p.Stats.Watches += bs.Watches
+	p.Stats.Intercepts += bs.Intercepts
 	p.Stats.MaxCombo = max(p.Stats.MaxCombo, bs.MaxCombo)
 	for stat, n := range map[string]int{
 		StatBattles: 1, StatHits: bs.Hits, StatSunk: bs.Sunk, StatCrits: bs.Crits,
-		StatSkills: bs.Skills, StatUltimates: bs.Ultimates,
+		StatSkills: bs.Skills, StatUltimates: bs.Ultimates, StatWatches: bs.Watches,
 	} {
 		p.bump(now, stat, n)
 	}

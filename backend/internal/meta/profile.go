@@ -93,6 +93,8 @@ type Stats struct {
 	MaxCombo   int `json:"maxCombo"`
 	Ultimates  int `json:"ultimates"`
 	Skills     int `json:"skills"`
+	Watches    int `json:"watches"`    // anti-air watches stood
+	Intercepts int `json:"intercepts"` // airstrikes met by anti-air watch
 	SSRs       int `json:"ssrs"`
 	// PeakFriends is the most friends the admiral has had at once, so an
 	// achievement for it stays earned after a friend is removed.
