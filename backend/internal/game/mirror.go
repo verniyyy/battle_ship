@@ -58,6 +58,7 @@ func (r Result) mirrored(size int) Result {
 	r.Side = r.Side.mirrored()
 	r.Target = mirrorPtr(r.Target, size)
 	r.Origin = mirrorPtr(r.Origin, size)
+	r.Emitter = mirrorPtr(r.Emitter, size)
 	r.Direction = r.Direction.mirrored()
 	r.Columns = mirrorAll(r.Columns, size)
 	r.Scanned = mirrorAll(r.Scanned, size)
