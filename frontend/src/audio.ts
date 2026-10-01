@@ -67,6 +67,11 @@ export type Sfx =
   | 'star'
   | 'error'
   | 'heart'
+  | 'stepup'
+  | 'thunder'
+  | 'shatter'
+  | 'heartbeat'
+  | 'jackpot'
 
 export type Track = 'home' | 'battle' | 'boss' | 'gacha' | 'win' | 'lose'
 export type Ambience = 'clear' | 'fog' | 'storm' | 'night'
@@ -1539,6 +1544,77 @@ class AudioEngine {
         for (const n of [60, 67, 72, 76, 79])
           this.osc(d, t + 0.05, { f: midi(n), type: 'sawtooth', voices: 3, spread: 22, width: 0.9, vol: 0.035, a: 0.25, dur: 1.8, d: 1, s: 0.6, r: 0.8, lp: 800, lp2: 2800, lpT: 1 })
         for (let i = 0; i < 8; i++) this.bell(sides[i % 2], t + 0.4 + (i / 8) * 1.6 + Math.random() * 0.1, 96 + [0, 2, 4, 7, 9, 12][Math.floor(Math.random() * 6)], 0.022, 0.25)
+        break
+      }
+      case 'stepup': {
+        // Construction's step-up: a hammer blow on the hull, ringing higher the hotter the orb (pitch = its level).
+        const lv = clamp(p, 0, 4)
+        const d = fx(0.4)
+        this.osc(d, t, { f: 85 + lv * 12, f2: 40, glide: 0.15, vol: 0.75, dur: 0.32, d: 0.1, drive: 1.6 })
+        this.noise(d, t, { color: 'pink', filter: 'bandpass', f: 1600 + lv * 300, q: 1.2, vol: 0.4, dur: 0.06, d: 0.02 })
+        this.fm(d, t, { f: midi(48 + lv * 4), ratio: 1.41, index: 3, index2: 0.2, indexT: 0.3, vol: 0.07, dur: 0.6, d: 0.2 })
+        const root = [60, 64, 67, 72, 76][lv]
+        ;[0, 7, 12].forEach((n, i) => this.bell(d, t + 0.02 + i * 0.03, root + n + 12, 0.045 + lv * 0.01, 0.4))
+        break
+      }
+      case 'thunder': {
+        // A lightning omen: the crack right overhead, then the roll across the sky.
+        this.duck(0.4, 0.8, 1)
+        const d = fx(0.5, { echo: 0.4 })
+        this.noise(d, t, { filter: 'highpass', f: 2000, vol: 0.8, dur: 0.015, d: 0.006, drive: 5 })
+        this.crackle(d, t, 30, 0.25, 0.5, 1500, 7000)
+        this.noise(d, t, { color: 'pink', f: 6000, f2: 400, fT: 0.4, vol: 0.7, dur: 0.5, d: 0.15, drive: 2 })
+        this.noise(d, t + 0.05, { color: 'brown', f: 300, f2: 90, fT: 1.6, vol: 0.9, a: 0.1, dur: 1.8, d: 0.8, r: 0.6, trem: 0.4, tremRate: 6 })
+        break
+      }
+      case 'shatter': {
+        // The screen breaking open: a crack, then a shower of glass.
+        this.duck(0.3, 0.6, 1)
+        const d = fx(0.45)
+        this.noise(d, t, { filter: 'highpass', f: 3000, vol: 0.9, dur: 0.02, d: 0.008, drive: 4 })
+        this.osc(d, t, { f: 95, f2: 38, glide: 0.2, vol: 0.85, dur: 0.45, d: 0.15, drive: 2 })
+        this.noise(d, t, { filter: 'highpass', f: 4500, vol: 0.4, dur: 0.7, d: 0.2, width: 0.8 })
+        const sides = [-0.6, 0.6].map((s) => this.out(this.sfxBus!, { pan: s, send: 0.4, vol: level }))
+        for (let i = 0; i < 24; i++)
+          this.fm(sides[i % 2], t + Math.pow(Math.random(), 1.5) * 0.8, { f: rnd(2500, 7000), ratio: 2.76, index: 1.5, index2: 0.1, indexT: 0.1, vol: rnd(0.02, 0.06), dur: 0.2, d: 0.05 })
+        break
+      }
+      case 'heartbeat': {
+        // Suspense before a top-rarity card turns over.
+        const d = fx(0.15)
+        for (const [at, v] of [[0, 1], [0.17, 0.7]]) {
+          this.osc(d, t + at, { f: 64, f2: 38, glide: 0.1, vol: 0.9 * v, dur: 0.22, d: 0.07, drive: 1.3 })
+          this.noise(d, t + at, { color: 'brown', f: 300, vol: 0.4 * v, dur: 0.08, d: 0.03 })
+        }
+        break
+      }
+      case 'jackpot': {
+        // A top-rarity ship arrives: impact, a ta-ta-ta-taaa fanfare and a cascade of coins.
+        // size 2 is UR: a tone higher, longer, with a choir swelling under it.
+        const ur = (opt.size ?? 1) >= 2
+        const k = ur ? 2 : 0
+        this.duck(0.12, ur ? 3.6 : 2.8, 2)
+        const d = fx(0.5)
+        this.osc(d, t, { f: 110, f2: 30, glide: 0.5, vol: 1, dur: 1, d: 0.35, drive: 2.2 })
+        this.noise(d, t, { filter: 'highpass', f: 1800, vol: 0.8, dur: 0.012, d: 0.005, drive: 5 })
+        this.noise(d, t, { color: 'brown', f: 6000, f2: 160, vol: 0.8, dur: 1, d: 0.3 })
+        this.timpani(d, t, 38 + k, 0.6)
+        this.cymbal(d, t, 0.3, 2.6)
+        for (const [at, ns] of [[0.12, [62, 69]], [0.27, [62, 69]], [0.42, [64, 71]]] as const) {
+          this.brass(d, t + at, ns.map((n) => n + k), 0.13, 0.045, 4400)
+          this.noise(d, t + at, { filter: 'bandpass', f: 2300, q: 0.7, vol: 0.2, dur: 0.1, d: 0.05 })
+        }
+        const big = t + 0.58
+        this.brass(d, big, [50, 62, 66, 69, 74, 78].map((n) => n + k), ur ? 2.8 : 2.2, 0.05, 5400)
+        this.timpani(d, big, 38 + k, 0.7)
+        this.cymbal(d, big, 0.28, 3)
+        const sides = [-0.7, 0.7].map((s) => this.out(this.sfxBus!, { pan: s, send: 0.6, vol: level }))
+        ;[86, 90, 93, 98, 102, 105, 110].forEach((n, i) => this.bell(sides[i % 2], big + 0.04 + i * 0.05, n + k, 0.05, 0.7))
+        for (let i = 0; i < (ur ? 40 : 26); i++)
+          this.fm(sides[i % 2], big + 0.3 + i * 0.055 + rnd(0, 0.03), { f: midi(pick([88, 91, 93, 95, 98, 100]) + k), ratio: 2, index: 1.2, index2: 0.1, indexT: 0.2, vol: 0.035, dur: 0.3, d: 0.1 })
+        if (ur)
+          for (const n of [62, 69, 74, 78, 81])
+            this.osc(d, big + 0.2, { f: midi(n + k), type: 'sawtooth', voices: 4, spread: 26, width: 0.9, vol: 0.03, a: 0.6, dur: 2.6, d: 1.5, s: 0.7, r: 1, lp: 1400, q: 0.8, vib: 18, vibRate: 5 })
         break
       }
       case 'start': {
