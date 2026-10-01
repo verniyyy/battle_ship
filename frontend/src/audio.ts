@@ -227,15 +227,12 @@ interface Song {
   comp?: { kind: 'ep' | 'stab' | 'bell'; hits: Hit[]; octave?: number }
   /** [step, semitones above the bar root, length] */
   bass?: { kind: 'round' | 'drive'; notes: Note[] }
-  arp?: { kind: 'pluck' | 'bell'; order: (number | null)[]; octave: number; min?: number }
+  arp?: { kind: 'pluck' | 'bell'; order: (number | null)[]; octave: number }
   /** [absolute step over the whole loop, MIDI note, length] */
-  lead?: { kind: 'brass' | 'flute' | 'dark' | 'bell'; notes: Note[]; min?: number }
+  lead?: { kind: 'brass' | 'flute' | 'dark' | 'bell'; notes: Note[] }
   drums?: Drums
-  /** Drums at the highest intensity. */
-  drumsHigh?: Drums
   /** Replaces the drums on the last bar of every four. */
   fill?: Drums
-  timpani?: boolean
 }
 
 // Tracks the user supplies as recordings (frontend/public/bgm), looped instead of synthesised.
@@ -267,7 +264,6 @@ const SONGS: Record<Exclude<Track, FileTrack>, Song> = {
     bass: { kind: 'round', notes: [[0, 0, 5], [6, 7, 2], [10, 12, 3], [14, 7, 2]] },
     lead: {
       kind: 'flute',
-      min: 1,
       notes: [
         [64, 81, 3], [68, 78, 2], [70, 76, 2], [72, 74, 6], [78, 76, 2],
         [80, 78, 4], [84, 81, 4], [88, 85, 6], [94, 83, 2],
@@ -370,7 +366,6 @@ class AudioEngine {
   private track: Track | null = null
   private song?: Song
   private ch?: Channels
-  private intensity = 1
   private seqTimer?: number
   private nextTime = 0
   private step = 0
@@ -1619,18 +1614,6 @@ class AudioEngine {
     this.schedule()
   }
 
-  /** Sets how hard the battle music drives: 0 calm, 1 normal, 2 climax. */
-  setIntensity(level: number) {
-    const next = clamp(Math.round(level), 0, 2)
-    if (next === this.intensity) return
-    const rising = next > this.intensity
-    this.intensity = next
-    // A crash marks the gear change.
-    if (rising && this.ctx && this.ch && this.song?.drumsHigh && !this.muted) {
-      this.cymbal(this.ch.drums, this.nextTime, 0.16, 1.6)
-    }
-  }
-
   /** Fades the current music out; the next music() call starts fresh. */
   private fadeMusic(sec: number) {
     this.track = null
@@ -1774,7 +1757,6 @@ class AudioEngine {
   private voiceStep(song: Song, ch: Channels, s: number, bar: number, i: number, t: number, sd: number) {
     const chord = song.chords[bar]
     const root = chord[0]
-    const lvl = this.intensity
     const barLen = sd * 16
 
     // Pad: one long chord per bar.
@@ -1824,7 +1806,7 @@ class AudioEngine {
     }
 
     // Arpeggio.
-    if (song.arp && lvl >= (song.arp.min ?? 0)) {
+    if (song.arp) {
       const a = song.arp.order[i]
       if (a !== null) {
         const n = chord[a % chord.length] + 12 * Math.floor(a / chord.length) + song.arp.octave
@@ -1834,18 +1816,17 @@ class AudioEngine {
     }
 
     // Lead.
-    if (song.lead && lvl >= (song.lead.min ?? 0)) {
+    if (song.lead) {
       for (const [at, n, len] of song.lead.notes) {
         if (at !== s) continue
         const dur = len * sd * 0.95
         this.leadNote(ch.lead, song.lead.kind, t, n, dur)
-        if (lvl >= 2 && song.lead.kind !== 'flute') this.leadNote(ch.lead, song.lead.kind, t, n - 12, dur, 0.6)
       }
     }
 
     // Drums.
-    const d = bar % 4 === 3 && song.fill ? song.fill : lvl >= 2 && song.drumsHigh ? song.drumsHigh : song.drums
-    if (d && (lvl > 0 || i % 4 === 0)) {
+    const d = bar % 4 === 3 && song.fill ? song.fill : song.drums
+    if (d) {
       const on = (p?: string) => p?.[i] === 'x'
       if (on(d.kick)) {
         this.osc(ch.drums, t, { f: 150, f2: 45, glide: 0.09, vol: 0.55, dur: 0.35, d: 0.14 })
@@ -1860,10 +1841,6 @@ class AudioEngine {
       if (on(d.shaker)) this.noise(ch.drums, t, { filter: 'bandpass', f: 6500, q: 1.2, vol: i % 2 ? 0.012 : 0.02, a: 0.01, dur: 0.05, d: 0.02 })
       if (on(d.tom)) this.osc(ch.drums, t, { f: 120 - (i % 4) * 12, f2: 70, glide: 0.2, vol: 0.3, dur: 0.35, d: 0.14 })
     }
-
-    // Timpani on phrase starts, and a crash at the top of the loop when driving hard.
-    if (song.timpani && i === 0 && bar % 2 === 0 && lvl >= 1) this.timpani(ch.drums, t, root - 12, 0.35)
-    if (i === 0 && bar % 4 === 0 && lvl >= 2) this.cymbal(ch.drums, t, 0.12, 1.4)
   }
 
   private leadNote(dest: AudioNode, kind: 'brass' | 'flute' | 'dark' | 'bell', t: number, n: number, dur: number, gain = 1) {
