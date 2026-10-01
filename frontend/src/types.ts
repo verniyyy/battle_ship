@@ -364,7 +364,58 @@ export const posLabel = (p: Pos) => `${COLS[p.col]}${p.row + 1}`
 export interface AuthSession {
   signedIn: boolean
   email?: string
+  /** May open the admin console. */
+  admin?: boolean
   /** Sign-in methods the server offers. */
   google: boolean
   dev: boolean
+}
+
+/** A present from the operators, collected from the harbour's gift box. */
+export interface Gift {
+  id: string
+  title: string
+  message: string
+  gems?: number
+  coins?: number
+  cards?: string[]
+  startsAt: string
+  endsAt: string
+  /** For every admiral (who joined before joinedBefore), or only listed ones. */
+  everyone: boolean
+  joinedBefore?: string
+}
+
+export interface ClaimedGift {
+  gift: Gift
+  grant: Grant
+}
+
+/** A gift as the admin console lists it. */
+export interface GiftRecord extends Gift {
+  createdBy: string
+  createdAt: string
+  revokedBy?: string
+  revokedAt?: string
+  recipients: number
+  claims: number
+}
+
+export interface PlayerSummary {
+  id: string
+  name: string
+  level: number
+  email?: string
+  gems: number
+  coins: number
+  created: string
+}
+
+export interface AuditEntry {
+  id: number
+  at: string
+  actor: string
+  action: string
+  target: string
+  detail: unknown
 }

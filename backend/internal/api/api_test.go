@@ -27,6 +27,8 @@ type memStore struct {
 	mu      sync.Mutex
 	players map[string][]byte
 	games   map[string][]byte
+	gifts   []*memGift
+	audit   []store.AuditEntry
 	n       int
 }
 
@@ -122,6 +124,120 @@ func (m *memStore) Resolve(context.Context, auth.Identity, string) (string, erro
 	return auth.NewPlayerID(), nil
 }
 
+// memGift is a gift in memStore; eligibility mirrors the database's query.
+type memGift struct {
+	store.GiftRecord
+	to      []string
+	claimed map[string]bool
+}
+
+func (m *memStore) pending(pid string, now time.Time) []meta.Gift {
+	var out []meta.Gift
+	for _, g := range m.gifts {
+		created := time.Time{}
+		if data, ok := m.players[pid]; ok {
+			var p meta.Profile
+			_ = json.Unmarshal(data, &p)
+			created = p.Created
+		}
+		joined := g.JoinedBefore == nil || (!created.IsZero() && created.Before(*g.JoinedBefore))
+		if g.RevokedAt == nil && g.Open(now) && !g.claimed[pid] && ((g.Everyone && joined) || slices.Contains(g.to, pid)) {
+			out = append(out, g.Gift)
+		}
+	}
+	return out
+}
+
+func (m *memStore) PendingGifts(_ context.Context, pid string, now time.Time) ([]meta.Gift, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.pending(pid, now), nil
+}
+
+func (m *memStore) ClaimGifts(ctx context.Context, pid, id string, now time.Time) ([]store.Claimed, *meta.Profile, error) {
+	m.mu.Lock()
+	gifts := m.pending(pid, now)
+	m.mu.Unlock()
+	var out []store.Claimed
+	p, err := m.UpdatePlayer(ctx, pid, func(p *meta.Profile) error {
+		for _, g := range gifts {
+			if id == "" || g.ID == id {
+				out = append(out, store.Claimed{Gift: g, Grant: p.ReceiveGift(&g, now)})
+			}
+		}
+		if id != "" && len(out) == 0 {
+			return store.ErrNotFound
+		}
+		return nil
+	})
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, c := range out {
+		for _, g := range m.gifts {
+			if g.ID == c.Gift.ID {
+				g.claimed[pid] = true
+				g.Claims++
+			}
+		}
+	}
+	return out, p, err
+}
+
+func (m *memStore) CreateGift(_ context.Context, g *meta.Gift, to []string, actor string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, pid := range to {
+		if _, ok := m.players[pid]; !ok {
+			return "", fmt.Errorf("%w: no admiral %s", meta.ErrInvalid, pid)
+		}
+	}
+	m.n++
+	rec := &memGift{GiftRecord: store.GiftRecord{Gift: *g, CreatedBy: actor, Recipients: len(to)}, to: to, claimed: map[string]bool{}}
+	rec.ID = fmt.Sprintf("gift%d", m.n)
+	m.gifts = append([]*memGift{rec}, m.gifts...)
+	m.audit = append([]store.AuditEntry{{Actor: actor, Action: "gift.create", Target: rec.ID}}, m.audit...)
+	return rec.ID, nil
+}
+
+func (m *memStore) RevokeGift(_ context.Context, id, actor string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, g := range m.gifts {
+		if g.ID == id {
+			now := time.Now()
+			g.RevokedAt, g.RevokedBy = &now, actor
+			m.audit = append([]store.AuditEntry{{Actor: actor, Action: "gift.revoke", Target: id}}, m.audit...)
+			return nil
+		}
+	}
+	return store.ErrNotFound
+}
+
+func (m *memStore) ListGifts(context.Context, int) ([]store.GiftRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []store.GiftRecord
+	for _, g := range m.gifts {
+		out = append(out, g.GiftRecord)
+	}
+	return out, nil
+}
+
+func (m *memStore) FindPlayers(_ context.Context, q string, _ int) ([]store.PlayerSummary, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.players[q]; ok {
+		return []store.PlayerSummary{{ID: q}}, nil
+	}
+	return nil, nil
+}
+
+func (m *memStore) AuditLog(context.Context, int) ([]store.AuditEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.audit, nil
+}
+
 const (
 	alice = "11111111-1111-4111-8111-111111111111"
 	bob   = "22222222-2222-4222-8222-222222222222"
@@ -134,13 +250,21 @@ func newTestServer(t *testing.T) *httptest.Server {
 	now := func() time.Time { return time.Date(2026, 9, 28, 12, 0, 0, 0, meta.JST) }
 	st := newMemStore()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s := New(st, auth.New(auth.Config{DevLogin: true}, sessions, st, log), log, rand.New(rand.NewPCG(1, 1)), now)
+	s := New(st, auth.New(auth.Config{DevLogin: true, AdminSubjects: []string{adminSubject}}, sessions, st, log), log, rand.New(rand.NewPCG(1, 1)), now)
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 	return ts
 }
 
+const adminSubject = "google:admin"
+
 func do(t *testing.T, ts *httptest.Server, player, method, path string, body any, out any) int {
+	t.Helper()
+	return doAs(t, ts, auth.Session{PlayerID: player}, nil, method, path, body, out)
+}
+
+// doAs calls the API as sess (no cookie when it has no player), with extra headers.
+func doAs(t *testing.T, ts *httptest.Server, sess auth.Session, header http.Header, method, path string, body any, out any) int {
 	t.Helper()
 	var r io.Reader
 	if body != nil {
@@ -148,8 +272,11 @@ func do(t *testing.T, ts *httptest.Server, player, method, path string, body any
 		r = bytes.NewReader(b)
 	}
 	req, _ := http.NewRequest(method, ts.URL+path, r)
-	if player != "" {
-		token, _ := sessions.Token(player, "")
+	for k, v := range header {
+		req.Header[k] = v
+	}
+	if sess.PlayerID != "" {
+		token, _ := sessions.Token(sess)
 		req.AddCookie(&http.Cookie{Name: "session", Value: token})
 	}
 	res, err := http.DefaultClient.Do(req)

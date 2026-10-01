@@ -40,7 +40,15 @@ type Config struct {
 	GoogleClientSecret string
 	// DevLogin allows signing in without Google. Only for local development.
 	DevLogin bool
+	// AdminSubjects are the session subjects (see Session.Subject) allowed into
+	// the admin console, e.g. "google:1234567890". Signing in with the dev
+	// login as an admin gives the subject DevAdminSubject.
+	AdminSubjects []string
 }
+
+// DevAdminSubject is the subject of an admin signed in through the dev login.
+// Google subjects are always prefixed "google:", so it cannot collide with one.
+const DevAdminSubject = "dev:admin"
 
 const (
 	googleIssuer = "https://accounts.google.com"
@@ -57,13 +65,19 @@ type Handler struct {
 	log       *slog.Logger
 	publicURL string
 	dev       bool
+	admins    map[string]bool
 
 	oauth    *oauth2.Config // nil when Google sign-in is not configured
 	verifier *oidc.IDTokenVerifier
 }
 
 func New(cfg Config, sessions *Sessions, accounts Accounts, log *slog.Logger) *Handler {
-	h := &Handler{sessions: sessions, accounts: accounts, log: log, publicURL: strings.TrimRight(cfg.PublicURL, "/"), dev: cfg.DevLogin}
+	h := &Handler{sessions: sessions, accounts: accounts, log: log, publicURL: strings.TrimRight(cfg.PublicURL, "/"), dev: cfg.DevLogin, admins: map[string]bool{}}
+	for _, s := range cfg.AdminSubjects {
+		if s = strings.TrimSpace(s); s != "" {
+			h.admins[s] = true
+		}
+	}
 	if cfg.GoogleClientID != "" {
 		h.oauth = &oauth2.Config{
 			ClientID:     cfg.GoogleClientID,
@@ -97,9 +111,31 @@ func (h *Handler) PlayerID(w http.ResponseWriter, r *http.Request) (string, bool
 	return s.PlayerID, ok
 }
 
+// Admin returns the signed-in session when it belongs to an admin. The list
+// is checked on every request, so taking a subject off it takes effect at once.
+func (h *Handler) Admin(w http.ResponseWriter, r *http.Request) (Session, bool) {
+	s, ok := h.sessions.Get(w, r)
+	return s, ok && s.Subject != "" && h.admins[s.Subject]
+}
+
+// FromOwnSite reports whether a state-changing request may come from the
+// browser's own pages: a cross-site page cannot forge it. Browsers name the
+// requesting page in Origin and Sec-Fetch-Site; tools that send neither carry
+// no ambient cookie of someone else's, so they pass.
+func (h *Handler) FromOwnSite(r *http.Request) bool {
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+		return false
+	}
+	if o := r.Header.Get("Origin"); o != "" && h.publicURL != "" && o != h.publicURL {
+		return false
+	}
+	return true
+}
+
 type sessionResponse struct {
 	SignedIn bool   `json:"signedIn"`
 	Email    string `json:"email,omitempty"`
+	Admin    bool   `json:"admin,omitempty"`
 	// The sign-in methods on offer.
 	Google bool `json:"google"`
 	Dev    bool `json:"dev"`
@@ -107,7 +143,7 @@ type sessionResponse struct {
 
 func (h *Handler) session(w http.ResponseWriter, r *http.Request) {
 	s, ok := h.sessions.Get(w, r)
-	writeJSON(w, http.StatusOK, sessionResponse{SignedIn: ok, Email: s.Email, Google: h.oauth != nil, Dev: h.dev})
+	writeJSON(w, http.StatusOK, sessionResponse{SignedIn: ok, Email: s.Email, Admin: ok && h.admins[s.Subject], Google: h.oauth != nil, Dev: h.dev})
 }
 
 func (h *Handler) logout(w http.ResponseWriter, _ *http.Request) {
@@ -197,7 +233,7 @@ func (h *Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, "resolve account", err)
 		return
 	}
-	if err := h.sessions.Issue(w, pid, claims.Email); err != nil {
+	if err := h.sessions.Issue(w, Session{PlayerID: pid, Email: claims.Email, Subject: "google:" + idt.Subject}); err != nil {
 		h.fail(w, r, "issue session", err)
 		return
 	}
@@ -205,10 +241,12 @@ func (h *Handler) googleCallback(w http.ResponseWriter, r *http.Request) {
 	h.back(w, r, "")
 }
 
-// devLogin signs in as the browser's guest player, or a new one, without Google.
+// devLogin signs in as the browser's guest player, or a new one, without
+// Google; with admin, as an admin when DevAdminSubject is on the list.
 func (h *Handler) devLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Guest string `json:"guest"`
+		Admin bool   `json:"admin"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<12)
 	_ = json.NewDecoder(r.Body).Decode(&req)
@@ -216,7 +254,11 @@ func (h *Handler) devLogin(w http.ResponseWriter, r *http.Request) {
 	if !IsPlayerID(pid) {
 		pid = NewPlayerID()
 	}
-	if err := h.sessions.Issue(w, pid, "dev@localhost"); err != nil {
+	sess := Session{PlayerID: pid, Email: "dev@localhost"}
+	if req.Admin {
+		sess.Subject = DevAdminSubject
+	}
+	if err := h.sessions.Issue(w, sess); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}

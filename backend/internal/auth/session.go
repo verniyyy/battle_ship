@@ -27,7 +27,9 @@ const (
 type Session struct {
 	PlayerID string `json:"p"`
 	// Email is the Google account's address, shown so players know which account they use.
-	Email   string `json:"e,omitempty"`
+	Email string `json:"e,omitempty"`
+	// Subject is the account's stable id at its provider, which decides who is an admin.
+	Subject string `json:"s,omitempty"`
 	Expires int64  `json:"x"`
 }
 
@@ -79,14 +81,15 @@ func NewSessions(secret []byte, secure bool, now func() time.Time) *Sessions {
 	return &Sessions{signer: signer{key: secret}, secure: secure, now: now}
 }
 
-// Token returns a cookie value for a session starting now.
-func (s *Sessions) Token(playerID, email string) (string, error) {
-	return s.signer.seal(Session{PlayerID: playerID, Email: email, Expires: s.now().Add(sessionTTL).Unix()})
+// Token returns a cookie value for sess starting now; its expiry is set here.
+func (s *Sessions) Token(sess Session) (string, error) {
+	sess.Expires = s.now().Add(sessionTTL).Unix()
+	return s.signer.seal(sess)
 }
 
 // Issue signs the player in on this browser.
-func (s *Sessions) Issue(w http.ResponseWriter, playerID, email string) error {
-	token, err := s.Token(playerID, email)
+func (s *Sessions) Issue(w http.ResponseWriter, sess Session) error {
+	token, err := s.Token(sess)
 	if err != nil {
 		return err
 	}
@@ -112,7 +115,7 @@ func (s *Sessions) Get(w http.ResponseWriter, r *http.Request) (Session, bool) {
 		return Session{}, false
 	}
 	if left < renewBelow {
-		_ = s.Issue(w, sess.PlayerID, sess.Email)
+		_ = s.Issue(w, sess)
 	}
 	return sess, true
 }

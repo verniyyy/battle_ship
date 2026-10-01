@@ -28,7 +28,7 @@ func TestSessionRoundTrip(t *testing.T) {
 	now := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
 	s := NewSessions(secret, true, func() time.Time { return now })
 	rec := httptest.NewRecorder()
-	if err := s.Issue(rec, "p1", "a@example.com"); err != nil {
+	if err := s.Issue(rec, Session{PlayerID: "p1", Email: "a@example.com"}); err != nil {
 		t.Fatal(err)
 	}
 	c := rec.Result().Cookies()[0]
@@ -57,7 +57,7 @@ func TestSessionRoundTrip(t *testing.T) {
 		t.Fatal("unsigned session accepted")
 	}
 	other := NewSessions([]byte("another-secret-another-secret-xx"), true, s.now)
-	if tok, _ := other.Token("p1", ""); func() bool { _, ok, _ := get(tok); return ok }() {
+	if tok, _ := other.Token(Session{PlayerID: "p1"}); func() bool { _, ok, _ := get(tok); return ok }() {
 		t.Fatal("session signed with another key accepted")
 	}
 
@@ -127,7 +127,7 @@ func TestGoogleSignIn(t *testing.T) {
 	accounts := &fakeAccounts{}
 	sessions := NewSessions(secret, false, time.Now)
 	var app *httptest.Server
-	h := New(Config{PublicURL: "http://placeholder", GoogleClientID: "client-1", GoogleClientSecret: "s"}, sessions, accounts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	h := New(Config{PublicURL: "http://placeholder", GoogleClientID: "client-1", GoogleClientSecret: "s", AdminSubjects: []string{"google:google-sub-1"}}, sessions, accounts, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	h.oauth.Endpoint.TokenURL = tokenSrv.URL
 	h.verifier = oidc.NewVerifier(googleIssuer, &oidc.StaticKeySet{PublicKeys: []crypto.PublicKey{key.Public()}}, &oidc.Config{ClientID: "client-1"})
 	mux := http.NewServeMux()
@@ -189,7 +189,7 @@ func TestGoogleSignIn(t *testing.T) {
 	if accounts.got != (Identity{Provider: "google", Subject: "google-sub-1", Email: "admiral@example.com"}) || accounts.guest != guest {
 		t.Fatalf("resolved %+v guest %q", accounts.got, accounts.guest)
 	}
-	if s := signedIn(); !s.SignedIn || s.Email != "admiral@example.com" || !s.Google || s.Dev {
+	if s := signedIn(); !s.SignedIn || s.Email != "admiral@example.com" || !s.Admin || !s.Google || s.Dev {
 		t.Fatalf("session: %+v", s)
 	}
 	// The flow cookie is single-use.
@@ -214,6 +214,57 @@ func TestDevLoginIsOptIn(t *testing.T) {
 	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/api/auth/dev", strings.NewReader(`{}`)))
 	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("dev login without DEV_LOGIN: %d", rec.Code)
+	}
+}
+
+func TestAdmin(t *testing.T) {
+	h := New(Config{DevLogin: true, PublicURL: "https://game.example", AdminSubjects: []string{" " + DevAdminSubject + " ", "google:42"}},
+		NewSessions(secret, true, time.Now), &fakeAccounts{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	mux := http.NewServeMux()
+	h.Register(mux)
+	login := func(body string) *http.Cookie {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/api/auth/dev", strings.NewReader(body)))
+		return rec.Result().Cookies()[0]
+	}
+	isAdmin := func(c *http.Cookie) bool {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.AddCookie(c)
+		_, ok := h.Admin(httptest.NewRecorder(), r)
+		return ok
+	}
+	if isAdmin(login(`{}`)) {
+		t.Fatal("a plain dev login is not an admin")
+	}
+	if !isAdmin(login(`{"admin":true}`)) {
+		t.Fatal("dev admin login refused")
+	}
+	// Subjects off the list are refused, as are requests with no session.
+	tok, _ := h.sessions.Token(Session{PlayerID: "p1", Subject: "google:43"})
+	if isAdmin(&http.Cookie{Name: sessionCookie, Value: tok}) || isAdmin(&http.Cookie{Name: "other", Value: "x"}) {
+		t.Fatal("non-admin accepted")
+	}
+
+	for _, c := range []struct {
+		origin, site string
+		ok           bool
+	}{
+		{"", "", true},
+		{"https://game.example", "same-origin", true},
+		{"https://evil.example", "", false},
+		{"", "cross-site", false},
+		{"", "same-site", false},
+	} {
+		r := httptest.NewRequest("POST", "/", nil)
+		if c.origin != "" {
+			r.Header.Set("Origin", c.origin)
+		}
+		if c.site != "" {
+			r.Header.Set("Sec-Fetch-Site", c.site)
+		}
+		if got := h.FromOwnSite(r); got != c.ok {
+			t.Errorf("origin %q site %q: got %v", c.origin, c.site, got)
+		}
 	}
 }
 

@@ -9,9 +9,9 @@ import { markNewsSeen, NEWS, unreadNews } from '../news'
 import { lookOfCard, SKILL_INFO, SPECIAL_INFO, CLASS_INFO, TIPS, TORPEDO_INFO } from '../game'
 import { celebrateGrant, useGame } from '../state'
 import { portraitOf, useAssets } from '../theme'
-import type { Catalog, GameSummary, Grant, MatchResponse, Profile } from '../types'
+import type { Catalog, GameSummary, Gift, Grant, MatchResponse, Profile } from '../types'
 
-type Dialog = 'record' | 'rules' | 'login' | 'profile' | 'news' | null
+type Dialog = 'record' | 'rules' | 'login' | 'profile' | 'news' | 'gifts' | null
 
 export function nextStage(cat: Catalog, p: Profile) {
   const open = cat.stages.find((s, i) => !(p.stages[s.id] & 1) && (i === 0 || p.stages[cat.stages[i - 1].id] & 1))
@@ -19,12 +19,14 @@ export function nextStage(cat: Catalog, p: Profile) {
 }
 
 export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resumable: MatchResponse | null; onResume?: () => void }) {
-  const { profile, catalog, card, setProfile, error, notify } = useGame()
+  const { profile, catalog, card, setProfile, error, notify, session } = useGame()
   const [line, setLine] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
   const [loginSeen, setLoginSeen] = useState(false)
   const [unread, setUnread] = useState(() => unreadNews().length)
   const [newsShown, setNewsShown] = useState(false)
+  const [gifts, setGifts] = useState<Gift[]>([])
+  const [giftsShown, setGiftsShown] = useState(false)
   const lineTimer = useRef<number>(undefined)
   const artRef = useRef<HTMLButtonElement>(null)
 
@@ -79,6 +81,24 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
     }, 900)
     return () => clearTimeout(t)
   }, [profile, unread, newsShown, loginPending, dialog])
+
+  useEffect(() => {
+    api
+      .gifts()
+      .then((r) => setGifts(r.gifts))
+      .catch(() => setGifts([]))
+  }, [])
+
+  // Gifts from the operators pop up once per visit, after the bonus and the news.
+  const newsPending = !!unread && !newsShown
+  useEffect(() => {
+    if (!profile || !gifts.length || giftsShown || loginPending || newsPending || dialog) return
+    const t = window.setTimeout(() => {
+      setGiftsShown(true)
+      setDialog('gifts')
+    }, 900)
+    return () => clearTimeout(t)
+  }, [profile, gifts.length, giftsShown, loginPending, newsPending, dialog])
 
   if (!profile || !catalog) {
     return (
@@ -153,6 +173,11 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
         <span className="chip stars">
           ★<b>{profile.totalStars}</b>/{catalog.stages.length * 3}
         </span>
+        {session?.admin && (
+          <button className="chip admin" onClick={() => nav({ name: 'admin' })}>
+            🛠<b>管理</b>
+          </button>
+        )}
       </div>
 
       {/* ---- main menu ---- */}
@@ -195,6 +220,15 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
             <Badge n={unread} />
           </button>
         </div>
+        {gifts.length > 0 && (
+          <button className="gift-banner" onClick={() => open('gifts')}>
+            <span className="gift-ico">🎀</span>
+            <span>
+              運営から<b>贈り物</b>が届いています
+            </span>
+            <Badge n={gifts.length} />
+          </button>
+        )}
       </nav>
 
       {b.freeTen && (
@@ -225,6 +259,36 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
           }}
         />
       )}
+      {dialog === 'gifts' && (
+        <GiftDialog
+          gifts={gifts}
+          onClaim={async (id, from) => {
+            try {
+              const r = await api.claimGifts(id)
+              setProfile(r.profile)
+              const got = new Set(r.claimed.map((c) => c.gift.id))
+              setGifts((gs) => gs.filter((g) => !got.has(g.id)))
+              const sum = (k: 'gems' | 'coins') => r.claimed.reduce((n, c) => n + (c.grant[k] ?? 0), 0)
+              for (const c of r.claimed) {
+                for (const g of c.grant.cards ?? []) {
+                  const name = card(g.card)?.name ?? g.card
+                  notify(g.new ? `新しい艦「${name}」が着任しました！` : `「${name}」が限界突破しました（★${g.stars}）`, 'gold')
+                }
+              }
+              celebrateGrant({ gems: sum('gems'), coins: sum('coins') }, from)
+              audio.play('stamp')
+            } catch (e) {
+              notify((e as Error).message, 'error')
+              // Something may have changed meanwhile (stopped, or claimed elsewhere).
+              api
+                .gifts()
+                .then((g) => setGifts(g.gifts))
+                .catch(() => {})
+            }
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
       {dialog === 'login' && (
         <LoginDialog
           profile={profile}
@@ -244,6 +308,60 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
         />
       )}
     </div>
+  )
+}
+
+/** The gift box: the operators' presents waiting to be collected. */
+function GiftDialog({ gifts, onClaim, onClose }: { gifts: Gift[]; onClaim: (id: string | undefined, from: Element | null) => Promise<void>; onClose: () => void }) {
+  const { card } = useGame()
+  const [busy, setBusy] = useState(false)
+  const claim = async (id: string | undefined, from: Element | null) => {
+    if (busy) return
+    setBusy(true)
+    await onClaim(id, from)
+    setBusy(false)
+  }
+  return (
+    <Modal title="贈り物" onClose={onClose} wide className="gift-modal">
+      {gifts.length ? (
+        <ul className="gift-list">
+          {gifts.map((g) => (
+            <li key={g.id} data-gift={g.id}>
+              <div className="gift-main">
+                <h3>{g.title}</h3>
+                {g.message && <p>{g.message}</p>}
+                <div className="gift-contents">
+                  {!!g.gems && <span className="gift-item gems">💎{g.gems.toLocaleString()}</span>}
+                  {!!g.coins && <span className="gift-item coins">💰{g.coins.toLocaleString()}</span>}
+                  {g.cards?.map((c, i) => (
+                    <span key={i} className="gift-item card">
+                      ⚓{card(c)?.name ?? c}
+                    </span>
+                  ))}
+                </div>
+                <small className="gift-deadline">{new Date(g.endsAt).toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' })} まで</small>
+              </div>
+              <button className="claim-btn" disabled={busy} onClick={(e) => void claim(g.id, e.currentTarget)}>
+                受け取る
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted center">受け取れる贈り物はありません</p>
+      )}
+      <div className="modal-actions">
+        {gifts.length > 1 ? (
+          <button className="pill-btn gold big" disabled={busy} onClick={(e) => void claim(undefined, e.currentTarget)}>
+            すべて受け取る
+          </button>
+        ) : (
+          <button className="pill-btn" onClick={onClose}>
+            閉じる
+          </button>
+        )}
+      </div>
+    </Modal>
   )
 }
 
@@ -359,6 +477,15 @@ function ProfileDialog({ profile, onClose }: { profile: Profile; onClose: () => 
     ['保有艦', `${profile.ships.length}${catalog ? ` / ${catalog.cards.length}` : ''} 隻`],
     ['海域の星', `★${profile.totalStars}`],
   ]
+  // Shown so an admiral can tell the operators who they are when asking for help.
+  const copyId = async () => {
+    try {
+      await navigator.clipboard.writeText(profile.id)
+      notify('提督 ID をコピーしました', 'good')
+    } catch {
+      notify('コピーできませんでした', 'error')
+    }
+  }
 
   return (
     <Modal title="提督プロフィール" onClose={onClose} wide className="profile-modal">
@@ -398,6 +525,12 @@ function ProfileDialog({ profile, onClose }: { profile: Profile; onClose: () => 
           </div>
         ))}
       </dl>
+      <p className="profile-id">
+        提督 ID <code>{profile.id}</code>
+        <button className="chip-btn" onClick={() => void copyId()}>
+          コピー
+        </button>
+      </p>
       <div className="modal-actions">
         <button className="pill-btn gold" disabled={!nameOk || chars(comment.trim()) > COMMENT_MAX || !changed || busy} onClick={() => void save()}>
           保存する

@@ -70,20 +70,7 @@ func (p *Postgres) UpdatePlayer(ctx context.Context, id string, fn func(*meta.Pr
 	var prof *meta.Profile
 	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
 		var err error
-		prof, err = lockPlayer(ctx, tx, id)
-		if errors.Is(err, ErrNotFound) {
-			data, err := json.Marshal(meta.NewProfile(id, time.Now()))
-			if err != nil {
-				return err
-			}
-			// A concurrent first request may have created the row; either way it exists now.
-			if _, err := tx.Exec(ctx, `INSERT INTO players (id, profile) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, id, data); err != nil {
-				return err
-			}
-			if prof, err = lockPlayer(ctx, tx, id); err != nil {
-				return err
-			}
-		} else if err != nil {
+		if prof, err = lockOrCreatePlayer(ctx, tx, id); err != nil {
 			return err
 		}
 		if err := fn(prof); err != nil {
@@ -95,6 +82,23 @@ func (p *Postgres) UpdatePlayer(ctx context.Context, id string, fn func(*meta.Pr
 		return nil, err
 	}
 	return prof, nil
+}
+
+// lockOrCreatePlayer locks the player's profile, creating it on first use.
+func lockOrCreatePlayer(ctx context.Context, tx pgx.Tx, id string) (*meta.Profile, error) {
+	prof, err := lockPlayer(ctx, tx, id)
+	if !errors.Is(err, ErrNotFound) {
+		return prof, err
+	}
+	data, err := json.Marshal(meta.NewProfile(id, time.Now()))
+	if err != nil {
+		return nil, err
+	}
+	// A concurrent first request may have created the row; either way it exists now.
+	if _, err := tx.Exec(ctx, `INSERT INTO players (id, profile) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, id, data); err != nil {
+		return nil, err
+	}
+	return lockPlayer(ctx, tx, id)
 }
 
 func lockPlayer(ctx context.Context, tx pgx.Tx, id string) (*meta.Profile, error) {
@@ -230,14 +234,18 @@ func scanMatch(row pgx.Row) (*meta.Match, error) {
 func scanJSON(row pgx.Row, v any) error {
 	var data []byte
 	if err := row.Scan(&data); err != nil {
-		var pgErr *pgconn.PgError
-		// A malformed UUID is just as "not found" as a missing row.
-		if errors.Is(err, pgx.ErrNoRows) || (errors.As(err, &pgErr) && pgErr.Code == "22P02") {
+		if isNotFound(err) {
 			return ErrNotFound
 		}
 		return err
 	}
 	return json.Unmarshal(data, v)
+}
+
+// isNotFound reports a missing row; a malformed UUID is just as "not found".
+func isNotFound(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.Is(err, pgx.ErrNoRows) || (errors.As(err, &pgErr) && pgErr.Code == "22P02")
 }
 
 func (p *Postgres) Resolve(ctx context.Context, id auth.Identity, guestID string) (string, error) {

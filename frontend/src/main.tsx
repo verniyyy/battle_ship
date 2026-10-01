@@ -8,6 +8,7 @@ import './styles/meta.css'
 import './styles/battle.css'
 import './styles/gacha.css'
 import './styles/scenery.css'
+import './styles/gifts.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -1,13 +1,18 @@
 import type {
   ActionResponse,
+  AuditEntry,
   AuthSession,
   ActionType,
   Catalog,
   Chest,
+  ClaimedGift,
   GameSummary,
   Gain,
+  Gift,
+  GiftRecord,
   Grant,
   MatchResponse,
+  PlayerSummary,
   Pos,
   Profile,
   Reward,
@@ -65,7 +70,8 @@ export const auth = {
     const g = guestId()
     location.href = `/api/auth/google/login${g ? `?guest=${encodeURIComponent(g)}` : ''}`
   },
-  dev: () => post<void>('/auth/dev', { guest: guestId() }),
+  /** Local development only; admin signs in as the dev admin the server may list. */
+  dev: (admin = false) => post<void>('/auth/dev', { guest: guestId(), admin }),
   logout: () => post<void>('/auth/logout'),
 }
 
@@ -99,4 +105,20 @@ export const api = {
   rematch: (id: string) => post<MatchResponse>(`/games/${id}/rematch`),
   openChest: (id: string, index: number) => post<WithProfile<{ chest: Chest; reward: Reward }>>(`/games/${id}/chest`, { index }),
   history: (limit = 20) => request<{ games: GameSummary[] }>(`/games?limit=${limit}`),
+
+  gifts: () => request<{ gifts: Gift[] }>('/gifts'),
+  /** Collects one gift, or every pending one without an id. */
+  claimGifts: (id?: string) => post<WithProfile<{ claimed: ClaimedGift[] }>>('/gifts/claim', { id }),
+}
+
+/** A gift as drafted in the admin console. */
+export type GiftDraft = Omit<Gift, 'id'>
+
+/** The operators' console; the server lets only admins in. */
+export const admin = {
+  gifts: () => request<{ gifts: GiftRecord[] }>('/admin/gifts'),
+  createGift: (gift: GiftDraft, recipients: string[]) => post<{ id: string }>('/admin/gifts', { gift, recipients }),
+  revokeGift: (id: string) => post<void>(`/admin/gifts/${id}/revoke`),
+  players: (q: string) => request<{ players: PlayerSummary[] }>(`/admin/players?q=${encodeURIComponent(q)}`),
+  audit: () => request<{ entries: AuditEntry[] }>('/admin/audit'),
 }

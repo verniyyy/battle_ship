@@ -3,6 +3,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -39,6 +40,66 @@ type Store interface {
 	// CurrentMatch returns the player's unfinished match; there is at most one.
 	CurrentMatch(ctx context.Context, playerID string) (string, *meta.Match, error)
 	auth.Accounts
+	Gifts
+}
+
+// Gifts keeps the operators' presents and who has collected them.
+type Gifts interface {
+	// PendingGifts lists the gifts the player may collect at now, oldest first.
+	PendingGifts(ctx context.Context, playerID string, now time.Time) ([]meta.Gift, error)
+	// ClaimGifts collects the player's pending gifts, or only gift id when it
+	// is not empty (ErrNotFound when that one is not pending), in one
+	// transaction with the profile.
+	ClaimGifts(ctx context.Context, playerID, id string, now time.Time) ([]Claimed, *meta.Profile, error)
+
+	// CreateGift saves a validated gift and its recipients, who must exist.
+	CreateGift(ctx context.Context, g *meta.Gift, recipients []string, actor string) (string, error)
+	// RevokeGift stops a gift from being collected any further.
+	RevokeGift(ctx context.Context, id, actor string) error
+	// ListGifts returns the newest gifts with how far they have gone out.
+	ListGifts(ctx context.Context, limit int) ([]GiftRecord, error)
+	// FindPlayers looks admirals up by id, or by part of their name or email.
+	FindPlayers(ctx context.Context, query string, limit int) ([]PlayerSummary, error)
+	// AuditLog returns the newest admin actions.
+	AuditLog(ctx context.Context, limit int) ([]AuditEntry, error)
+}
+
+// Claimed is a gift collected and what it paid out.
+type Claimed struct {
+	Gift  meta.Gift  `json:"gift"`
+	Grant meta.Grant `json:"grant"`
+}
+
+// GiftRecord is a gift as the admin console lists it.
+type GiftRecord struct {
+	meta.Gift
+	CreatedBy  string     `json:"createdBy"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	RevokedBy  string     `json:"revokedBy,omitempty"`
+	RevokedAt  *time.Time `json:"revokedAt,omitempty"`
+	Recipients int        `json:"recipients"`
+	Claims     int        `json:"claims"`
+}
+
+// PlayerSummary is an admiral as the admin console finds them.
+type PlayerSummary struct {
+	ID      string    `json:"id"`
+	Name    string    `json:"name"`
+	Level   int       `json:"level"`
+	Email   string    `json:"email,omitempty"`
+	Gems    int       `json:"gems"`
+	Coins   int       `json:"coins"`
+	Created time.Time `json:"created"`
+}
+
+// AuditEntry is one admin action.
+type AuditEntry struct {
+	ID     int64           `json:"id"`
+	At     time.Time       `json:"at"`
+	Actor  string          `json:"actor"`
+	Action string          `json:"action"`
+	Target string          `json:"target"`
+	Detail json.RawMessage `json:"detail"`
 }
 
 // Usable reports whether a stored match can be played under the current rules.
