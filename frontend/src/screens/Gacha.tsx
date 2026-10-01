@@ -10,12 +10,14 @@ import type { Card, Gain } from '../types'
 
 type Phase = 'idle' | 'rolling' | 'reveal' | 'cutin' | 'spotlight' | 'summary'
 
-/** Omens (予兆) that can open the build-up: the hotter the pull, the likelier and louder. */
-type Omen = 'alert' | 'bolt' | 'kanji' | 'glitch'
+/**
+ * Omens (予兆) that can open the build-up: the hotter the pull, the likelier and louder.
+ * They speak only in light and sound: a red alert, a sonar contact, the dock's searchlights, a torn screen.
+ */
+type Omen = 'alert' | 'sonar' | 'flood' | 'glitch'
 
 const ORB_COLOR = ['#8fb8ff', '#4fc3ff', '#ffcf4a', '#ffffff', '#ffffff'] as const
-const ROLL_TEXT = ['建造中…', '建造中…', '船体が光を帯びる…', '大型艦の艦影！', '未知の艦影…！？']
-const OMEN_MS: Record<Omen, number> = { alert: 1400, bolt: 1300, kanji: 1750, glitch: 2100 }
+const OMEN_MS: Record<Omen, number> = { alert: 1400, sonar: 1750, flood: 1750, glitch: 2100 }
 const STEP_MS = 520
 const PRISM = ['#b388ff', '#4fd5ff', '#ffffff', '#ff7ae0', '#9effe6']
 const MULTI: Record<number, string> = { 2: 'DOUBLE!!', 3: 'TRIPLE!!!', 4: 'QUADRUPLE!!!!' }
@@ -37,7 +39,7 @@ export function rollPlan(best: number, rnd = Math.random): RollPlan {
   const top = Math.min(best, 4)
   // UR always gets its own omen; SSR usually gets one; SR only now and then, and never the alarm.
   const omen: Omen | null =
-    top >= 4 ? 'glitch' : top === 3 ? (rnd() < 0.7 ? pickOf<Omen>(['alert', 'bolt', 'kanji'], rnd) : null) : top === 2 && rnd() < 0.15 ? pickOf<Omen>(['bolt', 'kanji'], rnd) : null
+    top >= 4 ? 'glitch' : top === 3 ? (rnd() < 0.7 ? pickOf<Omen>(['alert', 'sonar', 'flood'], rnd) : null) : top === 2 && rnd() < 0.15 ? pickOf<Omen>(['sonar', 'flood'], rnd) : null
   const fake = top >= 3 && rnd() < 0.45
   const first = Math.min(top, rnd() < 0.6 ? 0 : 1)
   if (fake) return { top, omen, fake, levels: [first, Math.max(first, 1 + Math.floor(rnd() * 2)), 2] }
@@ -192,21 +194,29 @@ export function Gacha({ onBack }: { onBack: () => void }) {
         later(160, () => audio.play('alert'))
         later(700, () => audio.play('alarm'))
         break
-      case 'bolt':
-        ;[80, 460, 860].forEach((ms, k) =>
+      case 'sonar':
+        // Three pings go out into the dark; the third comes back off something big.
+        later(0, () => audio.play('sonar'))
+        later(1100, () => {
+          heartbeat()
+          fx.ring(640, 330, top >= 3 ? '#ffd27a' : '#7dffcf', 420, 0.7)
+          fx.shake(8, 400)
+        })
+        later(1650, () => {
+          fx.flash(top >= 3 ? '#ffe2a8' : '#c8fff0', 300, 0.6)
+          fx.punch(1.05, 260)
+        })
+        break
+      case 'flood':
+        // The dock's searchlights slam on bank by bank, then swing together onto the slipway.
+        ;[100, 280, 460, 640].forEach((ms, k) =>
           later(ms, () => {
-            const x = rand(260, 1020)
-            fx.lightning(x, rand(420, 640))
-            if (k === 2) fx.lightning(1280 - x, rand(420, 640))
-            fx.flash('#dcefff', 260, 0.9)
-            fx.shake(10 + k * 5, 400)
-            audio.play('thunder')
-            audio.buzz(80)
+            audio.play('stamp')
+            audio.buzz(30)
+            fx.shake(4 + k, 180)
           }),
         )
-        break
-      case 'kanji':
-        later(0, () => audio.play('charge'))
+        later(700, () => audio.play('charge'))
         later(1100, () => {
           fx.flash(top >= 3 ? '#ff4a1a' : '#4affc0', 450, 0.85)
           fx.rays(640, 360, top >= 3 ? '#ff8a3c' : '#7dffcf', 18, 1.2)
@@ -561,30 +571,32 @@ export function Gacha({ onBack }: { onBack: () => void }) {
               <div className="step-pips">
                 {plan?.levels.map((l, i) => <i key={i} className={i < step ? `on l${l}` : ''} />)}
               </div>
-              <p className={`roll-text l${orb}`} key={upgrade ? 'crack' : orb}>
-                {upgrade ? '！？' : ROLL_TEXT[orb]}
-              </p>
             </>
           )}
           {omen === 'alert' && (
             <div className="omen omen-alert">
-              <div className="hazard top" />
-              <div className="hazard bottom" />
-              <b>緊急入電</b>
-              <small>EMERGENCY ── 大型艦の反応あり</small>
+              <i className="beacon" />
             </div>
           )}
-          {omen === 'bolt' && <div className="omen omen-bolt" />}
-          {omen === 'kanji' && (
-            <div className={`omen omen-kanji ${(plan?.top ?? 0) >= 3 ? 'hot' : ''}`}>
-              <small>工廠に異変……</small>
-              <b>{(plan?.top ?? 0) >= 3 ? '旗艦' : '精鋭'}</b>
+          {omen === 'sonar' && (
+            <div className={`omen omen-sonar ${(plan?.top ?? 0) >= 3 ? 'hot' : ''}`}>
+              <i className="scope" />
+              <i className="sweep" />
+              <i className="ping" />
+              <i className="ping two" />
+              <i className="ping three" />
+              <i className="contact" />
+            </div>
+          )}
+          {omen === 'flood' && (
+            <div className={`omen omen-flood ${(plan?.top ?? 0) >= 3 ? 'hot' : ''}`}>
+              {[0, 1, 2, 3].map((k) => (
+                <i key={k} className={`beam b${k}`} />
+              ))}
             </div>
           )}
           {omen === 'glitch' && (
             <div className="omen omen-glitch">
-              <b data-text="？？？">？？？</b>
-              <small>UNKNOWN SIGNAL</small>
               <i className="gate" />
             </div>
           )}

@@ -68,7 +68,6 @@ export type Sfx =
   | 'error'
   | 'heart'
   | 'stepup'
-  | 'thunder'
   | 'shatter'
   | 'heartbeat'
   | 'jackpot'
@@ -1555,16 +1554,6 @@ class AudioEngine {
         this.fm(d, t, { f: midi(48 + lv * 4), ratio: 1.41, index: 3, index2: 0.2, indexT: 0.3, vol: 0.07, dur: 0.6, d: 0.2 })
         const root = [60, 64, 67, 72, 76][lv]
         ;[0, 7, 12].forEach((n, i) => this.bell(d, t + 0.02 + i * 0.03, root + n + 12, 0.045 + lv * 0.01, 0.4))
-        break
-      }
-      case 'thunder': {
-        // A lightning omen: the crack right overhead, then the roll across the sky.
-        this.duck(0.4, 0.8, 1)
-        const d = fx(0.5, { echo: 0.4 })
-        this.noise(d, t, { filter: 'highpass', f: 2000, vol: 0.8, dur: 0.015, d: 0.006, drive: 5 })
-        this.crackle(d, t, 30, 0.25, 0.5, 1500, 7000)
-        this.noise(d, t, { color: 'pink', f: 6000, f2: 400, fT: 0.4, vol: 0.7, dur: 0.5, d: 0.15, drive: 2 })
-        this.noise(d, t + 0.05, { color: 'brown', f: 300, f2: 90, fT: 1.6, vol: 0.9, a: 0.1, dur: 1.8, d: 0.8, r: 0.6, trem: 0.4, tremRate: 6 })
         break
       }
       case 'shatter': {
