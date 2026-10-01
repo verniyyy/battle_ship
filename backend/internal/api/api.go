@@ -1,7 +1,8 @@
 // Package api exposes the game over a JSON HTTP API.
 //
 // Every /api route except the catalog and sign-in is scoped to the signed-in
-// admiral. Profiles are created on first use.
+// admiral. Profiles are created on first use. /api/admin is the operators'
+// console, open only to admins.
 package api
 
 import (
@@ -50,6 +51,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/gacha", s.player(s.pull))
 	mux.HandleFunc("POST /api/missions/{id}/claim", s.player(s.claimMission))
 	mux.HandleFunc("POST /api/achievements/{id}/claim", s.player(s.claimAchievement))
+	mux.HandleFunc("GET /api/gifts", s.player(s.listGifts))
+	mux.HandleFunc("POST /api/gifts/claim", s.player(s.claimGifts))
 
 	mux.HandleFunc("POST /api/games", s.player(s.createGame))
 	mux.HandleFunc("GET /api/games", s.player(s.listGames))
@@ -59,6 +62,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/games/{id}/chest", s.player(s.openChest))
 	mux.HandleFunc("POST /api/games/{id}/rematch", s.player(s.rematch))
 	mux.HandleFunc("POST /api/games/{id}/abandon", s.player(s.abandon))
+
+	mux.HandleFunc("GET /api/admin/gifts", s.admin(s.adminListGifts))
+	mux.HandleFunc("POST /api/admin/gifts", s.admin(s.adminCreateGift))
+	mux.HandleFunc("POST /api/admin/gifts/{id}/revoke", s.admin(s.adminRevokeGift))
+	mux.HandleFunc("GET /api/admin/players", s.admin(s.adminFindPlayers))
+	mux.HandleFunc("GET /api/admin/audit", s.admin(s.adminAudit))
 	return mux
 }
 
