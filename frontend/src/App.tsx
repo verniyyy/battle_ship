@@ -3,6 +3,7 @@ import { api } from './api'
 import { audio } from './audio'
 import { Stage } from './components/Stage'
 import { ResumeChoice, Toasts } from './components/ui'
+import { Admin } from './screens/Admin'
 import { Battle } from './screens/Battle'
 import { Dock } from './screens/Dock'
 import { Enlist } from './screens/Enlist'
@@ -29,6 +30,7 @@ export type Scene =
   | { name: 'gacha' }
   | { name: 'dock' }
   | { name: 'missions' }
+  | { name: 'admin' }
 
 const CURTAIN_MS = 380
 
@@ -131,6 +133,7 @@ export function App() {
       {scene.name === 'gacha' && <Gacha onBack={() => go({ name: 'home' })} />}
       {scene.name === 'dock' && <Dock onBack={() => go({ name: 'home' })} />}
       {scene.name === 'missions' && <Missions onBack={() => go({ name: 'home' })} />}
+      {scene.name === 'admin' && <Admin onBack={() => go({ name: 'home' })} />}
       {choosing && resumable && (
         <ResumeChoice match={resumable} onResume={() => startBattle(resumable, true)} onAbandon={abandon} onClose={() => setChoosing(false)} />
       )}

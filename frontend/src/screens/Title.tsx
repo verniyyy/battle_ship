@@ -44,10 +44,10 @@ export function Title({ onStart }: { onStart: () => void }) {
     )
   }, [])
 
-  const devLogin = async () => {
+  const devLogin = async (admin = false) => {
     setBusy(true)
     try {
-      await auth.dev()
+      await auth.dev(admin)
       await reloadSession()
     } finally {
       setBusy(false)
@@ -83,9 +83,14 @@ export function Title({ onStart }: { onStart: () => void }) {
             </button>
           )}
           {session.dev && (
-            <button className="pill-btn ghost" disabled={busy} onClick={devLogin}>
-              開発用ログイン
-            </button>
+            <>
+              <button className="pill-btn ghost" disabled={busy} onClick={() => void devLogin()}>
+                開発用ログイン
+              </button>
+              <button className="pill-btn ghost" disabled={busy} onClick={() => void devLogin(true)}>
+                開発用ログイン（管理者）
+              </button>
+            </>
           )}
           <p className="login-note">戦績と艦隊はアカウントに保存され、どの端末からでも続きを遊べます</p>
         </div>
