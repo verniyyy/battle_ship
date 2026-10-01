@@ -21,6 +21,12 @@ test('sonar pings its row, column and the ring around the destroyer', async ({ p
   await page.screenshot({ path: `${shots}/sonar-preview.png` })
 
   await page.locator('.cmd-btn.go').click()
+  // The swept cells light up in place: no other screen's keyframes may warp them.
+  const lit = page.locator('.cell.lit-sonar')
+  await expect(lit).toHaveCount(12, { timeout: 30_000 })
+  await page.waitForTimeout(400)
+  expect(await lit.first().evaluate((e) => [getComputedStyle(e).opacity, getComputedStyle(e).transform])).toEqual(['1', 'none'])
+  await page.screenshot({ path: `${shots}/sonar-lit.png` })
   await expect(page.locator('.flagship-line')).toContainText('行動する艦を選んで', { timeout: 30_000 })
   await page.screenshot({ path: `${shots}/sonar-after.png` })
   const log = await page.locator('.battle-log').allInnerTexts()
