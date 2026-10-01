@@ -87,17 +87,18 @@ p {
 .viewport {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
   overflow: hidden;
   background: radial-gradient(ellipse at center, #0b1a30, #000 75%);
 }
 
 .stage {
-  position: relative;
+  /* centred by position, not by grid/flex: a 1280px item in a narrower
+     window would push its track off screen before the scale shrinks it */
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: 1280px;
   height: 720px;
-  flex: none;
   /* clip, not hidden: nothing (focus, scrollIntoView) may scroll the stage
      towards the off-screen curtain and shift the whole game up */
   overflow: clip;
