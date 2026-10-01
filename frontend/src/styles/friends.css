@@ -1,10 +1,5 @@
 /* ---------- friends ---------- */
 
-/* harbour entrance */
-.menu-tile.friends {
-  background: linear-gradient(180deg, rgba(36, 112, 120, 0.95), rgba(12, 52, 70, 0.95));
-}
-
 /* the admiral's face: their secretary ship in a disc (see .portrait-img.bust) */
 .friend-face {
   position: relative;

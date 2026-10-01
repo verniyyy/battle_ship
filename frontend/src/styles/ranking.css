@@ -1,13 +1,5 @@
 /* ---------- rankings ---------- */
 
-/* harbour entrance */
-.menu-tile.ranking {
-  /* five characters only fit a fifth of the menu without the tracking */
-  letter-spacing: 0;
-  white-space: nowrap;
-  background: linear-gradient(180deg, rgba(176, 124, 30, 0.95), rgba(84, 52, 8, 0.95));
-}
-
 /* left column: where I stand, what the board is */
 .ranking-side {
   position: absolute;

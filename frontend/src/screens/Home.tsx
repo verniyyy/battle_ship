@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Scene } from '../App'
 import { api, friends as friendsApi } from '../api'
 import { audio } from '../audio'
+import { MenuIcon, type MenuIconName } from '../components/MenuIcon'
 import { PortraitImg, ShipArt } from '../components/ShipArt'
 import { Backdrop, Badge, Modal, ResumeBanner, TopBar } from '../components/ui'
 import { fx } from '../fx'
@@ -140,6 +141,18 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
   const b = profile.badges
   // New requests and cheers waiting on the friends screen.
   const friendNews = (friends?.incoming.length ?? 0) + (friends?.cheers ?? 0)
+  const tiles: { key: MenuIconName; jp: string; en: string; go: () => void; hot?: boolean; n?: number | boolean; text?: string }[] = [
+    { key: 'formation', jp: '編成', en: 'FORMATION', go: () => nav({ name: 'formation' }) },
+    { key: 'gacha', jp: '建造', en: 'BUILD', go: () => nav({ name: 'gacha' }), hot: b.freeTen, text: b.freeTen ? '無料10連' : undefined },
+    { key: 'dock', jp: '艦隊', en: 'FLEET', go: () => nav({ name: 'dock' }) },
+    { key: 'missions', jp: '任務', en: 'MISSIONS', go: () => nav({ name: 'missions' }), n: b.missions + b.achievements },
+    { key: 'login', jp: 'ログボ', en: 'BONUS', go: () => open('login'), hot: b.login, n: b.login },
+    { key: 'friends', jp: 'フレンド', en: 'FRIENDS', go: () => nav({ name: 'friends' }), hot: !!friendNews, n: friendNews },
+    { key: 'ranking', jp: 'ランキング', en: 'RANKING', go: () => nav({ name: 'ranking' }) },
+    { key: 'record', jp: '戦績', en: 'RECORD', go: () => open('record') },
+    { key: 'rules', jp: '要綱', en: 'MANUAL', go: () => open('rules') },
+    { key: 'news', jp: 'お知らせ', en: 'NEWS', go: () => open('news'), hot: !!unread, n: unread },
+  ]
 
   return (
     <div className="screen home-screen">
@@ -207,41 +220,16 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
           </button>
         )}
         <div className="menu-grid">
-          <button className="menu-tile formation" onClick={() => nav({ name: 'formation' })}>
-            <b>⚓</b>編成
-          </button>
-          <button className={`menu-tile gacha ${b.freeTen ? 'hot' : ''}`} onClick={() => nav({ name: 'gacha' })}>
-            <b>🏗</b>建造
-            <Badge text={b.freeTen ? '無料10連' : undefined} />
-          </button>
-          <button className="menu-tile dock" onClick={() => nav({ name: 'dock' })}>
-            <b>📖</b>艦隊
-          </button>
-          <button className="menu-tile missions" onClick={() => nav({ name: 'missions' })}>
-            <b>🎖</b>任務
-            <Badge n={b.missions + b.achievements} />
-          </button>
-          <button className={`menu-tile login ${b.login ? 'hot' : ''}`} onClick={() => open('login')}>
-            <b>🎁</b>ログボ
-            <Badge n={b.login} />
-          </button>
-          <button className={`menu-tile friends ${friendNews ? 'hot' : ''}`} onClick={() => nav({ name: 'friends' })}>
-            <b>👥</b>フレンド
-            <Badge n={friendNews} />
-          </button>
-          <button className="menu-tile ranking" onClick={() => nav({ name: 'ranking' })}>
-            <b>👑</b>ランキング
-          </button>
-          <button className="menu-tile record" onClick={() => open('record')}>
-            <b>📜</b>戦績
-          </button>
-          <button className="menu-tile rules" onClick={() => open('rules')}>
-            <b>📘</b>要綱
-          </button>
-          <button className={`menu-tile news ${unread ? 'hot' : ''}`} onClick={() => open('news')}>
-            <b>📰</b>お知らせ
-            <Badge n={unread} />
-          </button>
+          {tiles.map((t) => (
+            <button key={t.key} className={`menu-tile ${t.key} ${t.hot ? 'hot' : ''}`} onClick={t.go}>
+              <MenuIcon name={t.key} />
+              <span className="menu-jp">{t.jp}</span>
+              <span className="menu-en" aria-hidden>
+                {t.en}
+              </span>
+              <Badge n={t.n} text={t.text} />
+            </button>
+          ))}
         </div>
         {gifts.length > 0 && (
           <button className="gift-banner" onClick={() => open('gifts')}>
