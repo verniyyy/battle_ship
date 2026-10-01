@@ -1,7 +1,7 @@
 // Screen-space juice: a canvas particle system laid over the whole stage, plus
 // shake, hit-stop and flash helpers. Coordinates are stage pixels (1280x720).
 
-type Kind = 'spark' | 'ember' | 'smoke' | 'debris' | 'ring' | 'glow' | 'drop' | 'confetti' | 'star' | 'coin' | 'bubble' | 'ray'
+type Kind = 'spark' | 'ember' | 'smoke' | 'debris' | 'ring' | 'glow' | 'drop' | 'confetti' | 'star' | 'coin' | 'bubble' | 'ray' | 'shard' | 'bolt'
 
 interface Particle {
   kind: Kind
@@ -23,6 +23,8 @@ interface Particle {
   ty?: number
   delay: number
   additive: boolean
+  /** A lightning bolt's jagged path, as x, y pairs. */
+  pts?: number[]
 }
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a)
@@ -260,6 +262,92 @@ class FxEngine {
     }
   }
 
+  /** A firework shell: a ring of falling sparks around a flash, with twinkles. */
+  firework(x: number, y: number, colors = RAINBOW, n = 64) {
+    const main = pick(colors)
+    this.add({ kind: 'glow', x, y, size: 70, max: 0.3, color: '#fff', grow: 1 })
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + rand(-0.06, 0.06)
+      const v = rand(250, 330)
+      this.add({
+        kind: 'spark',
+        x,
+        y,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v,
+        size: rand(2, 4),
+        max: rand(0.9, 1.5),
+        color: Math.random() < 0.75 ? main : pick(colors),
+        gravity: 170,
+        drag: 0.94,
+      })
+    }
+    for (let i = 0; i < n / 3; i++) {
+      const a = rand(0, Math.PI * 2)
+      const v = rand(40, 200)
+      this.add({ kind: 'star', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, size: rand(3, 7), max: rand(0.8, 1.6), color: '#fff', vr: rand(-8, 8), gravity: 60, drag: 0.95, delay: rand(0.1, 0.4) })
+    }
+  }
+
+  /** The screen breaking: glass shards flung out from a point. */
+  shatter(x: number, y: number, n = 70, color = '#e6f8ff') {
+    for (let i = 0; i < n; i++) {
+      const sx = rand(0, 1280)
+      const sy = rand(0, 720)
+      const a = Math.atan2(sy - y, sx - x) + rand(-0.3, 0.3)
+      const v = rand(200, 700)
+      this.add({
+        kind: 'shard',
+        x: sx,
+        y: sy,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v - 120,
+        size: rand(14, 46),
+        max: rand(0.8, 1.4),
+        color,
+        rot: rand(0, 6),
+        vr: rand(-9, 9),
+        gravity: 900,
+        drag: 0.98,
+        additive: false,
+      })
+    }
+  }
+
+  /** A lightning strike from the top of the screen down to a point. */
+  lightning(x: number, y: number, color = '#cfe6ff') {
+    let cx = x + rand(-260, 260)
+    let cy = -20
+    const pts = [cx, cy]
+    while (cy < y) {
+      cy = Math.min(y, cy + rand(28, 70))
+      cx += rand(-50, 50) + (x - cx) * 0.18
+      pts.push(cx, cy)
+    }
+    this.add({ kind: 'bolt', x, y, max: 0.45, size: 6, color, pts })
+    this.add({ kind: 'glow', x, y, size: 160, max: 0.35, color, grow: 2 })
+  }
+
+  /** Coins raining from the top of the screen. */
+  coinRain(n = 60, color = '#ffd24a') {
+    for (let i = 0; i < n; i++) {
+      this.add({
+        kind: 'coin',
+        x: rand(0, 1280),
+        y: rand(-120, -10),
+        vx: rand(-40, 40),
+        vy: rand(120, 360),
+        size: rand(6, 10),
+        max: 2.6,
+        color,
+        gravity: 320,
+        drag: 0.995,
+        delay: rand(0, 1.2),
+        additive: false,
+      })
+    }
+  }
+
   // ---------------- screen effects ----------------
 
   shake(power = 10, ms = 380) {
@@ -436,6 +524,41 @@ class FxEngine {
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
         ctx.stroke()
         break
+      case 'shard': {
+        ctx.save()
+        ctx.translate(p.x, p.y)
+        ctx.rotate(p.rot)
+        // Tumbling: the shard's width flickers as it turns edge-on.
+        ctx.scale(1, 0.25 + Math.abs(Math.cos(p.life * 7 + p.rot)) * 0.75)
+        ctx.beginPath()
+        ctx.moveTo(-p.size * 0.5, -p.size * 0.3)
+        ctx.lineTo(p.size * 0.6, -p.size * 0.1)
+        ctx.lineTo(-p.size * 0.1, p.size * 0.5)
+        ctx.closePath()
+        ctx.globalAlpha = Math.max(0, fade * 0.55)
+        ctx.fill()
+        ctx.globalAlpha = Math.max(0, fade)
+        ctx.strokeStyle = '#fff'
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+        ctx.restore()
+        break
+      }
+      case 'bolt': {
+        const pts = p.pts ?? []
+        // Flickers as it fades, like a real strike's return strokes.
+        ctx.globalAlpha = Math.max(0, fade) * (Math.random() < 0.3 ? 0.35 : 1)
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        for (const [w, c] of [[p.size * 4, p.color], [p.size, '#fff']] as const) {
+          ctx.lineWidth = w
+          ctx.strokeStyle = c
+          ctx.beginPath()
+          for (let i = 0; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1])
+          ctx.stroke()
+        }
+        break
+      }
       case 'ray': {
         ctx.globalAlpha = Math.max(0, Math.sin(t * Math.PI) * 0.35)
         ctx.save()

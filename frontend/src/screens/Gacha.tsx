@@ -10,7 +10,44 @@ import type { Card, Gain } from '../types'
 
 type Phase = 'idle' | 'rolling' | 'reveal' | 'spotlight' | 'summary'
 
-const ORB_COLOR = ['#8fb8ff', '#4fc3ff', '#ffcf4a', 'rainbow', 'prism'] as const
+/** Omens (予兆) that can open the build-up: the hotter the pull, the likelier and louder. */
+type Omen = 'alert' | 'bolt' | 'kanji' | 'glitch'
+
+const ORB_COLOR = ['#8fb8ff', '#4fc3ff', '#ffcf4a', '#ffffff', '#ffffff'] as const
+const ROLL_TEXT = ['建造中…', '建造中…', '激アツ！', '確定！！', '超・確定！！！']
+const OMEN_MS: Record<Omen, number> = { alert: 1400, bolt: 1300, kanji: 1750, glitch: 2100 }
+const STEP_MS = 520
+const PRISM = ['#b388ff', '#4fd5ff', '#ffffff', '#ff7ae0', '#9effe6']
+const MULTI: Record<number, string> = { 2: 'DOUBLE!!', 3: 'TRIPLE!!!', 4: 'QUADRUPLE!!!!' }
+
+interface RollPlan {
+  /** Best rarity of the pull, which the dock builds up to. */
+  top: number
+  /** Orb level after each of the three hammer blows. */
+  levels: number[]
+  /** Sits at gold through every blow, then cracks open to rainbow. */
+  fake: boolean
+  omen: Omen | null
+}
+
+const pickOf = <T,>(xs: T[], rnd: () => number) => xs[Math.floor(rnd() * xs.length)]
+
+/** How the construction dock builds up to the best ship of a pull. */
+export function rollPlan(best: number, rnd = Math.random): RollPlan {
+  const top = Math.min(best, 4)
+  // UR always gets its own omen; SSR usually gets one; SR only now and then, and never the alarm.
+  const omen: Omen | null =
+    top >= 4 ? 'glitch' : top === 3 ? (rnd() < 0.7 ? pickOf<Omen>(['alert', 'bolt', 'kanji'], rnd) : null) : top === 2 && rnd() < 0.15 ? pickOf<Omen>(['bolt', 'kanji'], rnd) : null
+  const fake = top >= 3 && rnd() < 0.45
+  const first = Math.min(top, rnd() < 0.6 ? 0 : 1)
+  if (fake) return { top, omen, fake, levels: [first, Math.max(first, 1 + Math.floor(rnd() * 2)), 2] }
+  // A UR holds at rainbow at most until the last blow, so that blow always lands on prism.
+  const cap = Math.min(top, 3)
+  const second = first + Math.floor(rnd() * (cap - first + 1))
+  return { top, omen, fake, levels: [first, second, top] }
+}
+
+const rand = (a: number, b: number) => a + Math.random() * (b - a)
 
 export function Gacha({ onBack }: { onBack: () => void }) {
   const { profile, catalog, card, setProfile, notify } = useGame()
@@ -18,13 +55,19 @@ export function Gacha({ onBack }: { onBack: () => void }) {
   const [gains, setGains] = useState<Gain[]>([])
   const [flipped, setFlipped] = useState(0)
   const [orb, setOrb] = useState(0)
+  const [plan, setPlan] = useState<RollPlan | null>(null)
+  const [step, setStep] = useState(0)
+  const [omen, setOmen] = useState<Omen | null>(null)
   const [upgrade, setUpgrade] = useState(false)
-  const [spot, setSpot] = useState<Gain | null>(null)
+  // The top-rarity card the reveal is holding its breath over.
+  const [tease, setTease] = useState<number | null>(null)
+  const [spot, setSpot] = useState<number | null>(null)
   const [rates, setRates] = useState(false)
   // The featured ship on the banner; it turns on its own, and the admiral can turn it too.
   const [showcase, setShowcase] = useState({ i: 0, back: false, manual: false })
   const timers = useRef<number[]>([])
   const cardRefs = useRef<(HTMLDivElement | null)[]>([])
+  const orbRef = useRef<HTMLDivElement | null>(null)
   const spotQueue = useRef<number[]>([])
   // Timers outlive renders, so they read the pulled ships from a ref.
   const gainsRef = useRef<Gain[]>([])
@@ -35,6 +78,20 @@ export function Gacha({ onBack }: { onBack: () => void }) {
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
   // The fake-out upgrade's explosion is modelled in a worker: render it before a pull needs it.
   useEffect(() => audio.prewarm([['bigboom', {}]]), [])
+
+  // The haul keeps glittering while the admiral looks it over.
+  useEffect(() => {
+    if (phase !== 'summary') return
+    const hot = gains.map((g, i) => (g.rarity >= 3 ? i : -1)).filter((i) => i >= 0)
+    if (!hot.length) return
+    const id = window.setInterval(() => {
+      for (const i of hot) {
+        const pt = fx.center(cardRefs.current[i])
+        fx.sparkle(pt.x + rand(-50, 50), pt.y + rand(-80, 80), '#fff', 5, 70)
+      }
+    }, 700)
+    return () => clearInterval(id)
+  }, [phase, gains])
 
   // Auto-advance, held off for a while after the admiral picks a ship themselves.
   useEffect(() => {
@@ -69,63 +126,212 @@ export function Gacha({ onBack }: { onBack: () => void }) {
     }
   }
 
-  const start = (gs: Gain[]) => {
+  const clearTimers = () => {
     timers.current.forEach(clearTimeout)
     timers.current = []
+  }
+
+  const orbAt = () => (orbRef.current ? fx.center(orbRef.current) : { x: 640, y: 330 })
+
+  const start = (gs: Gain[]) => {
+    clearTimers()
     gainsRef.current = gs
     setGains(gs)
     setFlipped(0)
     setSpot(null)
-    const best = Math.max(...gs.map((g) => g.rarity))
-    // Fake-out: an SSR+ sometimes glows gold first, then cracks open to rainbow.
-    const fake = best >= 3 && Math.random() < 0.45
+    setTease(null)
+    const p = rollPlan(Math.max(...gs.map((g) => g.rarity)))
+    setPlan(p)
+    setOrb(0)
+    setStep(0)
     setUpgrade(false)
-    setOrb(fake ? 2 : Math.min(best, 2))
+    setOmen(p.omen)
     setPhase('rolling')
-    audio.play('roll')
-    fx.shake(4, 1600)
-    later(1300, () => {
-      if (best >= 2 && !fake) {
-        setOrb(best)
-        audio.play(best >= 3 ? 'ssr' : 'rare')
-        fx.flash(best >= 3 ? '#fff' : '#ffe39a', 500, 0.7)
-        if (best >= 3) fx.rays(640, 360, '#fff2a8', 18, 1.6)
-      }
+    fx.punch(1.06, 320)
+    let at = 0
+    if (p.omen) {
+      playOmen(p.omen, p.top)
+      at = OMEN_MS[p.omen]
+      later(at, () => setOmen(null))
+    }
+    later(at, () => {
+      audio.play('roll')
+      fx.shake(4, 1600)
     })
-    if (fake) {
-      later(1900, () => {
+    p.levels.forEach((to, i) => later(at + 450 + i * STEP_MS, () => hammer(i + 1, i ? p.levels[i - 1] : 0, to)))
+    at += 450 + 2 * STEP_MS
+    if (p.fake) {
+      later(at + 520, () => {
         setUpgrade(true)
         audio.play('bigboom')
+        audio.buzz([60, 40, 60])
         fx.shake(18, 500)
       })
-      later(2300, () => {
-        setOrb(best)
-        audio.play('ssr')
-        fx.flash('#fff', 700, 0.95)
-        fx.rays(640, 360, '#fff2a8', 20, 2)
-        fx.confetti(120, RAINBOW)
+      later(at + 980, () => {
+        setUpgrade(false)
+        setOrb(p.top)
+        burst(2, p.top, true)
       })
+      at += 980
     }
-    later(fake ? 3300 : 2500, () => reveal(gs))
+    later(at + [550, 550, 800, 1300, 1700][p.top], () => reveal(gs))
+  }
+
+  const playOmen = (o: Omen, top: number) => {
+    switch (o) {
+      case 'alert':
+        later(0, () => {
+          audio.play('alarm')
+          audio.buzz([120, 80, 120, 80, 120])
+          fx.shake(10, 900)
+        })
+        later(160, () => audio.play('alert'))
+        later(700, () => audio.play('alarm'))
+        break
+      case 'bolt':
+        ;[80, 460, 860].forEach((ms, k) =>
+          later(ms, () => {
+            const x = rand(260, 1020)
+            fx.lightning(x, rand(420, 640))
+            if (k === 2) fx.lightning(1280 - x, rand(420, 640))
+            fx.flash('#dcefff', 260, 0.9)
+            fx.shake(10 + k * 5, 400)
+            audio.play('thunder')
+            audio.buzz(80)
+          }),
+        )
+        break
+      case 'kanji':
+        later(0, () => audio.play('charge'))
+        later(1100, () => {
+          fx.flash(top >= 3 ? '#ff4a1a' : '#4affc0', 450, 0.85)
+          fx.rays(640, 360, top >= 3 ? '#ff8a3c' : '#7dffcf', 18, 1.2)
+          fx.shake(22, 650)
+          fx.punch(1.08, 300)
+          audio.buzz([200, 50, 100])
+        })
+        break
+      case 'glitch':
+        later(0, () => {
+          audio.play('ultcharge', { dur: 1.6 })
+          fx.shake(5, 1700)
+        })
+        ;[
+          [260, '#ff00c8'],
+          [560, '#00f0ff'],
+          [820, '#ff00c8'],
+          [1020, '#ffffff'],
+          [1240, '#00f0ff'],
+        ].forEach(([ms, c]) => later(ms as number, () => fx.flash(c as string, 140, 0.55)))
+        later(1750, () => {
+          audio.play('shatter')
+          audio.buzz([300, 60, 300])
+          fx.shatter(640, 360, 110, '#f3e6ff')
+          fx.flash('#fff', 600, 1)
+          fx.shake(24, 700)
+        })
+        break
+    }
+  }
+
+  /** One hammer blow on the hull: the orb may heat up a level (or more). */
+  const hammer = (n: number, from: number, to: number) => {
+    setStep(n)
+    setOrb(to)
+    audio.play('stepup', { pitch: to })
+    audio.buzz(30 + to * 15)
+    fx.punch(1.03 + to * 0.012, 220)
+    fx.shake(3 + to * 2, 260)
+    const pt = orbAt()
+    fx.ring(pt.x, pt.y, ORB_COLOR[to], 180 + to * 40, 0.5)
+    if (to > from) burst(from, to, false)
+  }
+
+  /** The orb jumping to a hotter colour. A crack is the fake-out's gold breaking open. */
+  const burst = (from: number, to: number, crack: boolean) => {
+    const pt = orbAt()
+    if (to === 2) {
+      audio.play('rare')
+      fx.flash('#ffe39a', 450, 0.7)
+      fx.rays(pt.x, pt.y, '#ffe39a', 12, 1.2)
+      fx.sparkle(pt.x, pt.y, '#ffd24a', 30, 220)
+      return
+    }
+    if (to < 3) return
+    void fx.hitstop(120)
+    audio.play('ssr')
+    audio.buzz([150, 50, 200])
+    fx.flash('#fff', 700, 0.95)
+    fx.rays(pt.x, pt.y, '#fff2a8', 22, 2.2)
+    fx.ring(pt.x, pt.y, '#fff', 500, 0.8)
+    fx.firework(pt.x, pt.y, to >= 4 ? PRISM : RAINBOW, 72)
+    fx.confetti(140, to >= 4 ? PRISM : RAINBOW)
+    fx.shake(16, 600)
+    if (crack || from < 3) {
+      audio.play('shatter')
+      fx.shatter(pt.x, pt.y, 70)
+    }
+    if (to >= 4) {
+      later(140, () => fx.flash('#ff7ae0', 300, 0.7))
+      later(300, () => fx.flash('#4fd5ff', 300, 0.7))
+      ;[0, 1, 2, 3].forEach((k) => later(200 + k * 220, () => fx.firework(rand(160, 1120), rand(100, 420), PRISM)))
+    }
   }
 
   const reveal = (gs: Gain[]) => {
-    timers.current.forEach(clearTimeout)
-    timers.current = []
+    clearTimers()
+    setOmen(null)
+    setUpgrade(false)
+    setTease(null)
     setPhase('reveal')
     spotQueue.current = gs.map((g, i) => (g.rarity >= 3 ? i : -1)).filter((i) => i >= 0)
+    let at = 260
     gs.forEach((g, i) => {
-      later(220 + i * 170, () => {
+      if (g.rarity >= 3) {
+        // Everything else goes dark and the card trembles for two heartbeats first.
+        later(at, () => {
+          setTease(i)
+          audio.play('heartbeat')
+          audio.buzz(40)
+        })
+        later(at + 520, () => {
+          audio.play('heartbeat')
+          audio.buzz(40)
+        })
+        at += 1050
+      }
+      later(at, () => {
+        setTease(null)
         setFlipped(i + 1)
-        const pt = fx.center(cardRefs.current[i])
-        if (g.rarity >= 2) {
-          fx.rays(pt.x, pt.y, g.rarity >= 3 ? '#fff2a8' : '#ffe39a', 8, 0.8)
-          fx.sparkle(pt.x, pt.y, g.rarity >= 3 ? '#fff' : '#ffd24a', 20, 120)
-          audio.play(g.rarity >= 3 ? 'gem' : 'rare')
-        } else audio.play('tap')
+        flipFx(i, g)
       })
+      at += g.rarity >= 3 ? 650 : g.rarity === 2 ? 220 : 160
     })
-    later(400 + gs.length * 170, () => nextSpot())
+    later(at + 350, () => nextSpot())
+  }
+
+  const flipFx = (i: number, g: Gain) => {
+    const pt = fx.center(cardRefs.current[i])
+    if (g.rarity >= 3) {
+      const ur = g.rarity >= 4
+      void fx.hitstop(110)
+      audio.play('ssr')
+      audio.buzz([80, 40, 120])
+      fx.flash(ur ? '#f0d8ff' : '#fff', 500, 0.85)
+      fx.shake(14, 500)
+      fx.punch(1.05, 300)
+      fx.rays(pt.x, pt.y, ur ? '#d9c2ff' : '#fff2a8', 16, 1.4)
+      fx.ring(pt.x, pt.y, '#fff', 420, 0.7)
+      fx.ring(pt.x, pt.y, ur ? '#b388ff' : '#ff7ae0', 300, 0.9)
+      fx.firework(pt.x, pt.y, ur ? PRISM : RAINBOW, 56)
+      fx.sparkle(pt.x, pt.y, '#fff', 40, 260)
+    } else if (g.rarity === 2) {
+      audio.play('rare')
+      fx.rays(pt.x, pt.y, '#ffe39a', 10, 0.9)
+      fx.ring(pt.x, pt.y, '#ffd24a', 160, 0.5)
+      fx.sparkle(pt.x, pt.y, '#ffd24a', 26, 150)
+      fx.shake(4, 200)
+    } else audio.play('tap')
   }
 
   const nextSpot = () => {
@@ -133,30 +339,44 @@ export function Gacha({ onBack }: { onBack: () => void }) {
     if (i === undefined) {
       setSpot(null)
       setPhase('summary')
+      celebrate()
       return
     }
-    setSpot(gainsRef.current[i] ?? null)
+    setSpot(i)
     setPhase('spotlight')
-    audio.play('ssr')
-    fx.flash('#fff', 600, 0.9)
-    fx.rays(640, 330, '#fff2a8', 20, 2.2)
-    fx.confetti(100, RAINBOW)
   }
 
-  // Tapping during the show jumps ahead.
+  /** Several top-rarity ships in one pull get a last cheer over the haul. */
+  const celebrate = () => {
+    const n = gainsRef.current.filter((g) => g.rarity >= 3).length
+    if (n < 2) return
+    later(150, () => {
+      audio.play('levelup')
+      audio.buzz([100, 50, 100, 50, 200])
+      fx.confetti(220, RAINBOW)
+      fx.coinRain(60)
+      fx.shake(12, 500)
+    })
+    for (let k = 0; k < n + 2; k++) later(300 + k * 260, () => fx.firework(rand(160, 1120), rand(90, 300)))
+  }
+
+  // Tapping during the show jumps ahead (a top-rarity ship still gets its spotlight).
   const tapStage = () => {
     if (phase === 'rolling') reveal(gainsRef.current)
     else if (phase === 'reveal') {
-      timers.current.forEach(clearTimeout)
-      timers.current = []
+      clearTimers()
+      setTease(null)
       setFlipped(gainsRef.current.length)
       nextSpot()
-    } else if (phase === 'spotlight') nextSpot()
+    }
   }
 
   const shown = featured.length ? ((showcase.i % featured.length) + featured.length) % featured.length : 0
   const feat = featured[shown]
-  const spotCard = spot ? card(spot.card) : undefined
+  const spotGain = spot === null ? undefined : gains[spot]
+  const spotCard = spotGain ? card(spotGain.card) : undefined
+  const ssr = gains.filter((g) => g.rarity === 3).length
+  const ur = gains.filter((g) => g.rarity >= 4).length
 
   return (
     <div className={`screen gacha-screen phase-${phase}`}>
@@ -253,26 +473,68 @@ export function Gacha({ onBack }: { onBack: () => void }) {
       )}
 
       {phase === 'rolling' && (
-        <div className="gacha-roll" onClick={tapStage}>
-          <div className={`dock-light o${orb} ${upgrade ? 'crack' : ''}`} style={{ ['--orb' as string]: typeof ORB_COLOR[orb] === 'string' && ORB_COLOR[orb].startsWith('#') ? ORB_COLOR[orb] : undefined }}>
-            <span className="orb" />
-            <span className="orb-ring" />
-            <span className="orb-ring two" />
-          </div>
-          <p className="roll-text">{upgrade ? '！？' : orb >= 3 ? '確定！！' : '建造中…'}</p>
+        <div className={`gacha-roll l${orb}`} onClick={tapStage} style={{ ['--orb' as string]: ORB_COLOR[orb] }}>
+          <div className="roll-bg" />
+          {!omen && (
+            <>
+              <div ref={orbRef} className={`dock-light o${orb} ${upgrade ? 'crack' : ''}`}>
+                <span className="orb" />
+                <span className="orb-ring" />
+                <span className="orb-ring two" />
+              </div>
+              <div className="step-pips">
+                {plan?.levels.map((l, i) => <i key={i} className={i < step ? `on l${l}` : ''} />)}
+              </div>
+              <p className={`roll-text l${orb}`} key={upgrade ? 'crack' : orb}>
+                {upgrade ? '！？' : ROLL_TEXT[orb]}
+              </p>
+            </>
+          )}
+          {omen === 'alert' && (
+            <div className="omen omen-alert">
+              <div className="hazard top" />
+              <div className="hazard bottom" />
+              <b>緊急入電</b>
+              <small>EMERGENCY ── 大型艦の反応あり</small>
+            </div>
+          )}
+          {omen === 'bolt' && <div className="omen omen-bolt" />}
+          {omen === 'kanji' && (
+            <div className={`omen omen-kanji ${(plan?.top ?? 0) >= 3 ? 'hot' : ''}`}>
+              <small>ただならぬ気配……</small>
+              <b>{(plan?.top ?? 0) >= 3 ? '激熱' : '好機'}</b>
+            </div>
+          )}
+          {omen === 'glitch' && (
+            <div className="omen omen-glitch">
+              <b data-text="？？？">？？？</b>
+              <small>UNKNOWN SIGNAL</small>
+              <i className="gate" />
+            </div>
+          )}
           <p className="tap-hint">TAP TO SKIP</p>
         </div>
       )}
 
       {(phase === 'reveal' || phase === 'summary' || phase === 'spotlight') && (
-        <div className="gacha-results" onClick={tapStage}>
+        <div className={`gacha-results ${tease !== null ? 'teasing' : ''}`} onClick={tapStage}>
+          {phase === 'summary' && ssr + ur > 0 && (
+            <div className={`haul ${ur ? 'ur' : ''} ${ssr + ur >= 2 ? 'multi' : ''}`}>
+              {ssr + ur >= 2 && <em>{MULTI[ssr + ur] ?? 'MIRACLE!!!!!'}</em>}
+              <b>
+                {ur > 0 && <span>UR ×{ur}</span>}
+                {ssr > 0 && <span>SSR ×{ssr}</span>}
+                獲得！
+              </b>
+            </div>
+          )}
           <div className={`result-cards n${gains.length}`}>
             {gains.map((g, i) => {
               const c = card(g.card)
               if (!c) return null
               const open = i < flipped
               return (
-                <div key={i} ref={(el) => void (cardRefs.current[i] = el)} className={`flip ${open ? 'open' : ''} r${g.rarity}`}>
+                <div key={i} ref={(el) => void (cardRefs.current[i] = el)} className={`flip ${open ? 'open' : ''} ${tease === i ? 'tease' : ''} r${g.rarity}`}>
                   <div className="flip-inner">
                     <div className="flip-back">
                       <span>⚓</span>
@@ -302,7 +564,7 @@ export function Gacha({ onBack }: { onBack: () => void }) {
         </div>
       )}
 
-      {phase === 'spotlight' && spot && spotCard && <Spotlight gain={spot} card={spotCard} onNext={nextSpot} />}
+      {phase === 'spotlight' && spotGain && spotCard && <Spotlight key={spot} gain={spotGain} card={spotCard} onNext={nextSpot} />}
 
       {rates && (
         <Modal title="提供割合" onClose={() => setRates(false)}>
@@ -324,24 +586,125 @@ export function Gacha({ onBack }: { onBack: () => void }) {
 
 function Spotlight({ gain, card, onNext }: { gain: Gain; card: Card; onNext: () => void }) {
   const sk = SKILL_INFO[skillOf(card.class)]
+  const ur = card.rarity >= 4
+  const word = ur ? 'UR' : 'SSR'
+  const [stage, setStage] = useState<'intro' | 'main'>('intro')
+  const timers = useRef<number[]>([])
+  const later = (ms: number, f: () => void) => timers.current.push(window.setTimeout(f, ms))
+  const clear = () => {
+    timers.current.forEach(clearTimeout)
+    timers.current = []
+  }
+
+  // The ship itself: a blinding flash, the fanfare, and a fireworks show over it.
+  const enter = () => {
+    clear()
+    setStage('main')
+    audio.play('jackpot', { size: ur ? 2 : 1 })
+    audio.buzz([150, 60, 250, 60, 150])
+    void fx.hitstop(140)
+    fx.flash('#fff', 900, 1)
+    fx.shake(20, 700)
+    fx.rays(410, 360, ur ? '#e0ccff' : '#fff2a8', 26, 2.6)
+    ;[0, 140, 280].forEach((ms, k) => later(ms, () => fx.ring(410, 360, k % 2 ? (ur ? '#b388ff' : '#ff7ae0') : '#fff', 560, 0.9)))
+    fx.confetti(ur ? 260 : 180, ur ? PRISM : RAINBOW)
+    fx.coinRain(ur ? 90 : 50, ur ? '#e8dcff' : '#ffd24a')
+    const shells = ur ? 14 : 9
+    for (let k = 0; k < shells; k++)
+      later(250 + k * 380, () => {
+        fx.firework(rand(100, 1180), rand(70, 380), ur ? PRISM : RAINBOW)
+        audio.play('star', { pitch: Math.floor(rand(-3, 6)) })
+      })
+    for (let k = 0; k < gain.stars; k++) later(900 + k * 160, () => audio.play('coin', { pitch: k * 2 }))
+    if (gain.new)
+      later(1500, () => {
+        audio.play('stamp')
+        fx.shake(8, 200)
+      })
+  }
+
+  // The cut-in: the rarity slams onto a black screen letter by letter (UR's breaks the glass).
+  useEffect(() => {
+    later(0, () => audio.play('whoosh'))
+    ;[...word].forEach((_, k) =>
+      later(260 + k * 200, () => {
+        audio.play('stamp')
+        audio.buzz(30)
+        fx.shake(10, 220)
+        fx.punch(1.04, 200)
+      }),
+    )
+    const end = 260 + word.length * 200 + 420
+    if (ur)
+      later(end - 140, () => {
+        audio.play('shatter')
+        fx.shatter(640, 360, 120, '#f3e6ff')
+      })
+    later(end, enter)
+    return clear
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const marquee = `${ur ? 'ULTRA RARE' : 'SUPER RARE'} ✦ ${card.name} ✦ `.repeat(6)
+
   return (
-    <div className={`spotlight r${card.rarity}`} onClick={onNext}>
-      <div className="spot-rays" />
-      <div className="spot-art">
-        <ShipArt look={lookOfCard(card)} showKanji={false} frame="full" motion staged />
-      </div>
-      <div className="spot-info">
-        <span className={`spot-rarity r${card.rarity}`}>{rarityName(card.rarity)}</span>
-        <small>
-          {CLASS_INFO[card.class].name}・{card.title}
-        </small>
-        <h2>{card.name}</h2>
-        <p className="spot-line">「{card.intro}」</p>
-        <p className="spot-skill">
-          {sk.icon} {sk.name}：{sk.desc}
-        </p>
-        {gain.new ? <span className="spot-new">NEW!</span> : <Stars n={gain.stars} />}
-      </div>
+    <div className={`spotlight r${card.rarity} ${stage}`} onClick={stage === 'intro' ? enter : onNext}>
+      {stage === 'intro' ? (
+        <div className="spot-intro">
+          <div className="intro-lines" />
+          <div className="intro-slash" />
+          <div className="intro-word">
+            {[...word].map((ch, k) => (
+              <b key={k} style={{ animationDelay: `${0.26 + k * 0.2}s` }}>
+                {ch}
+              </b>
+            ))}
+          </div>
+          <small className="intro-sub">{ur ? 'ULTRA RARE' : 'SUPER RARE'}</small>
+        </div>
+      ) : (
+        <>
+          <div className="spot-glow" />
+          <div className="spot-rays" />
+          <div className="spot-rays two" />
+          <div className="spot-bigword">{word}</div>
+          <div className="spot-marquee top">
+            <span>{marquee}</span>
+            <span>{marquee}</span>
+          </div>
+          <div className="spot-marquee bottom">
+            <span>{marquee}</span>
+            <span>{marquee}</span>
+          </div>
+          <div className="spot-motes">
+            {Array.from({ length: 16 }, (_, k) => (
+              <i key={k} style={{ left: `${(k * 61) % 100}%`, animationDelay: `${(k * 0.37) % 3}s`, animationDuration: `${2.6 + (k % 5) * 0.5}s` }} />
+            ))}
+          </div>
+          <div className="spot-art">
+            <ShipArt look={lookOfCard(card)} showKanji={false} frame="full" motion staged />
+            <i className="holo" />
+          </div>
+          <div className="spot-info">
+            <span className={`spot-rarity r${card.rarity}`}>{rarityName(card.rarity)}</span>
+            <small>
+              {CLASS_INFO[card.class].name}・{card.title}
+            </small>
+            <h2 aria-label={card.name}>
+              {[...card.name].map((ch, k) => (
+                <span key={k} style={{ animationDelay: `${0.35 + k * 0.08}s` }}>
+                  {ch}
+                </span>
+              ))}
+            </h2>
+            <p className="spot-line">「{card.intro}」</p>
+            <p className="spot-skill">
+              {sk.icon} {sk.name}：{sk.desc}
+            </p>
+            {gain.new ? <span className="spot-new">NEW!</span> : <Stars n={gain.stars} />}
+          </div>
+        </>
+      )}
       <p className="tap-hint">TAP</p>
     </div>
   )

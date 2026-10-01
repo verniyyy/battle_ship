@@ -303,22 +303,77 @@
 /* ---------- roll ---------- */
 
 .gacha-roll {
+  --orb: #8fb8ff;
   position: absolute;
   inset: 0;
   z-index: 10;
   display: grid;
   place-items: center;
+  overflow: hidden;
   cursor: pointer;
-  background: radial-gradient(circle, rgba(10, 20, 50, 0.3), rgba(0, 0, 0, 0.8));
+  background: radial-gradient(circle, rgba(10, 20, 50, 0.3), rgba(0, 0, 0, 0.85));
+  transition: background 0.4s;
+}
+
+.gacha-roll.l2 {
+  background: radial-gradient(circle, rgba(90, 60, 0, 0.45), rgba(0, 0, 0, 0.88));
+}
+
+.gacha-roll.l3 {
+  background: radial-gradient(circle, rgba(120, 40, 140, 0.55), rgba(8, 0, 20, 0.92));
+}
+
+.gacha-roll.l4 {
+  background: radial-gradient(circle, rgba(90, 60, 200, 0.6), rgba(0, 0, 10, 0.95));
+}
+
+/* Speed lines wheeling round the orb, faster and wilder the hotter it is. */
+.roll-bg {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 1800px;
+  height: 1800px;
+  margin: -900px 0 0 -900px;
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--orb) 30%, transparent) 0 2deg, transparent 2deg 10deg);
+  -webkit-mask-image: radial-gradient(circle, transparent 6%, #000 18%, transparent 52%);
+  mask-image: radial-gradient(circle, transparent 6%, #000 18%, transparent 52%);
+  opacity: 0.45;
+  animation: spin 9s linear infinite;
+}
+
+.gacha-roll.l2 .roll-bg {
+  opacity: 0.7;
+  animation-duration: 4s;
+}
+
+.gacha-roll.l3 .roll-bg,
+.gacha-roll.l4 .roll-bg {
+  background: repeating-conic-gradient(from 0deg, #ff5a5a 0 2deg, transparent 2deg 7deg, #fff35c 7deg 9deg, transparent 9deg 14deg, #4fd5ff 14deg 16deg, transparent 16deg 21deg, #ff7ae0 21deg 23deg, transparent 23deg 28deg);
+  opacity: 0.85;
+  animation-duration: 1.4s;
+}
+
+.gacha-roll.l4 .roll-bg {
+  animation:
+    spin 0.9s linear infinite,
+    hue 1.2s linear infinite;
+}
+
+@keyframes hue {
+  to {
+    filter: hue-rotate(360deg);
+  }
 }
 
 .dock-light {
-  --orb: #8fb8ff;
   position: relative;
   width: 260px;
   height: 260px;
+  margin-top: -60px;
   display: grid;
   place-items: center;
+  animation: fade-in 0.25s both;
 }
 
 .orb {
@@ -365,53 +420,167 @@
   }
 }
 
+.dock-light.o2 .orb {
+  width: 140px;
+  height: 140px;
+  animation-duration: 0.6s;
+}
+
 .dock-light.o3 .orb,
 .dock-light.o4 .orb {
+  width: 170px;
+  height: 170px;
   background: conic-gradient(from 0deg, #ff5a5a, #ffb23f, #fff35c, #5cff8a, #4fd5ff, #8a7dff, #ff7ae0, #ff5a5a);
   box-shadow:
     0 0 80px 30px rgba(255, 255, 255, 0.9),
-    0 0 180px 80px rgba(255, 122, 224, 0.6);
+    0 0 220px 90px rgba(255, 122, 224, 0.6);
   animation:
-    orb-charge 0.5s ease-in-out infinite,
-    spin 1s linear infinite;
+    orb-charge 0.4s ease-in-out infinite,
+    spin 0.8s linear infinite;
 }
 
 .dock-light.o3 .orb-ring,
 .dock-light.o4 .orb-ring {
   border-color: #fff;
-  border-width: 5px;
+  border-width: 6px;
+  animation-duration: 0.6s;
 }
 
 .dock-light.o4 .orb {
+  width: 200px;
+  height: 200px;
+  background: conic-gradient(from 0deg, #b388ff, #4fd5ff, #fff, #ff7ae0, #9effe6, #b388ff);
   box-shadow:
-    0 0 80px 30px rgba(255, 255, 255, 0.9),
-    0 0 200px 100px rgba(179, 136, 255, 0.8);
+    0 0 100px 40px rgba(255, 255, 255, 0.95),
+    0 0 260px 120px rgba(179, 136, 255, 0.85);
 }
 
 .dock-light.crack {
-  animation: crack 0.4s linear;
+  animation: crack 0.4s linear infinite;
+}
+
+.dock-light.crack .orb {
+  filter: brightness(1.8) contrast(1.4);
 }
 
 @keyframes crack {
   20%,
   60% {
-    transform: translate(-10px, 4px) scale(1.1);
+    transform: translate(-12px, 5px) scale(1.15) rotate(-3deg);
   }
   40%,
   80% {
-    transform: translate(10px, -4px) scale(1.2);
+    transform: translate(12px, -5px) scale(1.25) rotate(3deg);
+  }
+}
+
+/* The three hammer blows, each lit in the colour it reached. */
+.step-pips {
+  position: absolute;
+  top: 470px;
+  display: flex;
+  gap: 18px;
+}
+
+.step-pips i {
+  width: 46px;
+  height: 14px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  transform: skewX(-20deg);
+}
+
+.step-pips i.on {
+  animation: pip-on 0.3s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+
+.step-pips i.l0 {
+  background: #8fb8ff;
+  box-shadow: 0 0 12px #8fb8ff;
+}
+
+.step-pips i.l1 {
+  background: #4fc3ff;
+  box-shadow: 0 0 14px #4fc3ff;
+}
+
+.step-pips i.l2 {
+  background: #ffcf4a;
+  box-shadow: 0 0 18px #ffcf4a;
+}
+
+.step-pips i.l3,
+.step-pips i.l4 {
+  background: var(--rainbow);
+  background-size: 300% 100%;
+  border-color: #fff;
+  box-shadow: 0 0 24px #fff;
+  animation:
+    pip-on 0.3s cubic-bezier(0.2, 1.6, 0.4, 1) both,
+    rainbow-border 0.8s linear infinite;
+}
+
+@keyframes pip-on {
+  from {
+    transform: skewX(-20deg) scale(2.2);
+    filter: brightness(3);
   }
 }
 
 .roll-text {
   position: absolute;
-  top: 520px;
+  top: 510px;
   font-family: var(--serif);
   font-size: 40px;
   font-weight: 900;
   letter-spacing: 0.3em;
   text-shadow: 0 0 20px var(--cyan);
-  animation: blink 1s ease-in-out infinite;
+  animation:
+    roll-text-in 0.35s cubic-bezier(0.2, 1.6, 0.4, 1) both,
+    blink 1s 0.35s ease-in-out infinite;
+}
+
+.roll-text.l2 {
+  font-size: 54px;
+  color: #ffe9a6;
+  text-shadow:
+    0 0 20px #ffb300,
+    0 4px 0 #6a3d00;
+}
+
+.roll-text.l3,
+.roll-text.l4 {
+  font-size: 72px;
+  padding: 0 0.2em;
+  background: var(--rainbow);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 4px 0 #2a0a3a) drop-shadow(0 0 18px #fff);
+  animation:
+    roll-text-in 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both,
+    rainbow-border 0.8s linear infinite,
+    throb 0.5s 0.4s ease-in-out infinite;
+}
+
+.roll-text.l4 {
+  font-size: 84px;
+}
+
+@keyframes roll-text-in {
+  from {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+
+@keyframes throb {
+  50% {
+    transform: scale(1.08);
+  }
 }
 
 .tap-hint {
@@ -419,11 +588,293 @@
   bottom: 30px;
   left: 0;
   right: 0;
+  z-index: 6;
   text-align: center;
   font-size: 13px;
   letter-spacing: 0.4em;
   color: var(--muted);
   animation: blink 1.4s infinite;
+}
+
+/* ---------- omens ---------- */
+
+.omen {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 緊急入電: red alert, hazard tape and a klaxon. */
+.omen-alert {
+  background: rgba(110, 0, 0, 0.7);
+  animation: alert-flash 0.36s steps(2) infinite;
+}
+
+@keyframes alert-flash {
+  50% {
+    background: rgba(30, 0, 0, 0.85);
+  }
+}
+
+.omen-alert b {
+  font-family: var(--serif);
+  font-size: 140px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  color: #fff;
+  text-shadow:
+    0 0 20px #ff2a2a,
+    0 0 70px #ff0000,
+    0 8px 0 #4a0000;
+  animation: omen-slam 0.4s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+
+.omen-alert small {
+  position: absolute;
+  top: 470px;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.3em;
+  color: #ffd0d0;
+  animation: blink 0.36s steps(2) infinite;
+}
+
+.hazard {
+  position: absolute;
+  left: -120px;
+  right: -120px;
+  height: 60px;
+  background: repeating-linear-gradient(-45deg, #ffcc00 0 30px, #111 30px 60px);
+  box-shadow: 0 0 30px rgba(255, 204, 0, 0.6);
+  animation: hazard-scroll 0.5s linear infinite;
+}
+
+.hazard.top {
+  top: 110px;
+  transform: rotate(-4deg);
+}
+
+.hazard.bottom {
+  bottom: 110px;
+  transform: rotate(-4deg);
+  animation-direction: reverse;
+}
+
+@keyframes hazard-scroll {
+  to {
+    background-position: 84.85px 0;
+  }
+}
+
+@keyframes omen-slam {
+  from {
+    opacity: 0;
+    transform: scale(4);
+    filter: blur(8px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.92);
+    filter: none;
+  }
+}
+
+/* Lightning: a dark storm sky the strikes (fx canvas) light up. */
+.omen-bolt {
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(120, 150, 220, 0.35), transparent 60%),
+    linear-gradient(#05070f, #0b1226);
+}
+
+/* 激熱 / 好機: a riser in the dark, then the kanji slams in. */
+.omen-kanji {
+  background: radial-gradient(circle, rgba(20, 30, 40, 0.7), rgba(0, 0, 0, 0.96));
+}
+
+.omen-kanji.hot {
+  background: radial-gradient(circle, rgba(90, 0, 0, 0.75), rgba(0, 0, 0, 0.96));
+}
+
+.omen-kanji small {
+  position: absolute;
+  font-family: var(--serif);
+  font-size: 30px;
+  letter-spacing: 0.4em;
+  color: #c9c9d6;
+  animation: kanji-hint 1.1s ease-in both;
+}
+
+@keyframes kanji-hint {
+  from {
+    opacity: 0;
+    letter-spacing: 1.2em;
+  }
+  70% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    letter-spacing: 0.2em;
+  }
+}
+
+.omen-kanji b {
+  font-family: var(--serif);
+  font-size: 300px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 0 0.05em;
+  background: linear-gradient(180deg, #fff, #b8ffe8 35%, #2bd99a 70%, #00684a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 14px #2affb0) drop-shadow(0 10px 0 #002a1e);
+  animation:
+    kanji-slam 0.5s 1.08s cubic-bezier(0.2, 1.5, 0.4, 1) both,
+    kanji-burn 0.24s 1.6s steps(2) infinite;
+}
+
+.omen-kanji.hot b {
+  background: linear-gradient(180deg, #fff7c0, #ffcc33 35%, #ff5a1a 65%, #b00000);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 0 16px #ff3b00) drop-shadow(0 10px 0 #300);
+}
+
+@keyframes kanji-slam {
+  from {
+    opacity: 0;
+    transform: scale(5) rotate(-12deg);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(0.9) rotate(2deg);
+  }
+}
+
+@keyframes kanji-burn {
+  50% {
+    transform: scale(1.04) translate(3px, -2px);
+  }
+}
+
+/* UR: the screen glitches out, then a rainbow seam tears it open. */
+.omen-glitch {
+  background: #000;
+}
+
+.omen-glitch::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.06) 0 2px, transparent 2px 4px);
+  animation: glitch-scan 0.15s steps(2) infinite;
+}
+
+.omen-glitch::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(transparent 22%, rgba(255, 0, 200, 0.35) 22% 25%, transparent 25% 61%, rgba(0, 240, 255, 0.35) 61% 63%, transparent 63%);
+  animation: glitch-bars 0.4s steps(3) infinite;
+}
+
+@keyframes glitch-scan {
+  50% {
+    transform: translateY(2px);
+  }
+}
+
+@keyframes glitch-bars {
+  33% {
+    transform: translateY(-180px);
+  }
+  66% {
+    transform: translateY(140px) scaleY(0.4);
+  }
+}
+
+.omen-glitch b {
+  position: relative;
+  font-size: 200px;
+  font-weight: 900;
+  color: #fff;
+  animation: glitch-shift 0.3s steps(3) infinite;
+}
+
+.omen-glitch b::before,
+.omen-glitch b::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: screen;
+}
+
+.omen-glitch b::before {
+  color: #ff00c8;
+  transform: translateX(-8px);
+  clip-path: inset(10% 0 55% 0);
+}
+
+.omen-glitch b::after {
+  color: #00f0ff;
+  transform: translateX(8px);
+  clip-path: inset(50% 0 8% 0);
+}
+
+@keyframes glitch-shift {
+  33% {
+    transform: translate(-6px, 3px) skewX(8deg);
+  }
+  66% {
+    transform: translate(5px, -2px) skewX(-6deg);
+  }
+}
+
+.omen-glitch small {
+  position: absolute;
+  top: 520px;
+  font-size: 20px;
+  letter-spacing: 0.6em;
+  color: #9effe6;
+  animation: blink 0.2s steps(2) infinite;
+}
+
+.omen-glitch .gate {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 8px;
+  margin-left: -4px;
+  background: linear-gradient(#ff5a5a, #fff35c, #5cff8a, #4fd5ff, #8a7dff, #ff7ae0);
+  box-shadow:
+    0 0 40px #fff,
+    0 0 140px #b388ff;
+  transform: scaleY(0);
+  animation:
+    gate-open 0.45s 1.15s ease-out forwards,
+    gate-widen 0.35s 1.65s ease-in forwards;
+}
+
+@keyframes gate-open {
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes gate-widen {
+  to {
+    width: 1500px;
+    margin-left: -750px;
+    opacity: 0.2;
+  }
 }
 
 /* ---------- results ---------- */
@@ -436,6 +887,8 @@
   place-items: center;
   align-content: center;
   gap: 24px;
+  /* Room for the haul's headline above the cards. */
+  padding-top: 70px;
   background: radial-gradient(circle, rgba(10, 20, 50, 0.6), rgba(0, 0, 0, 0.9));
 }
 
@@ -454,6 +907,9 @@
   position: relative;
   width: 150px;
   height: 208px;
+  transition:
+    filter 0.3s,
+    transform 0.3s;
 }
 
 .result-cards.n1 .flip {
@@ -518,6 +974,99 @@
   }
 }
 
+/* The hold before a top-rarity card turns: the rest go dark, it trembles and swells. */
+.gacha-results.teasing .flip:not(.tease) {
+  filter: brightness(0.3) saturate(0.4);
+}
+
+.flip.tease {
+  z-index: 3;
+  transform: scale(1.18);
+}
+
+.flip.tease .flip-inner {
+  animation: tease-shake 0.09s linear infinite;
+}
+
+.flip.tease .flip-back {
+  color: #fff;
+  background:
+    conic-gradient(from 0deg, #ff5a5a, #ffb23f, #fff35c, #5cff8a, #4fd5ff, #8a7dff, #ff7ae0, #ff5a5a) center / 300% 300%,
+    #000;
+  animation:
+    back-glow 0.25s ease-in-out infinite,
+    rainbow-border 0.6s linear infinite;
+}
+
+@keyframes tease-shake {
+  25% {
+    transform: translate(-3px, 1px) rotate(-1.5deg);
+  }
+  75% {
+    transform: translate(3px, -1px) rotate(1.5deg);
+  }
+}
+
+/* A spinning rainbow aura behind every top-rarity card, once it is face up (or about to be). */
+.flip.tease::before,
+.flip.open.r3::before,
+.flip.open.r4::before {
+  content: '';
+  position: absolute;
+  inset: -14px;
+  z-index: -1;
+  border-radius: 20px;
+  background: conic-gradient(from 0deg, #ff5a5a, #ffb23f, #fff35c, #5cff8a, #4fd5ff, #8a7dff, #ff7ae0, #ff5a5a);
+  filter: blur(10px);
+  animation: aura 1.6s linear infinite;
+}
+
+.flip.open.r4::before {
+  inset: -20px;
+  background: conic-gradient(from 0deg, #b388ff, #4fd5ff, #fff, #ff7ae0, #9effe6, #b388ff);
+  animation-duration: 1s;
+}
+
+.flip.tease::before {
+  inset: -26px;
+  animation-duration: 0.5s;
+}
+
+@keyframes aura {
+  from {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.06);
+  }
+  to {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+/* A holographic sheen sweeping across top-rarity cards. */
+.flip.open.r3 .flip-front::after,
+.flip.open.r4 .flip-front::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.75) 45%, rgba(179, 136, 255, 0.4) 50%, rgba(79, 213, 255, 0.4) 55%, transparent 70%) -300px 0 / 300% 100% no-repeat;
+  mix-blend-mode: overlay;
+  animation: holo 2.4s 0.6s ease-in-out infinite;
+}
+
+@keyframes holo {
+  from {
+    background-position: 120% 0;
+  }
+  60%,
+  to {
+    background-position: -120% 0;
+  }
+}
+
 .lb-tag {
   position: absolute;
   bottom: -22px;
@@ -533,30 +1082,347 @@
   animation: slide-up 0.4s both;
 }
 
+/* The haul's headline when a pull lands top rarities. */
+.haul {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  right: 0;
+  display: grid;
+  justify-items: center;
+  pointer-events: none;
+  animation: omen-slam 0.5s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+
+.haul em {
+  font-style: italic;
+  font-weight: 900;
+  font-size: 44px;
+  line-height: 1;
+  padding: 0 0.2em;
+  background: var(--rainbow);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 3px 0 #2a0a3a) drop-shadow(0 0 14px #fff);
+  animation:
+    rainbow-border 1s linear infinite,
+    throb 0.6s ease-in-out infinite;
+}
+
+.haul b {
+  font-family: var(--serif);
+  font-size: 26px;
+  letter-spacing: 0.15em;
+  color: #fff;
+  text-shadow:
+    0 0 12px #ff7ae0,
+    0 2px 0 #000;
+}
+
+.haul b span {
+  margin-right: 0.6em;
+}
+
+.haul:not(.multi) {
+  top: 18px;
+}
+
+.haul:not(.multi) b {
+  font-size: 32px;
+}
+
 /* ---------- spotlight ---------- */
 
 .spotlight {
   position: absolute;
   inset: 0;
   z-index: 20;
+  overflow: hidden;
   cursor: pointer;
-  background: radial-gradient(circle at 35% 50%, rgb(60, 20, 90), rgb(4, 2, 8));
-  animation: fade-in 0.3s both;
+  background: radial-gradient(circle at 32% 50%, rgb(80, 24, 110), rgb(4, 2, 8));
+}
+
+.spotlight.intro {
+  background: #000;
+}
+
+.spotlight.r4.main {
+  background: radial-gradient(circle at 32% 50%, rgb(60, 40, 150), rgb(2, 0, 16));
+}
+
+/* The cut-in: speed lines, a slash of light and the rarity stamped letter by letter. */
+.spot-intro {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.intro-lines {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2000px;
+  height: 2000px;
+  margin: -1000px 0 0 -1000px;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, 0.5) 0 0.6deg, transparent 0.6deg 5deg);
+  -webkit-mask-image: radial-gradient(circle, transparent 10%, #000 40%);
+  mask-image: radial-gradient(circle, transparent 10%, #000 40%);
+  animation:
+    spin 3s linear infinite,
+    fade-in 0.3s both;
+}
+
+.intro-slash {
+  position: absolute;
+  left: -10%;
+  right: -10%;
+  top: 50%;
+  height: 8px;
+  margin-top: -4px;
+  background: linear-gradient(90deg, transparent, #fff 20%, #fff 80%, transparent);
+  box-shadow:
+    0 0 30px #fff,
+    0 0 80px #ff7ae0;
+  transform: rotate(-8deg) scaleX(0);
+  animation: slash 0.3s ease-out forwards;
+}
+
+.spotlight.r4 .intro-slash {
+  box-shadow:
+    0 0 30px #fff,
+    0 0 80px #4fd5ff;
+}
+
+@keyframes slash {
+  from {
+    transform: rotate(-8deg) scaleX(0);
+    transform-origin: left;
+  }
+  to {
+    transform: rotate(-8deg) scaleX(1);
+    transform-origin: left;
+    height: 220px;
+    margin-top: -110px;
+    opacity: 0.25;
+  }
+}
+
+.intro-word {
+  position: relative;
+  display: flex;
+  gap: 0.02em;
+}
+
+.intro-word b {
+  font-size: 300px;
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1;
+  padding: 0 0.04em;
+  background: var(--rainbow);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 10px 0 #2a0a3a) drop-shadow(0 0 30px #fff);
+  animation:
+    letter-slam 0.32s cubic-bezier(0.2, 1.6, 0.4, 1) both,
+    rainbow-border 0.8s linear infinite;
+}
+
+.spotlight.r4 .intro-word b {
+  font-size: 340px;
+  background: linear-gradient(90deg, #b388ff, #4fd5ff, #fff, #ff7ae0, #b388ff);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+@keyframes letter-slam {
+  from {
+    opacity: 0;
+    transform: scale(4) translateY(-40px);
+    filter: blur(10px) brightness(4);
+  }
+}
+
+.intro-sub {
+  position: absolute;
+  top: 560px;
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 1em;
+  color: #fff;
+  text-shadow: 0 0 16px #ff7ae0;
+  animation: slide-up 0.4s 0.7s both;
+}
+
+/* The ship's stage. */
+.spot-glow {
+  position: absolute;
+  left: 32%;
+  top: 50%;
+  width: 900px;
+  height: 900px;
+  margin: -450px 0 0 -450px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 246, 192, 0.55), transparent 60%);
+  animation: glow-pulse 1.2s ease-in-out infinite;
+}
+
+.spotlight.r4 .spot-glow {
+  background: radial-gradient(circle, rgba(200, 170, 255, 0.65), transparent 60%);
+}
+
+@keyframes glow-pulse {
+  50% {
+    transform: scale(1.15);
+    opacity: 0.7;
+  }
 }
 
 .spot-rays {
   position: absolute;
-  left: 35%;
+  left: 32%;
   top: 50%;
-  width: 1600px;
-  height: 1600px;
-  margin: -800px 0 0 -800px;
-  background: repeating-conic-gradient(from 0deg, rgba(255, 246, 192, 0.12) 0 6deg, transparent 6deg 18deg);
-  animation: spin 16s linear infinite;
+  width: 2000px;
+  height: 2000px;
+  margin: -1000px 0 0 -1000px;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 246, 192, 0.16) 0 6deg, transparent 6deg 18deg);
+  animation: spin 14s linear infinite;
+}
+
+.spot-rays.two {
+  background: repeating-conic-gradient(from 3deg, rgba(255, 122, 224, 0.12) 0 3deg, transparent 3deg 24deg);
+  animation: spin 9s linear infinite reverse;
 }
 
 .spotlight.r4 .spot-rays {
-  background: repeating-conic-gradient(from 0deg, rgba(179, 136, 255, 0.2) 0 6deg, transparent 6deg 12deg, rgba(79, 213, 255, 0.16) 12deg 18deg, transparent 18deg 24deg);
+  background: repeating-conic-gradient(from 0deg, rgba(179, 136, 255, 0.24) 0 6deg, transparent 6deg 12deg, rgba(79, 213, 255, 0.18) 12deg 18deg, transparent 18deg 24deg);
+  animation-duration: 8s;
+}
+
+.spotlight.r4 .spot-rays.two {
+  background: repeating-conic-gradient(from 3deg, rgba(255, 255, 255, 0.16) 0 2deg, transparent 2deg 15deg);
+  animation-duration: 5s;
+}
+
+/* A giant outlined SSR / UR behind everything. */
+.spot-bigword {
+  position: absolute;
+  right: -30px;
+  top: 50%;
+  margin-top: -260px;
+  font-size: 460px;
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1;
+  color: transparent;
+  -webkit-text-stroke: 3px rgba(255, 255, 255, 0.14);
+  animation: bigword-in 1.2s cubic-bezier(0.2, 1, 0.4, 1) both;
+}
+
+@keyframes bigword-in {
+  from {
+    opacity: 0;
+    transform: translateX(300px) scale(1.4);
+  }
+}
+
+/* Bands of SUPER RARE ✦ … scrolling along the top and bottom. */
+.spot-marquee {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 40px;
+  display: flex;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 20px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.25em;
+  line-height: 40px;
+  color: #2a0a3a;
+  background: var(--rainbow);
+  background-size: 300% 100%;
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.5);
+  animation:
+    rainbow-border 3s linear infinite,
+    marquee-in 0.5s cubic-bezier(0.2, 1, 0.4, 1) both;
+}
+
+.spot-marquee.top {
+  top: 0;
+}
+
+.spot-marquee.bottom {
+  bottom: 0;
+}
+
+.spot-marquee span {
+  flex: none;
+  padding-right: 0.25em;
+  animation: marquee 14s linear infinite;
+}
+
+.spot-marquee.bottom span {
+  animation-direction: reverse;
+}
+
+@keyframes marquee {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes marquee-in {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+/* Glitter rising through the scene. */
+.spot-motes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.spot-motes i {
+  position: absolute;
+  bottom: -20px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 0 10px #fff,
+    0 0 20px #ff7ae0;
+  animation: mote linear infinite both;
+}
+
+.spotlight.r4 .spot-motes i {
+  box-shadow:
+    0 0 10px #fff,
+    0 0 20px #4fd5ff;
+}
+
+@keyframes mote {
+  from {
+    transform: translateY(0) scale(0.5);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-760px) translateX(40px) scale(1.2);
+    opacity: 0;
+  }
 }
 
 .spot-art {
@@ -567,24 +1433,52 @@
   height: 560px;
   border-radius: 24px;
   overflow: hidden;
-  border: 4px solid #fff;
-  box-shadow: 0 0 80px rgba(255, 246, 192, 0.7);
-  animation: spot-art-in 0.8s cubic-bezier(0.2, 1.2, 0.4, 1) both;
+  border: 5px solid transparent;
+  background:
+    linear-gradient(#0a0f20, #0a0f20) padding-box,
+    var(--rainbow) border-box;
+  background-size: 300% 100%;
+  box-shadow:
+    0 0 80px rgba(255, 246, 192, 0.8),
+    0 0 160px rgba(255, 122, 224, 0.5);
+  animation:
+    spot-art-in 0.9s cubic-bezier(0.2, 1.3, 0.4, 1) both,
+    rainbow-border 2s linear infinite;
+}
+
+.spotlight.r4 .spot-art {
+  box-shadow:
+    0 0 90px rgba(220, 200, 255, 0.9),
+    0 0 200px rgba(79, 213, 255, 0.6);
 }
 
 @keyframes spot-art-in {
   from {
     opacity: 0;
-    transform: translateX(-200px) scale(1.3);
-    filter: brightness(4);
+    transform: scale(2.2) rotate(-6deg);
+    filter: brightness(6);
   }
+  50% {
+    opacity: 1;
+    filter: brightness(2);
+  }
+}
+
+.spot-art .holo {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.7) 44%, rgba(255, 122, 224, 0.35) 50%, rgba(79, 213, 255, 0.35) 56%, transparent 70%) 0 0 / 300% 100% no-repeat;
+  mix-blend-mode: overlay;
+  animation: holo 2.6s 0.9s ease-in-out infinite;
 }
 
 .spot-info {
   position: absolute;
   left: 680px;
-  top: 150px;
-  width: 520px;
+  top: 130px;
+  width: 540px;
   display: grid;
   justify-items: start;
   gap: 10px;
@@ -592,7 +1486,7 @@
 }
 
 .spot-rarity {
-  font-size: 80px;
+  font-size: 96px;
   font-weight: 900;
   font-style: italic;
   line-height: 1;
@@ -602,12 +1496,15 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 4px 0 #1a0a2a) drop-shadow(0 0 20px #fff);
-  animation: rainbow-border 1.5s linear infinite;
+  filter: drop-shadow(0 5px 0 #1a0a2a) drop-shadow(0 0 22px #fff);
+  animation:
+    letter-slam 0.45s 0.15s cubic-bezier(0.2, 1.6, 0.4, 1) both,
+    rainbow-border 1.2s linear infinite,
+    throb 0.8s 0.6s ease-in-out infinite;
 }
 
 .spot-rarity.r4 {
-  font-size: 96px;
+  font-size: 116px;
   background: linear-gradient(90deg, #b388ff, #4fd5ff, #fff, #ff7ae0, #b388ff);
   background-size: 200% 100%;
   -webkit-background-clip: text;
@@ -620,11 +1517,27 @@
 }
 
 .spot-info h2 {
+  display: flex;
   font-family: var(--serif);
   font-size: 90px;
   line-height: 1;
   letter-spacing: 0.1em;
-  text-shadow: 0 6px 20px #000;
+  text-shadow:
+    0 6px 20px #000,
+    0 0 30px rgba(255, 255, 255, 0.6);
+}
+
+.spot-info h2 span {
+  display: inline-block;
+  animation: char-pop 0.4s cubic-bezier(0.2, 1.8, 0.4, 1) both;
+}
+
+@keyframes char-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-60px) scale(2);
+    filter: brightness(4);
+  }
 }
 
 .spot-line {
@@ -634,25 +1547,64 @@
   border-radius: 12px;
   color: #10223a;
   background: rgba(255, 255, 255, 0.92);
+  animation: slide-up 0.4s 0.8s both;
 }
 
 .spot-skill {
   font-size: 14px;
   color: #cfe0f5;
+  animation: slide-up 0.4s 1s both;
 }
 
 .spot-new {
-  padding: 4px 16px;
+  padding: 6px 22px;
   border-radius: 999px;
-  font-size: 22px;
+  font-size: 30px;
   font-weight: 900;
+  font-style: italic;
   color: #fff;
   background: linear-gradient(90deg, #ff3b5c, #ff8a3c);
-  animation: badge-bob 0.8s ease-in-out infinite;
+  border: 3px solid #fff;
+  box-shadow: 0 0 24px rgba(255, 90, 90, 0.8);
+  animation:
+    stamp-in 0.4s 1.5s cubic-bezier(0.2, 1.6, 0.4, 1) both,
+    badge-bob 0.8s 1.9s ease-in-out infinite;
+}
+
+@keyframes stamp-in {
+  from {
+    opacity: 0;
+    transform: scale(4) rotate(-20deg);
+  }
 }
 
 .spot-info .stars {
-  font-size: 28px;
+  font-size: 34px;
+}
+
+.spot-info .stars i {
+  display: inline-block;
+  animation: char-pop 0.35s cubic-bezier(0.2, 1.8, 0.4, 1) both;
+}
+
+.spot-info .stars i:nth-child(1) {
+  animation-delay: 0.9s;
+}
+
+.spot-info .stars i:nth-child(2) {
+  animation-delay: 1.06s;
+}
+
+.spot-info .stars i:nth-child(3) {
+  animation-delay: 1.22s;
+}
+
+.spot-info .stars i:nth-child(4) {
+  animation-delay: 1.38s;
+}
+
+.spot-info .stars i:nth-child(5) {
+  animation-delay: 1.54s;
 }
 
 .rates {
