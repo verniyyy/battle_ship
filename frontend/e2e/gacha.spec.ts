@@ -71,6 +71,28 @@ async function rigPulls(page: Page, rarities: number[]) {
   })
 }
 
+/**
+ * Logs each beat of the top-rarity show as it happens (cut-in, the card turning, the ship's stage),
+ * since the beats pass too quickly to catch one by one.
+ */
+async function recordShow(page: Page) {
+  await page.evaluate(() => {
+    const log: string[] = []
+    ;(window as unknown as { showLog: string[] }).showLog = log
+    const note = (e: string) => log[log.length - 1] !== e && log.push(e)
+    new MutationObserver(() => {
+      const word = document.querySelector('.spotlight.intro .intro-word')?.textContent
+      if (word) note(`cutin:${word} open:${document.querySelectorAll('.flip.open').length}`)
+      const hero = document.querySelector('.flip.hero.open')
+      if (hero && !document.querySelector('.spotlight')) note(`turn:${[...hero.classList].find((c) => /^r\d$/.test(c))}`)
+      const rarity = document.querySelector('.spot-rarity')?.textContent
+      if (rarity) note(`spot:${rarity}`)
+    }).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true })
+  })
+}
+
+const shown = (page: Page) => page.evaluate(() => (window as unknown as { showLog: string[] }).showLog)
+
 test('a ten-pull with a UR and an SSR plays the full top-rarity show', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
@@ -78,6 +100,7 @@ test('a ten-pull with a UR and an SSR plays the full top-rarity show', async ({ 
   await rigPulls(page, [1, 0, 3, 1, 0, 2, 0, 4, 1, 0])
   await toHome(page)
   await page.locator('.menu-tile.gacha').click()
+  await recordShow(page)
   await page.locator('.pull-btn.ten').click()
 
   // A UR always opens on the glitch omen, then the dock hammers up to prism.
@@ -91,23 +114,20 @@ test('a ten-pull with a UR and an SSR plays the full top-rarity show', async ({ 
 
   // The reveal holds its breath over the SSR before turning it.
   await expect(page.locator('.flip.tease.r3')).toBeVisible({ timeout: 10_000 })
-  await page.waitForTimeout(500)
   await page.screenshot({ path: `${shots}/gacha-tease.png` })
 
-  // Each top rarity gets a cut-in, then its stage: SSR first, in card order.
+  // The SSR stops the run (the cards after it stay face down) for its cut-in; then the card itself
+  // turns at centre stage, and only after that does the ship's stage open.
   const spot = page.locator('.spotlight')
-  await expect(spot.locator('.intro-word')).toHaveText('SSR', { timeout: 10_000 })
-  await page.waitForTimeout(700)
-  await page.screenshot({ path: `${shots}/gacha-cutin-ssr.png` })
-  await expect(spot.locator('.spot-rarity')).toHaveText('SSR', { timeout: 5_000 })
+  await expect(spot.locator('.spot-rarity')).toHaveText('SSR', { timeout: 10_000 })
+  expect(await shown(page)).toEqual(['cutin:SSR open:2', 'turn:r3', 'spot:SSR'])
   await page.waitForTimeout(1600)
   await page.screenshot({ path: `${shots}/gacha-spotlight-ssr.png` })
   await spot.click()
 
-  // Tapping the cut-in goes straight to the ship.
-  await expect(spot.locator('.intro-word')).toHaveText('UR')
-  await spot.click()
-  await expect(spot.locator('.spot-rarity')).toHaveText('UR')
+  // Then the run picks up again, up to the UR.
+  await expect(spot.locator('.spot-rarity')).toHaveText('UR', { timeout: 15_000 })
+  expect((await shown(page)).slice(3)).toEqual(['cutin:UR open:7', 'turn:r4', 'spot:UR'])
   await expect(spot.locator('.spot-new')).toBeVisible()
   await page.waitForTimeout(1800)
   await page.screenshot({ path: `${shots}/gacha-spotlight-ur.png` })
@@ -129,14 +149,16 @@ test('an SSR single pull can open on the 激熱 omen', async ({ page }) => {
   await page.locator('.menu-tile.gacha').click()
   // 0.69 picks the kanji omen with no fake-out (see rollPlan).
   await page.evaluate(() => (Math.random = () => 0.69))
+  await recordShow(page)
   await page.locator('.pull-btn.one').click()
   await expect(page.locator('.omen-kanji.hot b')).toHaveText('激熱')
   await page.waitForTimeout(1500)
   await page.screenshot({ path: `${shots}/gacha-omen-kanji.png` })
   await expect(page.locator('.dock-light.o3')).toBeVisible({ timeout: 10_000 })
   await expect(page.locator('.roll-text')).toHaveText('確定！！')
-  // Skipping still lands on the ship's spotlight.
+  // Skipping still lands on the cut-in, and the card still turns before the ship's stage.
   await page.locator('.gacha-roll').click()
   await page.locator('.gacha-results').click()
-  await expect(page.locator('.spotlight .intro-word')).toHaveText('SSR')
+  await expect(page.locator('.spotlight .spot-rarity')).toHaveText('SSR', { timeout: 8_000 })
+  expect(await shown(page)).toEqual(['cutin:SSR open:0', 'turn:r3', 'spot:SSR'])
 })
