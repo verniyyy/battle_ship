@@ -1922,7 +1922,10 @@ class AudioEngine {
 
   // ---------------- ambience ----------------
 
-  /** Sea bed under the battle, shaped by the weather; null fades it out. */
+  /**
+   * Weather sounds under the battle; null fades them out. There is no constant sea bed:
+   * its endless filtered-noise hiss was reported as grating under the battle music.
+   */
   setAmbience(kind: Ambience | null) {
     if (this.ambience === kind && this.ambOut) return
     this.ambience = kind
@@ -1935,47 +1938,7 @@ class AudioEngine {
     out.gain.linearRampToValueAtTime(1, t + 2.5)
     out.connect(this.ambBus!)
     this.ambOut = out
-    const nodes: AudioNode[] = [out]
-
-    // A looping filtered noise whose cutoff and level swell slowly, like waves.
-    const bed = (color: Color, type: BiquadFilterType, f: number, vol: number, swell: number, rate: number, pan = 0, q = 0.6) => {
-      const src = ctx.createBufferSource()
-      src.buffer = this.noiseBufs[color]
-      src.loop = true
-      src.playbackRate.value = rnd(0.95, 1.05)
-      const filt = ctx.createBiquadFilter()
-      filt.type = type
-      filt.frequency.value = f
-      filt.Q.value = q
-      const g = ctx.createGain()
-      g.gain.value = vol
-      const p = ctx.createStereoPanner()
-      p.pan.value = pan
-      const lfo = ctx.createOscillator()
-      lfo.frequency.value = rate
-      const lf = ctx.createGain()
-      lf.gain.value = f * swell
-      const lg = ctx.createGain()
-      lg.gain.value = vol * swell
-      lfo.connect(lf).connect(filt.frequency)
-      lfo.connect(lg).connect(g.gain)
-      src.connect(filt).connect(g).connect(p).connect(out)
-      src.start(t, Math.random() * 2.5)
-      lfo.start(t)
-      nodes.push(src, filt, g, p, lfo, lf, lg)
-    }
-
-    const w = { clear: 1, fog: 0.8, night: 0.6, storm: 1.8 }[kind]
-    bed('brown', 'lowpass', 380, 0.22 * w, 0.5, 0.09, -0.4)
-    bed('brown', 'lowpass', 420, 0.2 * w, 0.5, 0.07, 0.4)
-    bed('pink', 'bandpass', 900, 0.05 * w, 0.8, 0.11, 0)
-    if (kind === 'storm') {
-      bed('white', 'highpass', 3500, 0.07, 0.15, 0.3, -0.5)
-      bed('white', 'highpass', 3800, 0.07, 0.15, 0.23, 0.5)
-      bed('pink', 'bandpass', 500, 0.08, 0.9, 0.05, 0, 1.2)
-    }
-    if (kind === 'night') bed('pink', 'bandpass', 250, 0.06, 0.6, 0.04, 0, 0.8)
-    this.ambNodes = nodes
+    this.ambNodes = [out]
 
     // Occasional events: thunder in a storm, a foghorn in fog, gulls on a clear day.
     const event = () => {
