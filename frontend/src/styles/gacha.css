@@ -1001,11 +1001,6 @@
   }
 }
 
-.flip.hero.open::before {
-  inset: -30px;
-  animation-duration: 0.8s;
-}
-
 .flip.tease .flip-inner {
   animation: tease-shake 0.09s linear infinite;
 }
@@ -1029,40 +1024,54 @@
   }
 }
 
-/* A spinning rainbow aura behind every top-rarity card, once it is face up (or about to be). */
+/*
+ * A rainbow halo hugging every top-rarity card, once it is face up (or about to be). The box
+ * itself stays put in the card's shape; only the colours flow round its rim, so no corners
+ * swing out from behind the card.
+ */
+@property --aura-turn {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .flip.tease::before,
 .flip.open.r3::before,
 .flip.open.r4::before {
   content: '';
   position: absolute;
-  inset: -14px;
+  inset: -5px;
   z-index: -1;
-  border-radius: 20px;
-  background: conic-gradient(from 0deg, #ff5a5a, #ffb23f, #fff35c, #5cff8a, #4fd5ff, #8a7dff, #ff7ae0, #ff5a5a);
-  filter: blur(10px);
-  animation: aura 1.6s linear infinite;
+  border-radius: 16px;
+  background: conic-gradient(from var(--aura-turn), #ff5a5a, #ffb23f, #fff35c, #5cff8a, #4fd5ff, #8a7dff, #ff7ae0, #ff5a5a);
+  filter: blur(12px);
+  animation:
+    aura-turn 3s linear infinite,
+    aura-breathe 1.8s ease-in-out infinite;
 }
 
 .flip.open.r4::before {
-  inset: -20px;
-  background: conic-gradient(from 0deg, #b388ff, #4fd5ff, #fff, #ff7ae0, #9effe6, #b388ff);
-  animation-duration: 1s;
+  background: conic-gradient(from var(--aura-turn), #b388ff, #4fd5ff, #fff, #ff7ae0, #9effe6, #b388ff);
+  animation-duration: 2s, 1.4s;
 }
 
+/* About to turn: the halo runs fast and burns brighter. */
 .flip.tease::before {
-  inset: -26px;
-  animation-duration: 0.5s;
+  inset: -8px;
+  filter: blur(14px) brightness(1.3);
+  animation-duration: 0.9s, 0.5s;
 }
 
-@keyframes aura {
-  from {
-    transform: rotate(0deg) scale(1);
-  }
-  50% {
-    transform: rotate(180deg) scale(1.06);
-  }
+@keyframes aura-turn {
   to {
-    transform: rotate(360deg) scale(1);
+    --aura-turn: 360deg;
+  }
+}
+
+@keyframes aura-breathe {
+  50% {
+    opacity: 0.65;
+    transform: scale(1.03);
   }
 }
 
