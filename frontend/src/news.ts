@@ -25,6 +25,12 @@ export type NewsItem = {
 
 export const NEWS: NewsItem[] = [
   {
+    id: '2026-10-01-gunfire-tail',
+    date: '2026-10-01',
+    title: '砲撃音の雑音を修正',
+    items: ['砲撃や爆発の音の終わりに「ジリジリ」という雑音が混ざることがあった不具合を直しました。'],
+  },
+  {
     id: '2026-10-01-gunfire',
     date: '2026-10-01',
     title: '砲撃と爆発の音をリアルに',
