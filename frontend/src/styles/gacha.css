@@ -32,6 +32,17 @@
   animation: feature-in 0.6s cubic-bezier(0.2, 1, 0.4, 1) both;
 }
 
+.banner-feature.from-left {
+  animation-name: feature-in-left;
+}
+
+@keyframes feature-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-60px);
+  }
+}
+
 .banner-feature .ship-art {
   left: 40%;
 }
@@ -113,16 +124,68 @@
   gap: 6px;
 }
 
-.banner-dots i {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.3);
+.banner-art {
+  touch-action: pan-y;
+  outline: none;
 }
 
-.banner-dots i.on {
+.banner-dots button {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  /* A finger-sized target around the small dot. */
+  box-shadow: 0 0 0 5px transparent;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.banner-dots button:hover {
+  background: rgba(255, 255, 255, 0.65);
+  transform: scale(1.25);
+}
+
+.banner-dots button.on {
   background: #fff;
   box-shadow: 0 0 8px #fff;
+}
+
+.banner-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 44px;
+  height: 64px;
+  margin-top: -32px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 12px;
+  background: rgba(8, 14, 32, 0.55);
+  color: #fff;
+  font-size: 38px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s, transform 0.15s;
+}
+
+.banner-nav.prev {
+  left: 10px;
+}
+
+.banner-nav.next {
+  right: 10px;
+}
+
+.banner-nav:hover,
+.banner-art:focus-visible .banner-nav {
+  opacity: 1;
+  background: rgba(40, 60, 120, 0.75);
+}
+
+.banner-nav:active {
+  transform: scale(0.94);
 }
 
 .gacha-side {

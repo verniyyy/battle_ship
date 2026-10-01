@@ -21,22 +21,30 @@ export function Gacha({ onBack }: { onBack: () => void }) {
   const [upgrade, setUpgrade] = useState(false)
   const [spot, setSpot] = useState<Gain | null>(null)
   const [rates, setRates] = useState(false)
-  const [showcase, setShowcase] = useState(0)
+  // The featured ship on the banner; it turns on its own, and the admiral can turn it too.
+  const [showcase, setShowcase] = useState({ i: 0, back: false, manual: false })
   const timers = useRef<number[]>([])
   const cardRefs = useRef<(HTMLDivElement | null)[]>([])
   const spotQueue = useRef<number[]>([])
   // Timers outlive renders, so they read the pulled ships from a ref.
   const gainsRef = useRef<Gain[]>([])
+  const swipeFrom = useRef<number | null>(null)
 
   const featured = catalog?.cards.filter((c) => c.rarity >= 3) ?? []
 
+  useEffect(() => () => timers.current.forEach(clearTimeout), [])
+
+  // Auto-advance, held off for a while after the admiral picks a ship themselves.
   useEffect(() => {
-    const t = window.setInterval(() => setShowcase((s) => s + 1), 3200)
-    return () => {
-      clearInterval(t)
-      timers.current.forEach(clearTimeout)
-    }
-  }, [])
+    if (phase !== 'idle') return
+    const t = window.setTimeout(() => setShowcase((s) => ({ i: s.i + 1, back: false, manual: false })), showcase.manual ? 9000 : 3200)
+    return () => clearTimeout(t)
+  }, [showcase, phase])
+
+  const turnShowcase = (to: number, back = false) => {
+    audio.play('tap')
+    setShowcase({ i: to, back, manual: true })
+  }
 
   if (!profile || !catalog) return null
 
@@ -144,7 +152,8 @@ export function Gacha({ onBack }: { onBack: () => void }) {
     } else if (phase === 'spotlight') nextSpot()
   }
 
-  const feat = featured[showcase % Math.max(1, featured.length)]
+  const shown = featured.length ? ((showcase.i % featured.length) + featured.length) % featured.length : 0
+  const feat = featured[shown]
   const spotCard = spot ? card(spot.card) : undefined
 
   return (
@@ -154,9 +163,29 @@ export function Gacha({ onBack }: { onBack: () => void }) {
 
       {phase === 'idle' && (
         <div className="gacha-lobby">
-          <section className="banner-art">
+          <section
+            className="banner-art"
+            aria-roledescription="carousel"
+            aria-label="建造で手に入る艦"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowLeft') turnShowcase(showcase.i - 1, true)
+              else if (e.key === 'ArrowRight') turnShowcase(showcase.i + 1)
+            }}
+            onPointerDown={(e) => (swipeFrom.current = e.clientX)}
+            onPointerUp={(e) => {
+              const from = swipeFrom.current
+              swipeFrom.current = null
+              if (from === null || Math.abs(e.clientX - from) < 40) return
+              if (e.clientX > from) turnShowcase(showcase.i - 1, true)
+              else turnShowcase(showcase.i + 1)
+            }}
+            onPointerCancel={() => (swipeFrom.current = null)}
+            // A mouse drag over the art would otherwise pick the image up instead of swiping.
+            onDragStart={(e) => e.preventDefault()}
+          >
             {feat && (
-              <div className="banner-feature" key={feat.id}>
+              <div className={`banner-feature ${showcase.back ? 'from-left' : ''}`} key={`${feat.id}-${showcase.i}`}>
                 <ShipArt look={lookOfCard(feat)} showKanji={false} frame="full" motion staged />
                 <div className="banner-copy">
                   <RarityBadge r={feat.rarity} />
@@ -171,9 +200,25 @@ export function Gacha({ onBack }: { onBack: () => void }) {
               <h2>大型艦建造</h2>
               <p>SSR 出現率 {(catalog.pullRates[3] / 10).toFixed(1)}% UR 出現率 {(catalog.pullRates[4] / 10).toFixed(1)}%</p>
             </div>
-            <div className="banner-dots">
+            {featured.length > 1 && (
+              <>
+                <button className="banner-nav prev" aria-label="前の艦" onClick={() => turnShowcase(showcase.i - 1, true)} onPointerDown={(e) => e.stopPropagation()}>
+                  ‹
+                </button>
+                <button className="banner-nav next" aria-label="次の艦" onClick={() => turnShowcase(showcase.i + 1)} onPointerDown={(e) => e.stopPropagation()}>
+                  ›
+                </button>
+              </>
+            )}
+            <div className="banner-dots" onPointerDown={(e) => e.stopPropagation()}>
               {featured.map((f, i) => (
-                <i key={f.id} className={i === showcase % featured.length ? 'on' : ''} />
+                <button
+                  key={f.id}
+                  className={i === shown ? 'on' : ''}
+                  aria-label={f.name}
+                  aria-current={i === shown}
+                  onClick={() => i !== shown && turnShowcase(showcase.i + i - shown, i < shown)}
+                />
               ))}
             </div>
           </section>
