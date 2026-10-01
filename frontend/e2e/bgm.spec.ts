@@ -2,11 +2,14 @@ import { expect, test } from '@playwright/test'
 import { newAdmiral, toBattle } from './helpers'
 import type { MatchResponse } from '../src/types'
 
-for (const { name, boss, file } of [
-  { name: 'a regular battle', boss: false, file: 'battle' },
-  { name: 'a flagship battle', boss: true, file: 'boss' },
+// roll stands in for Math.random, which picks among a track's recordings: 0 the first, 0.99 the last.
+for (const { name, boss, roll, file } of [
+  { name: 'a regular battle', boss: false, roll: 0, file: 'battle' },
+  { name: 'another regular battle', boss: false, roll: 0.99, file: 'battle2' },
+  { name: 'a flagship battle', boss: true, roll: 0, file: 'boss' },
 ]) {
-  test(`${name} loops its recorded theme`, async ({ page }) => {
+  test(`${name} loops the recorded ${file} theme`, async ({ page }) => {
+    await page.addInitScript((r) => (Math.random = () => r), roll)
     // Note every buffer the game starts looping, by length.
     await page.addInitScript(() => {
       const w = window as unknown as { loops: number[] }

@@ -137,6 +137,7 @@ interface Take {
 const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12)
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 const rnd = (a: number, b: number) => a + Math.random() * (b - a)
+const pick = <T>(xs: readonly T[]) => xs[Math.floor(Math.random() * xs.length)]
 /** A small random detune factor so repeated sounds never repeat exactly. */
 const vary = (amt = 0.04) => 1 + (Math.random() * 2 - 1) * amt
 
@@ -236,10 +237,11 @@ interface Song {
 }
 
 // Tracks the user supplies as recordings (frontend/public/bgm), looped instead of synthesised.
+// A track with several recordings picks one at random each time it starts.
 const FILES = {
-  battle: '/bgm/battle.mp3',
-  boss: '/bgm/boss.mp3',
-} satisfies Partial<Record<Track, string>>
+  battle: ['/bgm/battle.mp3', '/bgm/battle2.mp3'],
+  boss: ['/bgm/boss.mp3'],
+} satisfies Partial<Record<Track, string[]>>
 type FileTrack = keyof typeof FILES
 const isFileTrack = (t: Track): t is FileTrack => t in FILES
 
@@ -459,7 +461,7 @@ class AudioEngine {
 
     this.noiseBufs = { white: this.noiseBuffer('white'), pink: this.noiseBuffer('pink'), brown: this.noiseBuffer('brown') }
     // Fetched and decoded up front so a battle doesn't open in silence.
-    for (const url of Object.values(FILES)) void this.loadRecording(url)
+    for (const url of Object.values(FILES).flat()) void this.loadRecording(url)
   }
 
   /** The context can be suspended after the first gesture (tab switch, device change); wake it on the next one. */
@@ -1602,7 +1604,7 @@ class AudioEngine {
     this.track = track
     this.fadeOut(this.ctx ? 0.9 : 0)
     if (!track || !this.ctx) return // started on unlock()
-    if (isFileTrack(track)) return this.playRecording(FILES[track])
+    if (isFileTrack(track)) return this.playRecording(pick(FILES[track]))
     const song = SONGS[track]
     this.song = song
     this.ch = this.channels(song)
