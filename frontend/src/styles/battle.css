@@ -1327,7 +1327,56 @@
 }
 
 .cutin.ultimate {
-  background: radial-gradient(circle, rgba(60, 20, 80, 0.7), rgba(0, 0, 0, 0.92));
+  --k: 1;
+  background: #000;
+  animation: ult-quake calc(0.5s * var(--k)) calc(1.05s * var(--k)) linear both;
+}
+
+/* The night sky behind the fleet, rainbow-lit for us and blood red for the enemy. */
+.ult-sky {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 60%, rgba(255, 210, 74, 0.45), transparent 55%),
+    radial-gradient(circle at 20% 20%, rgba(255, 90, 160, 0.35), transparent 45%),
+    radial-gradient(circle at 80% 25%, rgba(79, 213, 255, 0.35), transparent 45%),
+    linear-gradient(180deg, #12002a, #2a0a3a 50%, #050010);
+  animation: ult-sky-in calc(0.4s * var(--k)) ease-out both;
+}
+
+.cutin.ultimate.enemy-side .ult-sky {
+  background:
+    radial-gradient(ellipse at 50% 60%, rgba(255, 40, 60, 0.55), transparent 55%),
+    linear-gradient(180deg, #1a0004, #3a0008 50%, #050000);
+}
+
+@keyframes ult-sky-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.ult-rays {
+  position: absolute;
+  left: 50%;
+  top: 55%;
+  width: 1700px;
+  height: 1700px;
+  margin: -850px 0 0 -850px;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(255, 90, 90, 0.22) 0 4deg,
+    transparent 4deg 10deg,
+    rgba(255, 210, 74, 0.22) 10deg 14deg,
+    transparent 14deg 20deg,
+    rgba(79, 213, 255, 0.22) 20deg 24deg,
+    transparent 24deg 30deg
+  );
+  animation: speed-spin calc(1.4s * var(--k)) linear infinite;
+}
+
+.cutin.ultimate.enemy-side .ult-rays {
+  background: repeating-conic-gradient(from 0deg, rgba(255, 40, 60, 0.28) 0 5deg, transparent 5deg 15deg);
 }
 
 .letterbox {
@@ -1363,7 +1412,8 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: 150px;
+  top: 98px;
+  z-index: 2;
   display: flex;
   justify-content: center;
   gap: 18px;
@@ -1371,20 +1421,167 @@
 
 .ult-card {
   position: relative;
-  width: 190px;
-  height: 250px;
+  width: min(190px, calc((1180px - (var(--n) - 1) * 18px) / var(--n)));
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  transform: skewX(-8deg);
+  animation: ult-card-in calc(0.45s * var(--k)) cubic-bezier(0.2, 1.5, 0.4, 1) calc((0.1s + var(--i) * 0.16s) * var(--k)) both;
+}
+
+.ult-card-art {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 214 / 290;
   border-radius: 14px;
   overflow: hidden;
-  border: 3px solid var(--accent);
-  box-shadow: 0 0 30px var(--accent);
-  transform: skewX(-8deg);
-  animation: ult-card-in 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  border: 4px solid #fff;
+  box-shadow:
+    0 0 0 3px var(--accent),
+    0 0 40px var(--accent);
+}
+
+/* A glint sweeps each portrait as it lands. */
+.ult-card-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.85) 50%, transparent 65%) -320px 0 / 320px 100% no-repeat;
+  animation: ult-glint calc(0.6s * var(--k)) ease-out calc((0.35s + var(--i) * 0.16s) * var(--k)) both;
+}
+
+@keyframes ult-glint {
+  to {
+    background-position: 320px 0;
+  }
+}
+
+.ult-card-name {
+  margin-top: 4px;
+  padding: 2px 14px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 3px #000;
+  box-shadow: 0 0 16px var(--accent);
+}
+
+.ult-card-line {
+  max-width: 230px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-align: center;
+  color: #fff;
+  text-shadow:
+    0 0 8px #000,
+    0 2px 4px #000;
 }
 
 @keyframes ult-card-in {
-  from {
+  0% {
     opacity: 0;
-    transform: skewX(-8deg) translateY(160px) scale(0.6);
+    transform: skewX(-8deg) translateY(260px) scale(0.5) rotate(-6deg);
+    filter: brightness(4);
+  }
+  60% {
+    filter: brightness(2);
+  }
+  100% {
+    filter: none;
+  }
+}
+
+.ult-whiteout {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: radial-gradient(circle, #fff 40%, #fff6c0);
+  pointer-events: none;
+  animation: ult-whiteout calc(0.55s * var(--k)) ease-out calc(1.05s * var(--k)) both;
+}
+
+.cutin.ultimate.enemy-side .ult-whiteout {
+  background: radial-gradient(circle, #fff 30%, #ff3050);
+}
+
+@keyframes ult-whiteout {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.ult-shock {
+  position: absolute;
+  left: 50%;
+  top: 560px;
+  z-index: 3;
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border-radius: 50%;
+  border: 10px solid #fff6c0;
+  box-shadow:
+    0 0 40px #ffd24a,
+    inset 0 0 40px #ffd24a;
+  pointer-events: none;
+  animation: ult-shock calc(0.8s * var(--k)) cubic-bezier(0.1, 0.8, 0.3, 1) calc(1.1s * var(--k)) both;
+}
+
+.ult-shock.late {
+  border-color: #b3f0ff;
+  box-shadow: 0 0 40px #4fd5ff;
+  animation-delay: calc(1.3s * var(--k));
+}
+
+.cutin.ultimate.enemy-side .ult-shock {
+  border-color: #ff5a6a;
+  box-shadow: 0 0 40px #ff2d55;
+}
+
+@keyframes ult-shock {
+  from {
+    opacity: 1;
+    transform: scale(0.2);
+  }
+  to {
+    opacity: 0;
+    transform: scale(14);
+    border-width: 1px;
+  }
+}
+
+@keyframes ult-quake {
+  0%,
+  100% {
+    transform: none;
+  }
+  10% {
+    transform: translate(-14px, 8px) rotate(-0.5deg);
+  }
+  25% {
+    transform: translate(12px, -10px) rotate(0.4deg);
+  }
+  40% {
+    transform: translate(-10px, 6px);
+  }
+  55% {
+    transform: translate(8px, -6px) rotate(-0.2deg);
+  }
+  70% {
+    transform: translate(-5px, 3px);
+  }
+  85% {
+    transform: translate(3px, -2px);
   }
 }
 
@@ -1392,29 +1589,335 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 110px;
+  bottom: 96px;
   z-index: 4;
   display: grid;
   justify-items: center;
-  font-family: var(--serif);
-  font-size: 96px;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: 0.2em;
-  background: linear-gradient(180deg, #fff 30%, #ffd24a 60%, #ff7a2e);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 4px 0 #3a0a00) drop-shadow(0 0 30px rgba(255, 170, 60, 0.9));
-  animation: label-slam 0.4s cubic-bezier(0.2, 1.4, 0.4, 1) 0.35s both;
+  gap: 2px;
+  pointer-events: none;
 }
 
 .ult-title small {
-  font-family: var(--sans);
-  font-size: 16px;
+  font-size: 18px;
+  font-weight: 900;
   letter-spacing: 0.6em;
   color: #fff;
-  -webkit-text-fill-color: #fff;
+  text-shadow: 0 0 12px #ff7ae0;
+  animation: ult-fade-in calc(0.3s * var(--k)) ease-out calc(1.5s * var(--k)) both;
+}
+
+.ult-kanji {
+  display: flex;
+  gap: 0.06em;
+}
+
+.ult-kanji i {
+  display: block;
+  font-family: var(--serif);
+  font-size: 132px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1;
+  background: linear-gradient(180deg, #fff 25%, #ffe36b 50%, #ff8a2e 75%, #ff3b6b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 5px 0 #3a0a00) drop-shadow(0 0 26px rgba(255, 150, 80, 0.95));
+  animation: ult-stamp calc(0.32s * var(--k)) cubic-bezier(0.2, 1.6, 0.4, 1) calc((1.1s + var(--i) * 0.1s) * var(--k)) both;
+}
+
+.cutin.ultimate.enemy-side .ult-kanji i {
+  background: linear-gradient(180deg, #fff 20%, #ffb0b8 45%, #ff2d55 75%, #7a0012);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 5px 0 #200004) drop-shadow(0 0 26px rgba(255, 30, 60, 0.95));
+}
+
+@keyframes ult-stamp {
+  from {
+    opacity: 0;
+    transform: scale(3.2) rotate(-8deg);
+  }
+}
+
+.ult-title em {
+  margin-top: 4px;
+  font-size: 20px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  color: #fff6c0;
+  text-shadow:
+    0 0 10px #000,
+    0 2px 4px #000;
+  animation: ult-fade-in calc(0.35s * var(--k)) ease-out calc(1.6s * var(--k)) both;
+}
+
+@keyframes ult-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* ---- the barrage on the board ---- */
+
+/* The sea darkens and the frame burns while the whole fleet fires. */
+.battle-screen.ult-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 29;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(40, 0, 30, 0.55) 70%, rgba(0, 0, 0, 0.8));
+  box-shadow: inset 0 0 80px rgba(255, 122, 224, 0.7);
+  animation: ult-vignette 0.5s ease-in-out infinite alternate;
+}
+
+.battle-screen.ult-active.ult-enemy::after {
+  background: radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(50, 0, 6, 0.6) 70%, rgba(0, 0, 0, 0.8));
+  box-shadow: inset 0 0 90px rgba(255, 30, 60, 0.85);
+}
+
+@keyframes ult-vignette {
+  to {
+    box-shadow: inset 0 0 140px rgba(255, 210, 74, 0.8);
+  }
+}
+
+.battle-screen.ult-active.ult-enemy::after {
+  animation-name: ult-vignette-red;
+}
+
+@keyframes ult-vignette-red {
+  to {
+    box-shadow: inset 0 0 150px rgba(255, 0, 30, 0.95);
+  }
+}
+
+/* Lock-on over the aim: two counter-rotating rings closing in. */
+.ult-reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 6;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.ult-reticle::before,
+.ult-reticle::after {
+  content: '';
+  position: absolute;
+  left: -70px;
+  top: -70px;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 4px dashed #ffe36b;
+  box-shadow: 0 0 20px #ffd24a;
+  animation: ult-reticle 0.55s cubic-bezier(0.2, 1, 0.4, 1) both;
+}
+
+.ult-reticle::after {
+  left: -46px;
+  top: -46px;
+  width: 92px;
+  height: 92px;
+  border: 3px solid #ff7ae0;
+  box-shadow: 0 0 16px #ff7ae0;
+  animation-name: ult-reticle-in;
+}
+
+.ult-reticle.enemy::before {
+  border-color: #ff5a6a;
+  box-shadow: 0 0 20px #ff2d55;
+}
+
+.ult-reticle.enemy::after {
+  border-color: #fff;
+}
+
+.ult-reticle b {
+  position: absolute;
+  left: 0;
+  top: -100px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 2px 12px;
+  border-radius: 4px;
+  background: #ffd24a;
+  color: #3a0a00;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  box-shadow: 0 0 16px #ffd24a;
+  animation: ult-blink 0.18s steps(2) infinite;
+}
+
+.ult-reticle.enemy b {
+  background: #ff2d55;
+  color: #fff;
+  box-shadow: 0 0 16px #ff2d55;
+}
+
+@keyframes ult-reticle {
+  from {
+    opacity: 0;
+    transform: scale(3) rotate(-180deg);
+  }
+  to {
+    transform: rotate(90deg);
+  }
+}
+
+@keyframes ult-reticle-in {
+  from {
+    opacity: 0;
+    transform: scale(0.2) rotate(180deg);
+  }
+  to {
+    transform: rotate(-90deg);
+  }
+}
+
+@keyframes ult-blink {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Cells the barrage has just swept glow and smoulder. */
+.cell.ult-blast::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: 4px;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 246, 192, 0.95), rgba(255, 140, 40, 0.75) 45%, rgba(120, 20, 0, 0.35));
+  box-shadow: 0 0 22px rgba(255, 150, 40, 0.95);
+  animation: ult-blast 1.6s ease-out both;
+}
+
+.cell.ult-blast.ult-core::before {
+  background: radial-gradient(circle, #fff, rgba(255, 210, 74, 0.9) 40%, rgba(255, 60, 100, 0.5));
+  box-shadow: 0 0 40px #ffd24a;
+}
+
+.ult-enemy .cell.ult-blast::before {
+  background: radial-gradient(circle, rgba(255, 220, 220, 0.95), rgba(255, 40, 60, 0.75) 45%, rgba(80, 0, 10, 0.4));
+  box-shadow: 0 0 22px rgba(255, 30, 60, 0.95);
+}
+
+@keyframes ult-blast {
+  0% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+  12% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Aiming preview: the centre takes the heaviest fire. */
+.mode-ultimate .cell.aoe.aoe-core::after {
+  background: rgba(255, 210, 74, 0.45);
+  box-shadow:
+    inset 0 0 0 3px #fff6c0,
+    0 0 18px #ffd24a;
+}
+
+.mode-ultimate .cell.aoe.aoe-outer::after {
+  background: rgba(255, 122, 224, 0.16);
+  box-shadow: inset 0 0 0 2px rgba(255, 154, 213, 0.6);
+}
+
+/* The total of the barrage, stamped across the board once the smoke clears. */
+.ult-total {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 95;
+  display: grid;
+  justify-items: center;
+  width: 1280px;
+  padding: 14px 0 18px;
+  background: linear-gradient(90deg, transparent, rgba(20, 0, 30, 0.88) 20%, rgba(20, 0, 30, 0.88) 80%, transparent);
+  border-block: 2px solid rgba(255, 210, 74, 0.8);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: ult-total 1.8s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+.ult-total small {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.4em;
+  color: #fff;
+  text-shadow: 0 0 10px #ff7ae0, 0 2px 4px #000;
+}
+
+.ult-total b {
+  font-family: var(--serif);
+  font-size: 104px;
+  font-weight: 900;
+  line-height: 1;
+  background: linear-gradient(180deg, #fff 25%, #ffe36b 55%, #ff8a2e);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 0 #3a0a00) drop-shadow(0 0 30px rgba(255, 170, 60, 0.95));
+}
+
+.ult-total em {
+  font-size: 30px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #fff6c0;
+  text-shadow: 0 0 14px #ff7ae0, 0 3px 0 #3a0a00;
+}
+
+.ult-total.enemy {
+  background: linear-gradient(90deg, transparent, rgba(40, 0, 6, 0.9) 20%, rgba(40, 0, 6, 0.9) 80%, transparent);
+  border-color: rgba(255, 45, 85, 0.85);
+}
+
+.ult-total.enemy small,
+.ult-total.enemy em {
+  text-shadow: 0 0 12px #ff2d55, 0 2px 4px #000;
+}
+
+.ult-total.enemy b {
+  background: linear-gradient(180deg, #fff 20%, #ffb0b8 50%, #ff2d55);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 4px 0 #200004) drop-shadow(0 0 30px rgba(255, 30, 60, 0.95));
+}
+
+@keyframes ult-total {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.6);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
 }
 
 .notice-band {

@@ -93,7 +93,8 @@ class FxEngine {
 
   // ---------------- emitters ----------------
 
-  explosion(x: number, y: number, scale = 1, hot = '#ffb347') {
+  /** A fireball; smoke scales the cloud it leaves (the barrage's dozens of blasts would bury the board). */
+  explosion(x: number, y: number, scale = 1, hot = '#ffb347', smoke = 1) {
     this.add({ kind: 'glow', x, y, size: 90 * scale, max: 0.45, color: '#fff3c4', grow: 1.5 })
     this.add({ kind: 'ring', x, y, size: 10, max: 0.55, color: hot, grow: 260 * scale })
     for (let i = 0; i < 46 * scale; i++) {
@@ -112,7 +113,7 @@ class FxEngine {
         drag: 0.93,
       })
     }
-    for (let i = 0; i < 14 * scale; i++) {
+    for (let i = 0; i < 14 * scale * smoke; i++) {
       const a = rand(0, Math.PI * 2)
       const v = rand(30, 140) * scale
       this.add({

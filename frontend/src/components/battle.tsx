@@ -101,7 +101,7 @@ export type Cutin =
   | { kind: 'intro'; text: string; sub?: string; boss?: boolean }
   | { kind: 'attack'; look: Look; line: string; title: string; skill?: SkillKind }
   | { kind: 'enemy'; look: Look; title: string }
-  | { kind: 'ultimate'; looks: Look[] }
+  | { kind: 'ultimate'; crew: { look: Look; line?: string }[]; enemy?: boolean; speed: number }
   | { kind: 'notice'; side: 'player' | 'cpu'; text: string }
   | { kind: 'banner'; text: string; sub?: string; tone: 'gold' | 'red' | 'blue' | 'rainbow' }
   | { kind: 'turn'; turn: number; left?: number }
@@ -152,25 +152,45 @@ export function CutinLayer({ cutin, onSkip }: { cutin: Cutin; onSkip?: () => voi
           </div>
         </div>
       )
-    case 'ultimate':
+    case 'ultimate': {
+      // Timed in CSS against --k (1 / battle speed): the crew slams in one by one,
+      // the screen whites out and the title stamps down a character at a time.
+      const k = 1 / cutin.speed
       return (
-        <div className="cutin ultimate" onClick={onSkip}>
+        <div className={`cutin ultimate ${cutin.enemy ? 'enemy-side' : ''}`} onClick={onSkip} style={{ ['--k' as string]: k }}>
+          <div className="ult-sky" />
+          <div className="ult-rays" />
+          <div className="speedlines fast" />
           <div className="letterbox top" />
           <div className="letterbox bottom" />
-          <div className="speedlines fast" />
-          <div className="ult-cards">
-            {cutin.looks.map((l, i) => (
-              <div key={i} className="ult-card" style={{ animationDelay: `${i * 0.09}s`, ['--accent' as string]: l.color }}>
-                <ShipArt look={l} showKanji={false} />
+          <div className="ult-cards" style={{ ['--n' as string]: cutin.crew.length }}>
+            {cutin.crew.map((m, i) => (
+              <div key={i} className="ult-card" style={{ ['--i' as string]: i, ['--accent' as string]: m.look.color }}>
+                <div className="ult-card-art">
+                  <ShipArt look={m.look} showKanji={false} />
+                </div>
+                <b className="ult-card-name">{m.look.name}</b>
+                {m.line && <span className="ult-card-line">「{m.line}」</span>}
               </div>
             ))}
           </div>
+          <div className="ult-whiteout" />
+          <div className="ult-shock" />
+          <div className="ult-shock late" />
           <div className="ult-title">
-            <small>ALL FLEET BARRAGE</small>
-            全艦斉射
+            <small>{cutin.enemy ? 'ENEMY ALL FLEET BARRAGE' : 'ALL FLEET BARRAGE'}</small>
+            <span className="ult-kanji">
+              {[...'全艦斉射'].map((ch, i) => (
+                <i key={i} style={{ ['--i' as string]: i }}>
+                  {ch}
+                </i>
+              ))}
+            </span>
+            <em>{cutin.enemy ? '総員、衝撃に備えよ！' : '装甲貫通・回避不能 ── 全砲門、開けッ！'}</em>
           </div>
         </div>
       )
+    }
     case 'notice':
       return (
         <div className={`cutin notice ${cutin.side}`}>
