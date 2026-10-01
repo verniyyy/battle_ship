@@ -1,0 +1,240 @@
+/* ---------- rankings ---------- */
+
+/* harbour entrance */
+.menu-tile.ranking {
+  /* five characters only fit a fifth of the menu without the tracking */
+  letter-spacing: 0;
+  white-space: nowrap;
+  background: linear-gradient(180deg, rgba(176, 124, 30, 0.95), rgba(84, 52, 8, 0.95));
+}
+
+/* left column: where I stand, what the board is */
+.ranking-side {
+  position: absolute;
+  left: 24px;
+  top: 82px;
+  bottom: 16px;
+  width: 330px;
+  display: grid;
+  grid-auto-rows: min-content;
+  gap: 12px;
+  animation: slide-up 0.4s both;
+}
+
+.ranking-side section {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(8, 18, 34, 0.85);
+  border: 1px solid var(--line);
+}
+
+.ranking-side h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+.ranking-side small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ranking-side .chip-btn {
+  justify-self: start;
+}
+
+.my-rank.podium {
+  border-color: var(--gold);
+  box-shadow: 0 0 18px rgba(244, 198, 90, 0.3);
+}
+
+.my-rank-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.my-rank-head .friend-face.big {
+  width: 84px;
+  height: 84px;
+}
+
+.my-rank-name {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+}
+
+.my-rank-name small {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cyan);
+}
+
+.my-rank-name b {
+  overflow: hidden;
+  font-size: 20px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.my-rank-place {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.my-rank-place b {
+  margin: 0 4px;
+  font-size: 44px;
+  line-height: 1;
+  color: var(--gold-hi);
+  text-shadow: 0 0 14px rgba(244, 198, 90, 0.5);
+}
+
+.my-rank-score {
+  margin: 0;
+  font-size: 14px;
+}
+
+.my-rank-score b {
+  margin-left: 6px;
+  font-size: 18px;
+  color: var(--cyan);
+}
+
+.ranking-about p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* right column: the board */
+.ranking-tabs {
+  left: 370px;
+  top: 82px;
+}
+
+.ranking-tabs > button:not(.pill-btn) {
+  padding: 8px 16px;
+}
+
+.ranking-list {
+  position: absolute;
+  left: 370px;
+  right: 24px;
+  top: 128px;
+  bottom: 16px;
+  margin: 0;
+  padding: 12px;
+  list-style: none;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  overflow-y: auto;
+  border-radius: 0 14px 14px 14px;
+  background: rgba(8, 18, 34, 0.75);
+  border: 1px solid var(--line);
+}
+
+.rank-row {
+  display: grid;
+  grid-template-columns: 52px 56px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 18px 6px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 5px solid var(--steel);
+  animation: slide-left 0.35s both;
+}
+
+.rank-row.top.m1 {
+  border-left-color: #ffd34d;
+  background: linear-gradient(90deg, rgba(255, 211, 77, 0.2), rgba(255, 255, 255, 0.05) 60%);
+}
+
+.rank-row.top.m2 {
+  border-left-color: #cfd8e6;
+  background: linear-gradient(90deg, rgba(207, 216, 230, 0.16), rgba(255, 255, 255, 0.05) 60%);
+}
+
+.rank-row.top.m3 {
+  border-left-color: #d98b4a;
+  background: linear-gradient(90deg, rgba(217, 139, 74, 0.18), rgba(255, 255, 255, 0.05) 60%);
+}
+
+.rank-row.me {
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
+  box-shadow: 0 0 16px rgba(70, 224, 255, 0.3);
+}
+
+.rank-place {
+  justify-self: center;
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--muted);
+}
+
+.rank-place.medal {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 20px;
+  color: #3a2400;
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.25),
+    0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.rank-place.m1 {
+  background: radial-gradient(circle at 35% 30%, #fff6c8, #ffd34d 45%, #b88912);
+}
+
+.rank-place.m2 {
+  background: radial-gradient(circle at 35% 30%, #ffffff, #cfd8e6 45%, #7f8ba0);
+}
+
+.rank-place.m3 {
+  background: radial-gradient(circle at 35% 30%, #ffe0c2, #d98b4a 45%, #8a4a17);
+}
+
+.rank-row .friend-name small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rank-tag {
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-style: normal;
+  line-height: 16px;
+}
+
+.rank-tag.me {
+  color: #04202a;
+  background: var(--cyan);
+}
+
+.rank-tag.friend {
+  color: #04221a;
+  background: var(--green);
+}
+
+.rank-score {
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--gold-hi);
+  white-space: nowrap;
+}

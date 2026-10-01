@@ -42,6 +42,7 @@ type Store interface {
 	auth.Accounts
 	Gifts
 	Friends
+	Rankings
 }
 
 // Gifts keeps the operators' presents and who has collected them.

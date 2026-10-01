@@ -465,3 +465,27 @@ export interface FriendProfile extends FriendCard {
   loginDays: number
   created: string
 }
+
+export type Board = 'level' | 'power' | 'wins' | 'endless'
+
+/** An admiral on a ranking board, shown by name only. */
+export interface RankEntry {
+  /** 1 for the top; tied admirals share it. 0 when not on the board. */
+  rank: number
+  score: number
+  name: string
+  comment: string
+  level: number
+  /** Card id of their secretary ship. */
+  secretary: string
+  me?: boolean
+  friend?: boolean
+}
+
+/** A board's top admirals, how many are on it, and where I stand. */
+export interface Ranking {
+  board: Board
+  entries: RankEntry[]
+  total: number
+  me: RankEntry
+}

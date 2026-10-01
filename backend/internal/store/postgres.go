@@ -27,7 +27,8 @@ type Postgres struct {
 
 func NewPostgres(pool *pgxpool.Pool) *Postgres { return &Postgres{pool: pool} }
 
-// Migrate applies pending migrations in lexical order.
+// Migrate applies pending migrations in lexical order, then brings stored
+// ranking scores up to date.
 func (p *Postgres) Migrate(ctx context.Context) error {
 	files, err := fs.Glob(migrations, "migrations/*.sql")
 	if err != nil {
@@ -35,7 +36,7 @@ func (p *Postgres) Migrate(ctx context.Context) error {
 	}
 	sort.Strings(files)
 
-	return pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
 		// Serialise concurrent migrators (e.g. several replicas starting at once).
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(727274)`); err != nil {
 			return err
@@ -64,6 +65,10 @@ func (p *Postgres) Migrate(ctx context.Context) error {
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	return p.backfillScores(ctx)
 }
 
 func (p *Postgres) UpdatePlayer(ctx context.Context, id string, fn func(*meta.Profile) error) (*meta.Profile, error) {
@@ -114,7 +119,7 @@ func savePlayer(ctx context.Context, tx pgx.Tx, prof *meta.Profile) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `UPDATE players SET profile = $2, updated_at = now() WHERE id = $1`, prof.ID, data)
+	_, err = tx.Exec(ctx, `UPDATE players SET `+setScores+`, profile = $9, updated_at = now() WHERE id = $1`, append(scoreArgs(prof), data)...)
 	return err
 }
 

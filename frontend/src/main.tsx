@@ -10,6 +10,7 @@ import './styles/gacha.css'
 import './styles/scenery.css'
 import './styles/gifts.css'
 import './styles/friends.css'
+import './styles/ranking.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

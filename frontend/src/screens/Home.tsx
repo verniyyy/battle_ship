@@ -220,6 +220,9 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
             <b>👥</b>フレンド
             <Badge n={friendNews} />
           </button>
+          <button className="menu-tile ranking" onClick={() => nav({ name: 'ranking' })}>
+            <b>👑</b>ランキング
+          </button>
           <button className="menu-tile record" onClick={() => open('record')}>
             <b>📜</b>戦績
           </button>

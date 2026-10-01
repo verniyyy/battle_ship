@@ -1,6 +1,9 @@
 package meta
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestNormalizeFriendCode(t *testing.T) {
 	for in, want := range map[string]string{
@@ -40,5 +43,20 @@ func TestFriendProfileShowsTheFleetOnly(t *testing.T) {
 	coins := p.Coins
 	if g := p.ReceiveCheers(3); g.Coins != 3*CheerCoins || p.Coins != coins+3*CheerCoins {
 		t.Fatalf("cheers paid %+v", g)
+	}
+}
+
+func TestScoresKeepUnnamedAdmiralsOffTheBoards(t *testing.T) {
+	p := NewProfile("p", time.Now())
+	if p.Scores().Ranked {
+		t.Fatal("a new admiral is ranked before choosing a name")
+	}
+	if err := p.Rename("提督A", ""); err != nil {
+		t.Fatal(err)
+	}
+	p.Stats.Wins, p.Endless = 3, 7
+	s := p.Scores()
+	if !s.Ranked || s.Level != 1 || s.Wins != 3 || s.Endless != 7 || s.FleetPower != p.View(time.Now()).FleetPower {
+		t.Fatalf("scores: %+v", s)
 	}
 }
