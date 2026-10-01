@@ -182,7 +182,7 @@ func (st *State) Decide(side Side, rng *rand.Rand) Action {
 		for _, c := range own.cells() {
 			sum := 0.0
 			for _, f := range Footprint(st.Size, ActionUltimate, "", "", Pos{}, c) {
-				sum += pos(h, f)
+				sum += pos(h, f) * float64(ultPct(c, f)) / 100
 			}
 			// Hold the barrage until there is something worth hitting, unless out of other options.
 			if sum >= 30 || !own.canStrike(enemy) {

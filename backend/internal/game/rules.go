@@ -15,6 +15,9 @@ const (
 	armCellPct    = 40  // battleship shells landing beside the aim point
 	barragePct    = 70  // per cell of the battleship barrage
 	spreadPct     = 80  // per torpedo of a submarine spread
+	ultCenterPct  = 150 // all-fleet barrage on the aim point
+	ultInnerPct   = 100 // all-fleet barrage on the 3×3 around it
+	ultOuterPct   = 60  // all-fleet barrage on its outer reach
 	antiSubMult   = 2   // destroyer guns on submarines
 	aaScale       = 200 // aircraft damage × aaScale / (aaScale + fleet AA)
 	airEvasionDiv = 4   // aircraft are hard to dodge
@@ -184,12 +187,17 @@ func (st *State) Apply(side Side, a Action, rng *rand.Rand) (Result, error) {
 		}
 
 	case ActionUltimate:
+		// Every gun in the fleet at once: armour-piercing, impossible to dodge,
+		// and the misses throw up water columns like a battleship's.
 		st.Gauge[side] = 0
 		res.Target = &t
-		s := strike{power: st.Boards[side].ultimatePower()}
+		s := strike{power: st.Boards[side].ultimatePower(), halfArmor: true}
 		for _, c := range Footprint(st.Size, ActionUltimate, "", sp.Class, ship.Pos, t) {
-			res.Shots = append(res.Shots, st.fire(side, c, s, rng))
+			cs := s
+			cs.power = s.power * ultPct(t, c) / 100
+			res.Shots = append(res.Shots, st.fire(side, c, cs, rng))
 		}
+		st.waterColumns(side, &res)
 	}
 
 	if res.Special == "" && slices.ContainsFunc(res.Shots, func(s Shot) bool { return s.Marked && s.Damage > 0 }) {
@@ -212,6 +220,18 @@ func gunPct(i int) int {
 		return centerPct
 	}
 	return armCellPct
+}
+
+// ultPct is the share of the all-fleet barrage's power landing on cell c of
+// a barrage aimed at aim.
+func ultPct(aim, c Pos) int {
+	switch aim.Dist(c) {
+	case 0:
+		return ultCenterPct
+	case 1:
+		return ultInnerPct
+	}
+	return ultOuterPct
 }
 
 // launch runs torpedoes from ship along the lanes of its aim. Each stops at
@@ -280,7 +300,8 @@ func (st *State) sense(turn int) bool {
 	return found
 }
 
-// waterColumns pins every surface ship next to a battleship shell that missed.
+// waterColumns pins every surface ship next to a heavy shell (a battleship's
+// or the all-fleet barrage's) that missed.
 func (st *State) waterColumns(side Side, res *Result) {
 	enemy := st.Boards[side.Opponent()]
 	hit := map[int]bool{}

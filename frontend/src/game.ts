@@ -90,8 +90,13 @@ export function footprint(size: number, type: ActionType, kind: SkillKind | unde
   }
   const dr = target.row - from.row
   const dc = target.col - from.col
-  if (type === 'ultimate') area()
-  else if (type === 'attack' && cls === 'battleship') {
+  if (type === 'ultimate') {
+    // Centre first, then ring by ring outward, as the server resolves it.
+    for (let ring = 0; ring <= 2; ring++)
+      for (let dr = -ring; dr <= ring; dr++)
+        for (let dc = -ring; dc <= ring; dc++)
+          if (Math.max(Math.abs(dr), Math.abs(dc)) === ring && (size >= WIDE_SEA || Math.abs(dr) + Math.abs(dc) <= 2)) add({ row: target.row + dr, col: target.col + dc })
+  } else if (type === 'attack' && cls === 'battleship') {
     add(target)
     for (const [r, c] of [
       [-1, 0],
