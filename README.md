@@ -90,6 +90,7 @@ T4 では探索が 1 枚約 30 秒、仕上げが 1 枚約 3 分です（全艦�
 5. **戦果報告** — 評価 S〜E、★、報酬の内訳（評価・連勝・コンボ・会心ボーナス）、提督と艦の経験値、ドロップ、3 つから 1 つ選ぶ宝箱
 6. **建造** — 1 回 💎100 / 10 連 💎1000（SR 以上 1 枠確定、初回無料）。60 回以内に SSR 以上確定。同じ艦は限界突破
 7. **艦隊 / 編成 / 任務** — 資金で強化、図鑑、デイリー任務と勲功（実績）
+8. **フレンド** — 提督ごとの 8 文字のフレンドコード（提督 ID は公開しない）を教え合って申請し、承認で成立（最大 30 人。互いに申請していれば即成立）。フレンドには毎日（JST）1 回エールを送れ、受け取った側は 1 件 💰200 で回収する。フレンドの秘書艦・編成・戦績を閲覧できる
 
 ## 戦闘ルール
 
@@ -141,6 +142,13 @@ cd backend && SIM=1 go test ./internal/meta -run Simulate -v
 | GET | `/api/games?limit=20` | 終了した対局の一覧 |
 | GET | `/api/gifts` | 受け取れる運営からの贈り物 |
 | POST | `/api/gifts/claim` | 贈り物を受け取る `{"id":"<UUID>"}`（`id` を省くとすべて） |
+| GET | `/api/friends` | フレンド画面（自分のフレンドコード・フレンド・届いた申請・送った申請・未回収のエール数）。以下の変更系はすべてこの内容を `friends` に入れて返す |
+| GET | `/api/friends/{code}` | フレンド（または申請中の相手）の秘書艦・編成・戦績 |
+| POST | `/api/friends/requests` | フレンド申請 `{"code":"K7QM-4XPA"}`（ハイフン・大小文字は不問）。相手からも申請が来ていれば即成立し `befriended: true` |
+| POST | `/api/friends/requests/{code}/accept` \| `decline` \| `cancel` | 届いた申請の承認・拒否、送った申請の取り消し |
+| POST | `/api/friends/{code}/remove` | フレンド解除 |
+| POST | `/api/friends/{code}/cheer` | 今日のエールを送る（`/api/friends/cheer` で未送信の全員へ） |
+| POST | `/api/friends/cheers/claim` | 届いたエールをまとめてコインで受け取る |
 | GET | `/api/admin/gifts` | 【管理】配布の一覧（受取人数・受取件数つき） |
 | POST | `/api/admin/gifts` | 【管理】配布を作成 `{"gift":{"title":"...","message":"...","gems":300,"coins":0,"cards":[],"startsAt":"...","endsAt":"...","everyone":true,"joinedBefore":"..."},"recipients":["<UUID>"]}` |
 | POST | `/api/admin/gifts/{id}/revoke` | 【管理】配布を停止（受け取り済みの分はそのまま） |
