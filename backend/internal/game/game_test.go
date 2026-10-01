@@ -462,6 +462,19 @@ func TestUltimateFallsOffAndPinsSurvivors(t *testing.T) {
 	}
 }
 
+func TestUltimateOnALockedOnShipKeepsItsCutIn(t *testing.T) {
+	st := fleetGame(t, []Spec{bb, ca}, []Spec{dd}, []Pos{{0, 0}, {4, 4}}, []Pos{{2, 2}})
+	apply(t, st, SidePlayer, Action{ActionSkill, 1, Pos{2, 2}}) // the cruiser's flare locks on
+	st.Gauge[SidePlayer] = GaugeMax
+	res := apply(t, st, SidePlayer, Action{ActionUltimate, 0, Pos{2, 2}})
+	if sh := res.Shots[0]; !sh.Marked || !sh.Crit {
+		t.Fatalf("locked-on shot %+v", sh)
+	}
+	if res.Special != "" {
+		t.Fatalf("ultimate billed as %q", res.Special)
+	}
+}
+
 func TestWinByDestroyingFleet(t *testing.T) {
 	sharp := bb
 	sharp.Firepower = 5000

@@ -109,7 +109,8 @@ function predictSpecial(g: GameView, ship: ShipView | null, mode: ActionType | n
     if (near && spotted(near)!.marked) return 'marked'
     return undefined
   }
-  const offensive = mode === 'attack' || mode === 'ultimate' || (mode === 'skill' && (ship.skillKind === 'barrage' || ship.skillKind === 'airstrike'))
+  // The all-fleet barrage always plays its own cut-in, whatever it hits.
+  const offensive = mode === 'attack' || (mode === 'skill' && (ship.skillKind === 'barrage' || ship.skillKind === 'airstrike'))
   if (offensive && cells.some((c) => spotted(c)?.marked)) return 'marked'
   return undefined
 }
@@ -587,12 +588,7 @@ export function Battle({
 
     // Cut-in.
     const torpedo = r.type === 'torpedo' || r.skill === 'spread'
-    if (r.special) {
-      audio.play(mine ? 'charge' : 'menace')
-      fx.flash(mine ? '#fff6c0' : '#ff3050', 380, 0.7)
-      fx.shake(10, 300)
-      await show({ kind: 'special', special: r.special, look: actorLook, line: mine ? (c?.attack ?? '撃てっ！') : '……捉えた。', enemy: !mine }, 1500)
-    } else if (r.type === 'ultimate') {
+    if (r.type === 'ultimate') {
       // Every living ship takes its bow before the title stamps down (timed in CSS to the same beats).
       const crew = (mine ? game.playerShips : game.enemyShips)
         .filter((s) => s.hp > 0)
@@ -603,6 +599,11 @@ export function Battle({
       for (let i = 0; i < 4; i++) window.setTimeout(() => mounted.current && audio.play('stamp'), ms(1100 + i * 100))
       window.setTimeout(() => mounted.current && fx.shake(22, 500), ms(1050))
       await show({ kind: 'ultimate', crew, enemy: !mine, speed: speedRef.current }, 2700)
+    } else if (r.special) {
+      audio.play(mine ? 'charge' : 'menace')
+      fx.flash(mine ? '#fff6c0' : '#ff3050', 380, 0.7)
+      fx.shake(10, 300)
+      await show({ kind: 'special', special: r.special, look: actorLook, line: mine ? (c?.attack ?? '撃てっ！') : '……捉えた。', enemy: !mine }, 1500)
     } else if (mine) {
       const title =
         r.type === 'skill'

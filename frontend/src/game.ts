@@ -185,10 +185,10 @@ export function describe(r: Result, game: GameView): LogLine {
   const evaded = shots.filter((s) => s.evaded)
   const torpedo = r.type === 'torpedo' || r.skill === 'spread'
   const how =
-    r.special
-      ? SPECIAL_INFO[r.special].name
-      : r.type === 'ultimate'
-        ? '全艦斉射'
+    r.type === 'ultimate'
+      ? '全艦斉射'
+      : r.special
+        ? SPECIAL_INFO[r.special].name
         : r.type === 'torpedo'
           ? TORPEDO_INFO.name
           : r.type === 'skill'
