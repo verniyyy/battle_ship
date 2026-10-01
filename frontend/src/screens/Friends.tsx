@@ -33,7 +33,7 @@ export function FriendFace({ secretary, big }: { secretary: string; big?: boolea
 }
 
 export function Friends({ onBack }: { onBack: () => void }) {
-  const { profile, setProfile, notify } = useGame()
+  const { profile, setProfile, refresh, notify } = useGame()
   const [list, setList] = useState<FriendList | null>(null)
   const [tab, setTab] = useState<Tab>('friends')
   const [code, setCode] = useState('')
@@ -86,6 +86,7 @@ export function Friends({ onBack }: { onBack: () => void }) {
     setCode('')
     audio.play('stamp')
     if (r.befriended) {
+      void refresh() // friend achievements may have opened up
       const f = r.friends.friends.find((x) => x.code === typed)
       notify(`${f?.name ?? '提督'}とフレンドになりました！`, 'gold')
       setTab('friends')
@@ -116,6 +117,7 @@ export function Friends({ onBack }: { onBack: () => void }) {
     const r = await run(() => friendsApi.cheer(f?.code))
     if (!r) return
     audio.play('heart')
+    void refresh() // the cheers count toward missions
     notify(f ? `${f.name}にエールを送りました` : `${r.sent} 人にエールを送りました`, 'good')
   }
 
@@ -123,6 +125,7 @@ export function Friends({ onBack }: { onBack: () => void }) {
     const r = await run(() => (yes ? friendsApi.accept(q.code) : friendsApi.decline(q.code)))
     if (!r) return
     if (yes) {
+      void refresh()
       audio.play('stamp')
       notify(`${q.name}とフレンドになりました！`, 'gold')
     } else {

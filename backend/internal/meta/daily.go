@@ -55,6 +55,8 @@ const (
 	StatStars     = "stars"
 	StatLevel     = "level"
 	StatEndless   = "endless"
+	StatCheers    = "cheers"
+	StatFriends   = "friends"
 )
 
 type Mission struct {
@@ -64,6 +66,9 @@ type Mission struct {
 	Goal  int    `json:"goal"`
 	Gems  int    `json:"gems,omitempty"`
 	Coins int    `json:"coins,omitempty"`
+	// Extra marks a daily mission that needs a friend, so an admiral without
+	// one is not kept from the all-clear bonus: DailyAll leaves it out.
+	Extra bool `json:"extra,omitempty"`
 }
 
 var DailyMissions = []Mission{
@@ -76,10 +81,21 @@ var DailyMissions = []Mission{
 	{ID: "d_ult", Title: "全艦斉射を放つ", Stat: StatUltimates, Goal: 1, Gems: 50},
 	{ID: "d_train", Title: "艦を強化する", Stat: StatTrain, Goal: 3, Coins: 1000},
 	{ID: "d_pull", Title: "建造する", Stat: StatPulls, Goal: 1, Gems: 30},
+	{ID: "d_cheer", Title: "フレンドにエールを送る", Stat: StatCheers, Goal: 1, Coins: 1000, Extra: true},
 }
 
-// DailyAll pays out once every other daily mission has been claimed.
-var DailyAll = Mission{ID: "d_all", Title: "デイリー任務をすべて達成", Goal: len(DailyMissions), Gems: 200}
+// DailyAll pays out once every other daily mission but the extra ones has been claimed.
+var DailyAll = Mission{ID: "d_all", Title: "デイリー任務をすべて達成", Goal: countCore(DailyMissions), Gems: 200}
+
+func countCore(ms []Mission) int {
+	n := 0
+	for _, m := range ms {
+		if !m.Extra {
+			n++
+		}
+	}
+	return n
+}
 
 func (p *Profile) rollDaily(now time.Time) {
 	p.normalize()
@@ -100,7 +116,7 @@ func (p *Profile) bump(now time.Time, stat string, n int) {
 func (p *Profile) dailyDone() int {
 	n := 0
 	for _, m := range DailyMissions {
-		if p.Daily.Claimed[m.ID] {
+		if !m.Extra && p.Daily.Claimed[m.ID] {
 			n++
 		}
 	}
@@ -169,6 +185,8 @@ var Achievements = func() []Mission {
 	add(StatStars, "海域の★を %d 個集める", []int{6, 18, 30, 3 * len(Stages)}, []int{100, 200, 400, 1000})
 	add(StatLevel, "提督レベル %d に到達", []int{5, 10, 20, 30}, []int{100, 200, 400, 800})
 	add(StatEndless, "無限海域 第 %d 層を突破", []int{5, 10, 20, 30}, []int{200, 400, 800, 1500})
+	add(StatFriends, "フレンドを %d 人つくる", []int{1, 5, 10, 20}, []int{50, 100, 200, 400})
+	add(StatCheers, "フレンドにエールを通算 %d 回送る", []int{10, 50, 150, 300}, []int{50, 150, 300, 600})
 	return out
 }()
 
@@ -194,6 +212,10 @@ func (p *Profile) statValue(stat string) int {
 		return p.Level
 	case StatEndless:
 		return p.Endless
+	case StatFriends:
+		return p.Stats.PeakFriends
+	case StatCheers:
+		return p.Stats.Cheers
 	}
 	return 0
 }

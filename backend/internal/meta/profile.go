@@ -94,6 +94,10 @@ type Stats struct {
 	Ultimates  int `json:"ultimates"`
 	Skills     int `json:"skills"`
 	SSRs       int `json:"ssrs"`
+	// PeakFriends is the most friends the admiral has had at once, so an
+	// achievement for it stays earned after a friend is removed.
+	PeakFriends int `json:"peakFriends"`
+	Cheers      int `json:"cheers"` // cheers sent to friends
 }
 
 // Profile is everything persistent about one admiral.

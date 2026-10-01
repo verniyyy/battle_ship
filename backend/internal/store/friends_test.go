@@ -96,6 +96,17 @@ func TestPostgresFriends(t *testing.T) {
 	if l := list(alice); len(l.Friends) != 2 || len(l.Incoming)+len(l.Outgoing) != 0 {
 		t.Fatalf("alice with two friends: %+v", l)
 	}
+	profile := func(a admiral) *meta.Profile {
+		t.Helper()
+		p, err := pg.UpdatePlayer(ctx, a.id, func(*meta.Profile) error { return nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	if a, c := profile(alice), profile(carol); a.Stats.PeakFriends != 2 || c.Stats.PeakFriends != 1 {
+		t.Fatalf("peak friends: alice %d, carol %d", a.Stats.PeakFriends, c.Stats.PeakFriends)
+	}
 
 	// Cheers: once a day per friend, collected for coins.
 	if n, err := pg.CheerFriends(ctx, bob.id, alice.code, now); err != nil || n != 1 {
@@ -108,16 +119,16 @@ func TestPostgresFriends(t *testing.T) {
 	if n, err := pg.CheerFriends(ctx, carol.id, "", now); err != nil || n != 1 {
 		t.Fatalf("cheer everyone: %d %v", n, err)
 	}
+	if p := profile(bob); p.Stats.Cheers != 1 || p.Daily.Progress[meta.StatCheers] != 1 {
+		t.Fatalf("bob's cheers sent: %+v %+v", p.Stats, p.Daily)
+	}
 	if l := list(alice); l.Cheers != 2 || !l.Friends[0].CheeredMe || l.Friends[0].Cheered {
 		t.Fatalf("alice's cheers: %+v", l)
 	}
 	if l := list(bob); !l.Friends[0].Cheered {
 		t.Fatalf("bob sees his cheer: %+v", l)
 	}
-	before, err := pg.UpdatePlayer(ctx, alice.id, func(*meta.Profile) error { return nil })
-	if err != nil {
-		t.Fatal(err)
-	}
+	before := profile(alice)
 	n, g, prof, err := pg.ClaimCheers(ctx, alice.id, now)
 	if err != nil || n != 2 || g.Coins != 2*meta.CheerCoins || prof.Coins != before.Coins+2*meta.CheerCoins {
 		t.Fatalf("claim: %d %+v %v", n, g, err)
@@ -156,6 +167,9 @@ func TestPostgresFriends(t *testing.T) {
 	}
 	_, err = pg.FriendProfile(ctx, bob.id, alice.code)
 	refused("an old friend looks", err)
+	if p := profile(alice); p.Stats.PeakFriends != 2 {
+		t.Fatalf("alice's peak after bob left: %d", p.Stats.PeakFriends)
+	}
 }
 
 // Two admirals asking each other at the same moment end up friends once,

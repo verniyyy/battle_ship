@@ -288,6 +288,8 @@ export interface Mission {
   goal: number
   gems?: number
   coins?: number
+  /** A daily mission that needs a friend; the all-clear bonus leaves it out. */
+  extra?: boolean
 }
 
 export interface Profile {
@@ -327,6 +329,8 @@ export interface Profile {
     ultimates: number
     skills: number
     ssrs: number
+    peakFriends: number
+    cheers: number
   }
   badges: { login: boolean; missions: number; achievements: number; freeTen: boolean }
   created: string
