@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Scene } from '../App'
-import { api } from '../api'
+import { api, friends as friendsApi } from '../api'
 import { audio } from '../audio'
 import { PortraitImg, ShipArt } from '../components/ShipArt'
 import { Backdrop, Badge, Modal, ResumeBanner, TopBar } from '../components/ui'
@@ -9,7 +9,7 @@ import { markNewsSeen, NEWS, unreadNews } from '../news'
 import { lookOfCard, SKILL_INFO, SPECIAL_INFO, CLASS_INFO, TIPS, TORPEDO_INFO } from '../game'
 import { celebrateGrant, useGame } from '../state'
 import { portraitOf, useAssets } from '../theme'
-import type { Catalog, GameSummary, Gift, Grant, MatchResponse, Profile } from '../types'
+import type { Catalog, FriendList, GameSummary, Gift, Grant, MatchResponse, Profile } from '../types'
 
 type Dialog = 'record' | 'rules' | 'login' | 'profile' | 'news' | 'gifts' | null
 
@@ -27,6 +27,7 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
   const [newsShown, setNewsShown] = useState(false)
   const [gifts, setGifts] = useState<Gift[]>([])
   const [giftsShown, setGiftsShown] = useState(false)
+  const [friends, setFriends] = useState<FriendList | null>(null)
   const lineTimer = useRef<number>(undefined)
   const artRef = useRef<HTMLButtonElement>(null)
 
@@ -87,6 +88,10 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
       .gifts()
       .then((r) => setGifts(r.gifts))
       .catch(() => setGifts([]))
+    friendsApi
+      .list()
+      .then((r) => setFriends(r.friends))
+      .catch(() => setFriends(null))
   }, [])
 
   // Gifts from the operators pop up once per visit, after the bonus and the news.
@@ -132,6 +137,8 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
   const next = nextStage(catalog, profile)
   const endless = !next
   const b = profile.badges
+  // New requests and cheers waiting on the friends screen.
+  const friendNews = (friends?.incoming.length ?? 0) + (friends?.cheers ?? 0)
 
   return (
     <div className="screen home-screen">
@@ -205,12 +212,16 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
             <b>🎖</b>任務
             <Badge n={b.missions + b.achievements} />
           </button>
-          <button className="menu-tile record" onClick={() => open('record')}>
-            <b>📜</b>戦績
-          </button>
           <button className={`menu-tile login ${b.login ? 'hot' : ''}`} onClick={() => open('login')}>
             <b>🎁</b>ログボ
             <Badge n={b.login} />
+          </button>
+          <button className={`menu-tile friends ${friendNews ? 'hot' : ''}`} onClick={() => nav({ name: 'friends' })}>
+            <b>👥</b>フレンド
+            <Badge n={friendNews} />
+          </button>
+          <button className="menu-tile record" onClick={() => open('record')}>
+            <b>📜</b>戦績
           </button>
           <button className="menu-tile rules" onClick={() => open('rules')}>
             <b>📘</b>要綱

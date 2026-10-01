@@ -419,3 +419,49 @@ export interface AuditEntry {
   target: string
   detail: unknown
 }
+
+/** Another admiral as friend lists show them, named by their friend code. */
+export interface FriendCard {
+  code: string
+  name: string
+  comment: string
+  level: number
+  /** Card id of their secretary ship. */
+  secretary: string
+  fleetPower: number
+  lastActive: string
+}
+
+export interface Friend extends FriendCard {
+  since: string
+  /** Cheered by me today, and cheering me today. */
+  cheered: boolean
+  cheeredMe: boolean
+}
+
+export interface FriendRequest extends FriendCard {
+  at: string
+}
+
+/** The friends screen: my code, friends, requests both ways and uncollected cheers. */
+export interface FriendList {
+  code: string
+  friends: Friend[]
+  incoming: FriendRequest[]
+  outgoing: FriendRequest[]
+  cheers: number
+}
+
+/** What a friend may look at: their fleet in formation order and some records. */
+export interface FriendProfile extends FriendCard {
+  fleet: { card: string; level: number; stars: number; power: number }[]
+  ships: number
+  totalStars: number
+  endless: number
+  battles: number
+  wins: number
+  bestStreak: number
+  sunk: number
+  loginDays: number
+  created: string
+}

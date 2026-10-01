@@ -54,6 +54,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/gifts", s.player(s.listGifts))
 	mux.HandleFunc("POST /api/gifts/claim", s.player(s.claimGifts))
 
+	mux.HandleFunc("GET /api/friends", s.player(s.listFriends))
+	mux.HandleFunc("GET /api/friends/{code}", s.player(s.friendProfile))
+	mux.HandleFunc("POST /api/friends/requests", s.player(s.requestFriend))
+	mux.HandleFunc("POST /api/friends/requests/{code}/accept", s.player(s.friendChange(s.store.AcceptFriend)))
+	mux.HandleFunc("POST /api/friends/requests/{code}/decline", s.player(s.friendChange(s.store.DeclineFriend)))
+	mux.HandleFunc("POST /api/friends/requests/{code}/cancel", s.player(s.friendChange(s.store.CancelFriendRequest)))
+	mux.HandleFunc("POST /api/friends/{code}/remove", s.player(s.friendChange(s.store.RemoveFriend)))
+	mux.HandleFunc("POST /api/friends/cheer", s.player(s.cheerFriends))
+	mux.HandleFunc("POST /api/friends/{code}/cheer", s.player(s.cheerFriends))
+	mux.HandleFunc("POST /api/friends/cheers/claim", s.player(s.claimCheers))
+
 	mux.HandleFunc("POST /api/games", s.player(s.createGame))
 	mux.HandleFunc("GET /api/games", s.player(s.listGames))
 	mux.HandleFunc("GET /api/games/current", s.player(s.currentGame))

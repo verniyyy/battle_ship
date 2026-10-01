@@ -7,6 +7,8 @@ import type {
   Chest,
   ClaimedGift,
   GameSummary,
+  FriendList,
+  FriendProfile,
   Gain,
   Gift,
   GiftRecord,
@@ -110,6 +112,27 @@ export const api = {
   /** Collects one gift, or every pending one without an id. */
   claimGifts: (id?: string) => post<WithProfile<{ claimed: ClaimedGift[] }>>('/gifts/claim', { id }),
 }
+
+type WithFriends<T = object> = T & { friends: FriendList }
+const friendPath = (code: string) => `/friends/${encodeURIComponent(code)}`
+
+/** Friends, named by friend code. Every change answers with the list as it now stands. */
+export const friends = {
+  list: () => request<WithFriends>('/friends'),
+  profile: (code: string) => request<{ friend: FriendProfile }>(friendPath(code)),
+  /** befriended is true when they had already asked in return. */
+  request: (code: string) => post<WithFriends<{ befriended: boolean }>>('/friends/requests', { code }),
+  accept: (code: string) => post<WithFriends>(`/friends/requests/${encodeURIComponent(code)}/accept`),
+  decline: (code: string) => post<WithFriends>(`/friends/requests/${encodeURIComponent(code)}/decline`),
+  cancel: (code: string) => post<WithFriends>(`/friends/requests/${encodeURIComponent(code)}/cancel`),
+  remove: (code: string) => post<WithFriends>(`${friendPath(code)}/remove`),
+  /** Today's cheer to one friend, or to every friend not yet cheered. */
+  cheer: (code?: string) => post<WithFriends<{ sent: number }>>(code ? `${friendPath(code)}/cheer` : '/friends/cheer'),
+  claimCheers: () => post<WithFriends<WithProfile<{ count: number; grant: Grant }>>>('/friends/cheers/claim'),
+}
+
+/** A friend code as shown: two groups of four, e.g. K7QM-4XPA. */
+export const showCode = (code: string) => (code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code)
 
 /** A gift as drafted in the admin console. */
 export type GiftDraft = Omit<Gift, 'id'>
