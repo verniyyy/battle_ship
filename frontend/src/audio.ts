@@ -241,6 +241,7 @@ interface Song {
 // Tracks the user supplies as recordings (frontend/public/bgm), looped instead of synthesised.
 const FILES = {
   battle: '/bgm/battle.mp3',
+  boss: '/bgm/boss.mp3',
 } satisfies Partial<Record<Track, string>>
 type FileTrack = keyof typeof FILES
 const isFileTrack = (t: Track): t is FileTrack => t in FILES
@@ -276,46 +277,6 @@ const SONGS: Record<Exclude<Track, FileTrack>, Song> = {
     },
     drums: { kick: 'x.........x.....', snare: '....x.......x...', hat: '..x...x...x...x.', shaker: 'xxxxxxxxxxxxxxxx' },
     fill: { kick: 'x.........x.....', snare: '....x.......x.x.', hat: '..x...x...x...x.', shaker: 'xxxxxxxxxxxxxxxx' },
-  },
-  // Flagship battle: dark E phrygian, galloping bass, choir and taiko.
-  boss: {
-    bpm: 152,
-    chords: [
-      [40, 43, 47],
-      [41, 45, 48],
-      [40, 43, 47],
-      [38, 42, 45],
-      [40, 43, 47],
-      [41, 45, 48],
-      [43, 47, 50],
-      [47, 51, 54],
-    ],
-    pad: 'choir',
-    padVol: 0.9,
-    comp: { kind: 'stab', hits: [[0, 2], [3, 2], [6, 2], [10, 2]], octave: 12 },
-    bass: {
-      kind: 'drive',
-      notes: [[0, 0, 1], [1, 0, 1], [2, 0, 1], [3, 12, 1], [4, 0, 1], [5, 0, 1], [6, 1, 1], [7, 0, 1], [8, 0, 1], [9, 0, 1], [10, 0, 1], [11, 12, 1], [12, 0, 1], [13, 1, 1], [14, 0, 1], [15, 3, 1]],
-    },
-    arp: { kind: 'pluck', order: [0, 2, 4, 2, 5, 4, 2, 0, 0, 2, 4, 2, 6, 5, 4, 2], octave: 24, min: 2 },
-    lead: {
-      kind: 'dark',
-      min: 1,
-      notes: [
-        [0, 76, 4], [4, 77, 4], [8, 76, 2], [10, 74, 2], [12, 71, 4],
-        [16, 72, 6], [22, 69, 2], [24, 77, 6], [30, 76, 2],
-        [32, 79, 4], [36, 77, 2], [38, 76, 2], [40, 71, 8],
-        [48, 69, 4], [52, 74, 4], [56, 78, 4], [60, 81, 4],
-        [64, 83, 6], [70, 84, 2], [72, 83, 4], [76, 79, 4],
-        [80, 81, 6], [86, 84, 2], [88, 77, 4], [92, 81, 4],
-        [96, 83, 4], [100, 86, 4], [104, 79, 6], [110, 77, 2],
-        [112, 78, 4], [116, 75, 4], [120, 71, 8],
-      ],
-    },
-    drums: { kick: 'x..xx...x..xx..x', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', tom: '..............xx' },
-    drumsHigh: { kick: 'x.xxx.x.x.xxx.xx', snare: '....x.......x..x', hat: 'xxxxxxxxxxxxxxxx', open: '..x...x...x...x.', tom: '...........x.xxx' },
-    fill: { kick: 'x..x....x.......', snare: '....x.....xxxxxx', hat: 'x.x.x.x.........', tom: '........xx.x.x..' },
-    timpani: true,
   },
   // Gacha: glittering music box over a soft lydian pad, all anticipation.
   gacha: {
