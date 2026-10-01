@@ -142,7 +142,9 @@ export function ResultOverlay({
     return go(n ? { name: 'sortie', stage: n } : { name: 'map', area: 5 })
   }
 
-  // After a defeat: straight back in, same stage, the fleet where it stood.
+  // Straight back in, same stage, the fleet where it stood: after a defeat,
+  // or after a campaign win for admirals farming it (in the endless a win
+  // moves on to the next floor, which the next button already does).
   const rematch = async () => {
     audio.play('charge')
     setRematching(true)
@@ -337,9 +339,16 @@ export function ResultOverlay({
           母港へ
         </button>
         {reward.win ? (
-          <button className="pill-btn gold big pulse" onClick={next}>
-            {nextLabel} ▶
-          </button>
+          <>
+            {campaign && (
+              <button className="pill-btn" onClick={() => void rematch()} disabled={rematching} title="同じ海域に、同じ配置で再出撃します">
+                再戦
+              </button>
+            )}
+            <button className="pill-btn gold big pulse" onClick={next}>
+              {nextLabel} ▶
+            </button>
+          </>
         ) : (
           <>
             <button className="pill-btn" onClick={next}>
