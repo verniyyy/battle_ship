@@ -44,6 +44,8 @@ type Config struct {
 	// the admin console, e.g. "google:1234567890". Signing in with the dev
 	// login as an admin gives the subject DevAdminSubject.
 	AdminSubjects []string
+	// Features are the hidden features released to everyone, e.g. "duels".
+	Features []string
 }
 
 // DevAdminSubject is the subject of an admin signed in through the dev login.
@@ -66,17 +68,21 @@ type Handler struct {
 	publicURL string
 	dev       bool
 	admins    map[string]bool
+	released  map[string]bool
 
 	oauth    *oauth2.Config // nil when Google sign-in is not configured
 	verifier *oidc.IDTokenVerifier
 }
 
 func New(cfg Config, sessions *Sessions, accounts Accounts, log *slog.Logger) *Handler {
-	h := &Handler{sessions: sessions, accounts: accounts, log: log, publicURL: strings.TrimRight(cfg.PublicURL, "/"), dev: cfg.DevLogin, admins: map[string]bool{}}
+	h := &Handler{sessions: sessions, accounts: accounts, log: log, publicURL: strings.TrimRight(cfg.PublicURL, "/"), dev: cfg.DevLogin, admins: map[string]bool{}, released: map[string]bool{}}
 	for _, s := range cfg.AdminSubjects {
 		if s = strings.TrimSpace(s); s != "" {
 			h.admins[s] = true
 		}
+	}
+	for _, f := range cfg.Features {
+		h.released[strings.TrimSpace(f)] = true
 	}
 	if cfg.GoogleClientID != "" {
 		h.oauth = &oauth2.Config{
@@ -139,11 +145,13 @@ type sessionResponse struct {
 	// The sign-in methods on offer.
 	Google bool `json:"google"`
 	Dev    bool `json:"dev"`
+	// The hidden features open to this admiral (see Config.Features).
+	Features []string `json:"features"`
 }
 
 func (h *Handler) session(w http.ResponseWriter, r *http.Request) {
 	s, ok := h.sessions.Get(w, r)
-	writeJSON(w, http.StatusOK, sessionResponse{SignedIn: ok, Email: s.Email, Admin: ok && h.admins[s.Subject], Google: h.oauth != nil, Dev: h.dev})
+	writeJSON(w, http.StatusOK, sessionResponse{SignedIn: ok, Email: s.Email, Admin: ok && h.admins[s.Subject], Google: h.oauth != nil, Dev: h.dev, Features: h.Features(w, r)})
 }
 
 func (h *Handler) logout(w http.ResponseWriter, _ *http.Request) {

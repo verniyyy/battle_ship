@@ -251,12 +251,13 @@ const (
 
 var sessions = auth.NewSessions([]byte("test-secret-test-secret-test-secret"), false, time.Now)
 
-func newTestServer(t *testing.T) *httptest.Server {
+func newTestServer(t *testing.T, features ...string) *httptest.Server {
 	t.Helper()
 	now := func() time.Time { return time.Date(2026, 9, 28, 12, 0, 0, 0, meta.JST) }
 	st := newMemStore()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s := New(st, auth.New(auth.Config{DevLogin: true, AdminSubjects: []string{adminSubject}}, sessions, st, log), log, rand.New(rand.NewPCG(1, 1)), now)
+	cfg := auth.Config{DevLogin: true, AdminSubjects: []string{adminSubject}, Features: features}
+	s := New(st, auth.New(cfg, sessions, st, log), log, rand.New(rand.NewPCG(1, 1)), now)
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 	return ts
@@ -299,6 +300,38 @@ func doAs(t *testing.T, ts *httptest.Server, sess auth.Session, header http.Head
 }
 
 var placements = []game.Pos{{Row: 0, Col: 0}, {Row: 2, Col: 2}, {Row: 4, Col: 4}}
+
+func TestHiddenFeatures(t *testing.T) {
+	admin := auth.Session{PlayerID: bob, Subject: adminSubject}
+	var sess struct{ Features []string }
+	// A bad body gets past the feature gate to the handler, which refuses it.
+	join := func(ts *httptest.Server, s auth.Session) int {
+		return doAs(t, ts, s, nil, "POST", "/api/duels/join", "not an object", nil)
+	}
+
+	hidden := newTestServer(t)
+	if doAs(t, hidden, auth.Session{PlayerID: alice}, nil, "GET", "/api/auth/session", nil, &sess); len(sess.Features) != 0 {
+		t.Fatalf("unreleased features shown to a player: %v", sess.Features)
+	}
+	if code := join(hidden, auth.Session{PlayerID: alice}); code != http.StatusNotFound {
+		t.Fatalf("unreleased duels for a player: %d", code)
+	}
+	// Admins try a feature out before it is released.
+	if doAs(t, hidden, admin, nil, "GET", "/api/auth/session", nil, &sess); !slices.Equal(sess.Features, []string{auth.FeatureDuels}) {
+		t.Fatalf("admin features: %v", sess.Features)
+	}
+	if code := join(hidden, admin); code != http.StatusBadRequest {
+		t.Fatalf("unreleased duels for an admin: %d", code)
+	}
+
+	released := newTestServer(t, auth.FeatureDuels)
+	if doAs(t, released, auth.Session{PlayerID: alice}, nil, "GET", "/api/auth/session", nil, &sess); !slices.Equal(sess.Features, []string{auth.FeatureDuels}) {
+		t.Fatalf("released features: %v", sess.Features)
+	}
+	if code := join(released, auth.Session{PlayerID: alice}); code != http.StatusBadRequest {
+		t.Fatalf("released duels for a player: %d", code)
+	}
+}
 
 func TestGameFlow(t *testing.T) {
 	ts := newTestServer(t)

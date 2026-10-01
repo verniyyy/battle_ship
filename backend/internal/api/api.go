@@ -67,13 +67,14 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/rankings/{board}", s.player(s.ranking))
 
-	mux.HandleFunc("GET /api/duels", s.player(s.duelLobby))
-	mux.HandleFunc("POST /api/duels", s.player(s.createDuel))
-	mux.HandleFunc("POST /api/duels/join", s.player(s.joinDuel))
-	mux.HandleFunc("GET /api/duels/{id}", s.player(s.getDuel))
-	mux.HandleFunc("POST /api/duels/{id}/placement", s.player(s.placeDuel))
-	mux.HandleFunc("POST /api/duels/{id}/actions", s.player(s.actDuel))
-	mux.HandleFunc("POST /api/duels/{id}/leave", s.player(s.leaveDuel))
+	duel := func(h playerHandler) http.HandlerFunc { return s.feature(auth.FeatureDuels, s.player(h)) }
+	mux.HandleFunc("GET /api/duels", duel(s.duelLobby))
+	mux.HandleFunc("POST /api/duels", duel(s.createDuel))
+	mux.HandleFunc("POST /api/duels/join", duel(s.joinDuel))
+	mux.HandleFunc("GET /api/duels/{id}", duel(s.getDuel))
+	mux.HandleFunc("POST /api/duels/{id}/placement", duel(s.placeDuel))
+	mux.HandleFunc("POST /api/duels/{id}/actions", duel(s.actDuel))
+	mux.HandleFunc("POST /api/duels/{id}/leave", duel(s.leaveDuel))
 
 	mux.HandleFunc("POST /api/games", s.player(s.createGame))
 	mux.HandleFunc("GET /api/games", s.player(s.listGames))
@@ -103,6 +104,17 @@ func (s *Server) player(h playerHandler) http.HandlerFunc {
 			return
 		}
 		h(w, r, pid)
+	}
+}
+
+// feature hides h, as if it did not exist, until the feature is released to the admiral.
+func (s *Server) feature(name string, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.auth.Enabled(w, r, name) {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		h(w, r)
 	}
 }
 

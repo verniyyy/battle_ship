@@ -114,6 +114,8 @@ func authConfig() (auth.Config, *auth.Sessions, error) {
 		DevLogin:           os.Getenv("DEV_LOGIN") == "1",
 		// Comma-separated, e.g. google:1234567890 (see README).
 		AdminSubjects: strings.Split(os.Getenv("ADMIN_SUBJECTS"), ","),
+		// Comma-separated hidden features to release, e.g. duels (see README).
+		Features: strings.Split(os.Getenv("FEATURES"), ","),
 	}
 	secret := os.Getenv("SESSION_SECRET")
 	switch {
