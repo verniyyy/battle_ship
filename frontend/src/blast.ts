@@ -283,10 +283,11 @@ function charge(spec: Spec, far: number, rate: number) {
     pops *= kCrack
     const m = Math.max(0, 1 + puff.tick(noise()) * 8)
     let x = tone.tick(noise() * (1 - att) * dec * m)
-    // Crackle: sparse sharp pops, thinning out as the jet dies down.
+    // Crackle: sparse sharp pops, thinning out and quietening as the jet dies down. At full
+    // strength, the odd late pop stood out of the faded tail as a stray sizzle.
     let pop = 0
     if (--quiet < 0 && Math.random() < pops) {
-      pop = (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 0.6)
+      pop = (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 0.6) * ((pops * rate) / spec.crackle) ** 2
       quiet = rate * 0.002
     }
     crack.tick(pop)
