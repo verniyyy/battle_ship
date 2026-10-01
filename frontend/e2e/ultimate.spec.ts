@@ -141,3 +141,38 @@ test('a barrage over a locked-on enemy keeps its own cut-in, not the locked-on o
   expect(seen.some((c) => c.includes('ultimate'))).toBeTruthy()
   expect(seen.filter((c) => c.includes('special'))).toEqual([])
 })
+
+test("ships sunk earlier in the round sit out the enemy's barrage", async ({ page }) => {
+  let fleet = 0
+  let hp = 0
+  await page.route('**/api/games/current', async (route) => {
+    const res = await route.fetch()
+    const m = (await res.json()) as MatchResponse
+    fleet = m.game.enemyShips.length
+    hp = m.game.enemyShips[0].hp
+    Object.assign(m.game.enemyShips[0], { spotted: true, spottedTurn: 1, pos: { row: 2, col: 3 } })
+    await route.fulfill({ response: res, json: m })
+  })
+  // Our shot sinks the spotted enemy first, then what is left of their fleet opens up.
+  await page.route('**/api/games/*/actions', async (route) => {
+    const res = await route.fetch({ postData: JSON.stringify({ type: 'attack', shipId: 0, target: { row: 1, col: 1 } }) })
+    const r = (await res.json()) as ActionResponse
+    const round = r.results[0]?.round ?? 1
+    const target = { row: 2, col: 3 }
+    r.results = [
+      { side: 'player', type: 'attack', shipId: 0, round, speed: 10, target, shots: [{ target, hitShipId: 0, damage: hp, sunk: true }], combo: 1, gauge: 0 },
+      barrage('cpu', { row: 1, col: 1 }, { row: 0, col: 0 }, round, 140),
+    ]
+    await route.fulfill({ response: res, json: r })
+  })
+  await deploy(page)
+  expect(fleet).toBeGreaterThan(1)
+
+  await page.locator('[data-plate="p0"]').click()
+  await page.locator('.cmd-btn.attack').click()
+  await cell(page, 1, 1).click()
+  await page.locator('.cmd-btn.go').click()
+  const cutin = await page.waitForSelector('.cutin.ultimate.enemy-side', { timeout: 20_000 })
+  expect(await cutin.evaluate((el) => el.querySelectorAll('.ult-card').length)).toBe(fleet - 1)
+  await page.screenshot({ path: `${shots}/ultimate-enemy-after-sink.png`, animations: 'disabled' })
+})

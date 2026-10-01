@@ -169,12 +169,16 @@ export function Battle({
   const deadline = useRef(Date.now() + (duel?.duel.secondsLeft ?? 0) * 1000)
   const [surrendering, setSurrendering] = useState(false)
   const speedRef = useRef(speed)
+  // The board as it stands mid-round: a round plays out in a closure over the view it started
+  // from, so ships sunk earlier in the same round would still look alive there.
+  const liveGame = useRef(game)
   const skip = useRef<(() => void) | null>(null)
   const boardRef = useRef<HTMLDivElement>(null)
   const layerRef = useRef<HTMLDivElement>(null)
   const floatSeq = useRef(0)
   const tallySeq = useRef(0)
   speedRef.current = speed
+  liveGame.current = game
 
   const looks = useMemo(
     () => ({
@@ -488,7 +492,8 @@ export function Battle({
     if (!mounted.current) return
 
     // 2. Every gun in the fleet opens up (the enemy's from wherever we have them spotted).
-    const guns = (mine ? game.playerShips : game.enemyShips).filter((s) => s.hp > 0 && s.pos && (mine || s.spotted))
+    const now = liveGame.current
+    const guns = (mine ? now.playerShips : now.enemyShips).filter((s) => s.hp > 0 && s.pos && (mine || s.spotted))
     fx.flash(mine ? '#fff6c0' : '#ff8090', 260, 0.55)
     fx.shake(16, 600)
     guns.forEach((s, i) =>
@@ -610,7 +615,8 @@ export function Battle({
     const torpedo = r.type === 'torpedo' || r.skill === 'spread'
     if (r.type === 'ultimate') {
       // Every living ship takes its bow before the title stamps down (timed in CSS to the same beats).
-      const crew = (mine ? game.playerShips : game.enemyShips)
+      const now = liveGame.current
+      const crew = (mine ? now.playerShips : now.enemyShips)
         .filter((s) => s.hp > 0)
         .map((s) => ({ look: (mine ? looks.player : looks.enemy)[s.id], line: mine ? card(s.key ?? '')?.attack : undefined }))
       audio.play('ultcharge', { dur: ms(1050) / 1000, far: !mine })
