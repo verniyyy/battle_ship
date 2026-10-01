@@ -1,3 +1,5 @@
+import { hasFeature, type AuthSession, type Feature } from './types'
+
 /**
  * Release notes shown in the harbour's news dialog, newest first. Add an
  * entry at the top with a new, never-reused id when shipping something
@@ -10,17 +12,21 @@
  *   `2026-10-01-scout` works; an unreleased entry of the same day can take
  *   more items instead.
  * - Write in Japanese for players: what they can now do or what changed.
+ * - News of a hidden feature names it in `feature`, so it stays hidden until
+ *   the feature is released and then pops up as unread.
  */
 export type NewsItem = {
   id: string
   date: string
   title: string
   items: string[]
+  feature?: Feature
 }
 
 export const NEWS: NewsItem[] = [
   {
     id: '2026-10-01-duel-beta',
+    feature: 'duels',
     date: '2026-10-01',
     title: '対人戦（ベータ版）を追加',
     items: [
@@ -136,16 +142,21 @@ function seenId(): string | null {
   }
 }
 
-/** Entries newer than the last one seen; all of them on a first visit. */
-export function unreadNews(): NewsItem[] {
-  const seen = seenId()
-  const i = NEWS.findIndex((n) => n.id === seen)
-  return i < 0 ? NEWS : NEWS.slice(0, i)
+/** The entries this admiral may read: those of hidden features stay hidden. */
+export function newsFor(session: AuthSession | null): NewsItem[] {
+  return NEWS.filter((n) => !n.feature || hasFeature(session, n.feature))
 }
 
-export function markNewsSeen() {
+/** Of news, the entries newer than the last one seen; all of them on a first visit. */
+export function unreadNews(news: NewsItem[]): NewsItem[] {
+  const seen = seenId()
+  const i = NEWS.findIndex((n) => n.id === seen)
+  return i < 0 ? news : news.filter((n) => NEWS.indexOf(n) < i)
+}
+
+export function markNewsSeen(news: NewsItem[]) {
   try {
-    if (NEWS.length) localStorage.setItem(SEEN_KEY, NEWS[0].id)
+    if (news.length) localStorage.setItem(SEEN_KEY, news[0].id)
   } catch {
     // Private mode or blocked storage: the dialog just shows again next time.
   }

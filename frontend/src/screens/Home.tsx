@@ -5,11 +5,11 @@ import { audio } from '../audio'
 import { PortraitImg, ShipArt } from '../components/ShipArt'
 import { Backdrop, Badge, Modal, ResumeBanner, TopBar } from '../components/ui'
 import { fx } from '../fx'
-import { markNewsSeen, NEWS, unreadNews } from '../news'
+import { markNewsSeen, newsFor, unreadNews, type NewsItem } from '../news'
 import { lookOfCard, SKILL_INFO, SPECIAL_INFO, CLASS_INFO, TIPS, TORPEDO_INFO } from '../game'
 import { celebrateGrant, useGame } from '../state'
 import { portraitOf, useAssets } from '../theme'
-import type { Catalog, FriendList, GameSummary, Gift, Grant, MatchResponse, Profile } from '../types'
+import { hasFeature, type Catalog, type FriendList, type GameSummary, type Gift, type Grant, type MatchResponse, type Profile } from '../types'
 
 type Dialog = 'record' | 'rules' | 'login' | 'profile' | 'news' | 'gifts' | null
 
@@ -23,7 +23,8 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
   const [line, setLine] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
   const [loginSeen, setLoginSeen] = useState(false)
-  const [unread, setUnread] = useState(() => unreadNews().length)
+  const news = newsFor(session)
+  const [unread, setUnread] = useState(() => unreadNews(news).length)
   const [newsShown, setNewsShown] = useState(false)
   const [gifts, setGifts] = useState<Gift[]>([])
   const [giftsShown, setGiftsShown] = useState(false)
@@ -197,12 +198,14 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
           <span className="sortie-next">{endless ? `無限海域 第${profile.endless + 1}層へ` : `次の海域 ${next.id}「${next.name}」`}</span>
           {next?.boss && <span className="sortie-boss">BOSS</span>}
         </button>
-        <button className="duel-btn" onClick={() => nav({ name: 'duel' })}>
-          <span className="duel-btn-ico">⚔</span>
-          <span className="duel-btn-jp">対人戦</span>
-          <span className="beta-tag">BETA</span>
-          <span className="duel-btn-sub">提督どうしで 8×8 の海戦</span>
-        </button>
+        {hasFeature(session, 'duels') && (
+          <button className="duel-btn" onClick={() => nav({ name: 'duel' })}>
+            <span className="duel-btn-ico">⚔</span>
+            <span className="duel-btn-jp">対人戦</span>
+            <span className="beta-tag">BETA</span>
+            <span className="duel-btn-sub">提督どうしで 8×8 の海戦</span>
+          </button>
+        )}
         <div className="menu-grid">
           <button className="menu-tile formation" onClick={() => nav({ name: 'formation' })}>
             <b>⚓</b>編成
@@ -261,7 +264,7 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
       <div className="ticker">
         <span className="ticker-tag">司令部通達</span>
         <div className="ticker-track">
-          <p>{[...(NEWS[0] ? [`【${NEWS[0].date.replaceAll('-', '/')} 更新】${NEWS[0].title}`] : []), ...TIPS].join(' ／ ')}</p>
+          <p>{[...(news[0] ? [`【${news[0].date.replaceAll('-', '/')} 更新】${news[0].title}`] : []), ...TIPS].join(' ／ ')}</p>
         </div>
       </div>
 
@@ -270,9 +273,10 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
       {dialog === 'rules' && <RulesDialog onClose={() => setDialog(null)} />}
       {dialog === 'news' && (
         <NewsDialog
+          news={news}
           unread={unread}
           onClose={() => {
-            markNewsSeen()
+            markNewsSeen(news)
             setUnread(0)
             setNewsShown(true)
             setDialog(null)
@@ -621,11 +625,11 @@ function RecordDialog({ profile, onClose }: { profile: Profile; onClose: () => v
   )
 }
 
-function NewsDialog({ unread, onClose }: { unread: number; onClose: () => void }) {
+function NewsDialog({ news, unread, onClose }: { news: NewsItem[]; unread: number; onClose: () => void }) {
   return (
     <Modal title="お知らせ" onClose={onClose} wide className="news-modal">
       <ul className="news-list">
-        {NEWS.map((n, i) => (
+        {news.map((n, i) => (
           <li key={n.id} className={i < unread ? 'unread' : ''}>
             <header>
               <time dateTime={n.date}>{n.date.replaceAll('-', '/')}</time>
