@@ -6,6 +6,8 @@ import type {
   Catalog,
   Chest,
   ClaimedGift,
+  DuelLobby,
+  DuelResponse,
   Board,
   GameSummary,
   FriendList,
@@ -134,6 +136,20 @@ export const friends = {
   /** Today's cheer to one friend, or to every friend not yet cheered. */
   cheer: (code?: string) => post<WithFriends<{ sent: number }>>(code ? `${friendPath(code)}/cheer` : '/friends/cheer'),
   claimCheers: () => post<WithFriends<WithProfile<{ count: number; grant: Grant }>>>('/friends/cheers/claim'),
+}
+
+/** Duels between admirals (beta). Every reply is the duel from my side. */
+export const duels = {
+  lobby: () => request<DuelLobby>('/duels'),
+  create: () => post<DuelResponse>('/duels'),
+  join: (code: string) => post<DuelResponse>('/duels/join', { code }),
+  /** The poll: null when nothing changed since revision rev. */
+  get: (id: string, rev?: number) => request<DuelResponse | undefined>(`/duels/${id}${rev === undefined ? '' : `?rev=${rev}`}`).then((r) => r ?? null),
+  place: (id: string, placements: Pos[]) => post<DuelResponse>(`/duels/${id}/placement`, { placements }),
+  /** turn is the round count the order was chosen on; 409 once that round has been played. */
+  act: (id: string, type: ActionType, shipId: number, target: Pos, turn: number) => post<DuelResponse>(`/duels/${id}/actions`, { type, shipId, target, turn }),
+  /** Closes the room before the battle, or surrenders during it. */
+  leave: (id: string) => post<DuelResponse>(`/duels/${id}/leave`),
 }
 
 /** A friend code as shown: two groups of four, e.g. K7QM-4XPA. */

@@ -24,10 +24,11 @@ import (
 // memStore is an in-memory store.Store for handler tests. Values are kept as
 // JSON so every request sees a fresh copy, as with the real database.
 type memStore struct {
-	// Friends and rankings live in SQL alone and are tested against
+	// Friends, rankings and duels live in SQL alone and are tested against
 	// PostgreSQL in the store.
 	store.Friends
 	store.Rankings
+	store.Duels
 
 	mu      sync.Mutex
 	players map[string][]byte

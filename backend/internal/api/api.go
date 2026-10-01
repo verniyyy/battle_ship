@@ -67,6 +67,14 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/rankings/{board}", s.player(s.ranking))
 
+	mux.HandleFunc("GET /api/duels", s.player(s.duelLobby))
+	mux.HandleFunc("POST /api/duels", s.player(s.createDuel))
+	mux.HandleFunc("POST /api/duels/join", s.player(s.joinDuel))
+	mux.HandleFunc("GET /api/duels/{id}", s.player(s.getDuel))
+	mux.HandleFunc("POST /api/duels/{id}/placement", s.player(s.placeDuel))
+	mux.HandleFunc("POST /api/duels/{id}/actions", s.player(s.actDuel))
+	mux.HandleFunc("POST /api/duels/{id}/leave", s.player(s.leaveDuel))
+
 	mux.HandleFunc("POST /api/games", s.player(s.createGame))
 	mux.HandleFunc("GET /api/games", s.player(s.listGames))
 	mux.HandleFunc("GET /api/games/current", s.player(s.currentGame))
@@ -456,7 +464,8 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, meta.ErrInsufficient):
 		writeError(w, http.StatusPaymentRequired, err.Error())
-	case errors.Is(err, game.ErrGameOver), errors.Is(err, store.ErrInBattle), errors.Is(err, errStaleTurn):
+	case errors.Is(err, game.ErrGameOver), errors.Is(err, store.ErrInBattle), errors.Is(err, errStaleTurn),
+		errors.Is(err, store.ErrInDuel), errors.Is(err, meta.ErrDuelMoved):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
 		s.log.Error("internal error", "err", err)

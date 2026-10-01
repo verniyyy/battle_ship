@@ -197,6 +197,12 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
           <span className="sortie-next">{endless ? `無限海域 第${profile.endless + 1}層へ` : `次の海域 ${next.id}「${next.name}」`}</span>
           {next?.boss && <span className="sortie-boss">BOSS</span>}
         </button>
+        <button className="duel-btn" onClick={() => nav({ name: 'duel' })}>
+          <span className="duel-btn-ico">⚔</span>
+          <span className="duel-btn-jp">対人戦</span>
+          <span className="beta-tag">BETA</span>
+          <span className="duel-btn-sub">提督どうしで 8×8 の海戦</span>
+        </button>
         <div className="menu-grid">
           <button className="menu-tile formation" onClick={() => nav({ name: 'formation' })}>
             <b>⚓</b>編成

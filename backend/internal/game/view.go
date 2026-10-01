@@ -68,9 +68,14 @@ type View struct {
 
 // PlayerView renders the state from the player's perspective; enemy positions
 // are revealed through intel, and fully once the game is over.
-func (st *State) PlayerView() View {
+func (st *State) PlayerView() View { return st.ViewFor(SidePlayer) }
+
+// ViewFor renders the state from side me's perspective. The second admiral of
+// a duel (SideCPU) gets it mirrored, so that each admiral sees their own
+// fleet as "player" and their own deployment zone at the bottom of the sea.
+func (st *State) ViewFor(me Side) View {
 	st.syncWeather()
-	player, cpu := st.Boards[SidePlayer], st.Boards[SideCPU]
+	own, foe := st.Boards[me], st.Boards[me.Opponent()]
 	v := View{
 		BoardSize:  st.Size,
 		Turn:       st.Turn,
@@ -79,34 +84,34 @@ func (st *State) PlayerView() View {
 		Status:     st.Status,
 		Winner:     st.Winner,
 		EndReason:  st.EndReason,
-		Gauge:      st.Gauge[SidePlayer],
-		EnemyGauge: st.Gauge[SideCPU],
-		Combo:      st.Combo[SidePlayer],
-		MaxCombo:   st.MaxCombo[SidePlayer],
-		AA:         player.AA(),
-		EnemyAA:    cpu.AA(),
-		LastGun:    st.LastGun[SidePlayer],
+		Gauge:      st.Gauge[me],
+		EnemyGauge: st.Gauge[me.Opponent()],
+		Combo:      st.Combo[me],
+		MaxCombo:   st.MaxCombo[me],
+		AA:         own.AA(),
+		EnemyAA:    foe.AA(),
+		LastGun:    st.LastGun[me],
 		History:    st.History,
 	}
 	inProgress := st.Status == StatusInProgress
-	for _, s := range player.Ships {
-		sv := shipView(s, player)
+	for _, s := range own.Ships {
+		sv := shipView(s, own)
 		sv.Pinned = s.Pinned > 0 && s.Alive()
 		sv.UnderWay = s.Sailed > 0 && s.Alive()
 		sv.Marked = s.Marked > 0 && s.Alive()
 		if inProgress {
-			sv.AttackTargets = player.AttackTargets(s.ID)
-			sv.TorpedoTargets = player.TorpedoTargets(s.ID)
-			sv.MoveTargets = player.MoveTargets(s.ID)
-			sv.SkillTargets = player.SkillTargets(s.ID)
+			sv.AttackTargets = own.AttackTargets(s.ID)
+			sv.TorpedoTargets = own.TorpedoTargets(s.ID)
+			sv.MoveTargets = own.MoveTargets(s.ID)
+			sv.SkillTargets = own.SkillTargets(s.ID)
 		}
 		v.PlayerShips = append(v.PlayerShips, sv)
 	}
-	for _, s := range cpu.Ships {
-		sv := shipView(s, cpu)
+	for _, s := range foe.Ships {
+		sv := shipView(s, foe)
 		if inProgress && s.Alive() {
 			sv.Pos = nil
-			if seen, ok := st.Intel[SidePlayer][key(s.ID)]; ok {
+			if seen, ok := st.Intel[me][key(s.ID)]; ok {
 				p := seen.Pos
 				sv.Pos, sv.Spotted, sv.SpottedTurn = &p, true, seen.Turn
 				sv.Pinned = s.Pinned > 0
@@ -116,6 +121,9 @@ func (st *State) PlayerView() View {
 			sv.UnderWay = s.Sailed > 0
 		}
 		v.EnemyShips = append(v.EnemyShips, sv)
+	}
+	if me == SideCPU {
+		v = v.mirrored()
 	}
 	return v
 }

@@ -526,11 +526,15 @@ func (st *State) checkEnd(actor Side) {
 	}
 }
 
-// judge ends the battle on the share of hull left; ties go to the CPU.
+// judge ends the battle on the share of hull left; ties go to the CPU, or
+// are a draw in a duel.
 func (st *State) judge() {
-	if st.Boards[SidePlayer].hull() > st.Boards[SideCPU].hull() {
+	switch player, cpu := st.Boards[SidePlayer].hull(), st.Boards[SideCPU].hull(); {
+	case player > cpu:
 		st.finish(SidePlayer, EndJudgment)
-	} else {
+	case player == cpu && st.Duel:
+		st.finish("", EndJudgment)
+	default:
 		st.finish(SideCPU, EndJudgment)
 	}
 }
@@ -541,6 +545,20 @@ func (st *State) Abandon() error {
 		return ErrGameOver
 	}
 	st.finish(SideCPU, EndAbandoned)
+	return nil
+}
+
+// Forfeit ends a duel as a defeat for loser, or as a draw when loser is
+// empty (both duellists stopped giving orders).
+func (st *State) Forfeit(loser Side, why EndReason) error {
+	if st.Status != StatusInProgress {
+		return ErrGameOver
+	}
+	var winner Side
+	if loser != "" {
+		winner = loser.Opponent()
+	}
+	st.finish(winner, why)
 	return nil
 }
 

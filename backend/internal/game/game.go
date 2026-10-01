@@ -45,7 +45,8 @@
 //
 // A side loses when every ship is sunk, or withdraws when it can no longer
 // deal damage. When the turn limit runs out the fleet with the larger share of
-// its hull left wins; ties go to the defender (the CPU).
+// its hull left wins; ties go to the defender (the CPU), or in a duel between
+// two admirals end in a draw.
 package game
 
 import (
@@ -735,6 +736,8 @@ const (
 	EndDisarmed    EndReason = "disarmed"    // no way left to deal damage: strategic withdrawal
 	EndJudgment    EndReason = "judgment"    // turn limit reached
 	EndAbandoned   EndReason = "abandoned"   // the player walked away from a suspended battle
+	EndSurrender   EndReason = "surrender"   // a duellist struck their colours
+	EndTimeout     EndReason = "timeout"     // a duellist let too many rounds pass without orders
 )
 
 // Weather is the sea condition of a battle, rolled per sortie.
@@ -777,6 +780,9 @@ type State struct {
 	Intel  map[Side]map[string]Sighting `json:"intel"`
 	Memory map[Side]*Memory             `json:"memory"`
 	AI     AI                           `json:"ai"`
+	// Duel marks a battle between two admirals: SideCPU is the second admiral,
+	// and a judgment on equal hulls is a draw (Winner stays empty).
+	Duel bool `json:"duel,omitempty"`
 }
 
 func NewState(player, cpu *Board, maxTurns int, ai AI, weather Weather) *State {

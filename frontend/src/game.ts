@@ -238,8 +238,9 @@ export interface Look {
   fx?: FxPreset
 }
 
-export function lookOfShip(cat: Catalog | null, s: ShipView, enemy: boolean): Look {
-  const c = enemy ? undefined : cardOf(cat, s.key)
+/** duel: the enemy is another admiral's fleet, whose ships are cards too. */
+export function lookOfShip(cat: Catalog | null, s: ShipView, enemy: boolean, duel = false): Look {
+  const c = enemy && !duel ? undefined : cardOf(cat, s.key)
   return {
     cls: s.class,
     name: s.name,
