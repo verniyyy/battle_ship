@@ -88,6 +88,8 @@ const VOLUME_KEY = 'volume'
 
 // Bus levels at a volume setting of 1; the player's BGM/SE settings scale these.
 const MUSIC_LEVEL = 0.22
+// A mastered recording runs much hotter than the synthesised songs; this sits it at their level.
+const RECORDING_LEVEL = 0.5
 const SFX_LEVEL = 0.8
 const AMBIENCE_LEVEL = 0.25
 const MASTER_LEVEL = 0.9
@@ -236,7 +238,14 @@ interface Song {
   timpani?: boolean
 }
 
-const SONGS: Record<Track, Song> = {
+// Tracks the user supplies as recordings (frontend/public/bgm), looped instead of synthesised.
+const FILES = {
+  battle: '/bgm/battle.mp3',
+} satisfies Partial<Record<Track, string>>
+type FileTrack = keyof typeof FILES
+const isFileTrack = (t: Track): t is FileTrack => t in FILES
+
+const SONGS: Record<Exclude<Track, FileTrack>, Song> = {
   // Harbour: a warm, laid-back loop to sit in menus for a long time.
   home: {
     bpm: 84,
@@ -267,45 +276,6 @@ const SONGS: Record<Track, Song> = {
     },
     drums: { kick: 'x.........x.....', snare: '....x.......x...', hat: '..x...x...x...x.', shaker: 'xxxxxxxxxxxxxxxx' },
     fill: { kick: 'x.........x.....', snare: '....x.......x.x.', hat: '..x...x...x...x.', shaker: 'xxxxxxxxxxxxxxxx' },
-  },
-  // Main battle theme: heroic D minor with a brass lead that enters at intensity 1.
-  battle: {
-    bpm: 140,
-    chords: [
-      [50, 53, 57],
-      [46, 50, 53],
-      [48, 52, 55],
-      [45, 49, 52],
-      [50, 53, 57],
-      [46, 50, 53],
-      [43, 46, 50],
-      [45, 49, 52, 55],
-    ],
-    pad: 'strings',
-    padVol: 0.8,
-    bass: {
-      kind: 'drive',
-      notes: [[0, 0, 1], [2, 0, 1], [3, 12, 1], [4, 0, 1], [6, 0, 1], [7, 12, 1], [8, 0, 1], [10, 0, 1], [11, 12, 1], [12, 7, 1], [14, 10, 1], [15, 12, 1]],
-    },
-    arp: { kind: 'pluck', order: [0, 1, 2, 3, 2, 1, 0, 2, 0, 1, 2, 4, 5, 4, 2, 1], octave: 12 },
-    lead: {
-      kind: 'brass',
-      min: 1,
-      notes: [
-        [0, 69, 2], [2, 74, 2], [4, 76, 2], [6, 77, 6], [12, 76, 2], [14, 74, 2],
-        [16, 77, 6], [22, 74, 2], [24, 70, 4], [28, 74, 4],
-        [32, 76, 4], [36, 79, 4], [40, 84, 6], [46, 82, 2],
-        [48, 81, 12], [60, 76, 2], [62, 73, 2],
-        [64, 74, 2], [66, 77, 2], [68, 81, 6], [74, 79, 2], [76, 77, 2], [78, 76, 2],
-        [80, 77, 4], [84, 74, 4], [88, 77, 2], [90, 79, 2], [92, 81, 2], [94, 82, 2],
-        [96, 82, 6], [102, 81, 2], [104, 79, 4], [108, 82, 4],
-        [112, 81, 6], [118, 79, 2], [120, 76, 2], [122, 73, 2], [124, 69, 4],
-      ],
-    },
-    drums: { kick: 'x.....x.x.....x.', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.', open: '..............x.' },
-    drumsHigh: { kick: 'x...x...x...x.x.', snare: '....x.......x...', hat: 'xxxxxxxxxxxxxxxx', open: '......x.......x.', tom: '.............x.x' },
-    fill: { kick: 'x.....x.x.......', snare: '....x...x.x.xxxx', hat: 'x.x.x.x.x.......', tom: '..........x.x...' },
-    timpani: true,
   },
   // Flagship battle: dark E phrygian, galloping bass, choir and taiko.
   boss: {
@@ -444,6 +414,9 @@ class AudioEngine {
   private nextTime = 0
   private step = 0
 
+  private recordings = new Map<string, Promise<AudioBuffer | null>>()
+  private recording?: { out: GainNode; src?: AudioBufferSourceNode }
+
   private ambience: Ambience | null = null
   private ambNodes: AudioNode[] = []
   private ambOut?: GainNode
@@ -455,7 +428,7 @@ class AudioEngine {
     this.resume()
     void this.pump()
     const t = this.track
-    if (t && !this.seqTimer) {
+    if (t && !this.seqTimer && !this.recording) {
       this.track = null
       this.music(t)
     }
@@ -529,6 +502,8 @@ class AudioEngine {
     this.echoIn = seaEcho(ctx, this.sfxBus)
 
     this.noiseBufs = { white: this.noiseBuffer('white'), pink: this.noiseBuffer('pink'), brown: this.noiseBuffer('brown') }
+    // Fetched and decoded up front so a battle doesn't open in silence.
+    for (const url of Object.values(FILES)) void this.loadRecording(url)
   }
 
   /** The context can be suspended after the first gesture (tab switch, device change); wake it on the next one. */
@@ -1671,6 +1646,7 @@ class AudioEngine {
     this.track = track
     this.fadeOut(this.ctx ? 0.9 : 0)
     if (!track || !this.ctx) return // started on unlock()
+    if (isFileTrack(track)) return this.playRecording(FILES[track])
     const song = SONGS[track]
     this.song = song
     this.ch = this.channels(song)
@@ -1703,6 +1679,18 @@ class AudioEngine {
   private fadeOut(sec: number) {
     if (this.seqTimer) clearInterval(this.seqTimer)
     this.seqTimer = undefined
+    const rec = this.recording
+    this.recording = undefined
+    if (rec && this.ctx) {
+      const t = this.ctx.currentTime
+      rec.out.gain.cancelScheduledValues(t)
+      rec.out.gain.setValueAtTime(rec.out.gain.value, t)
+      rec.out.gain.linearRampToValueAtTime(0, t + Math.max(sec, 0.02))
+      window.setTimeout(() => {
+        rec.src?.stop()
+        rec.out.disconnect()
+      }, (sec + 0.1) * 1000)
+    }
     const ch = this.ch
     this.ch = undefined
     if (!ch || !this.ctx) return
@@ -1711,6 +1699,43 @@ class AudioEngine {
     ch.out.gain.setValueAtTime(ch.out.gain.value, t)
     ch.out.gain.linearRampToValueAtTime(0, t + Math.max(sec, 0.02))
     window.setTimeout(() => ch.nodes.forEach((n) => n.disconnect()), (sec + 3) * 1000)
+  }
+
+  private loadRecording(url: string) {
+    let buf = this.recordings.get(url)
+    if (!buf) {
+      buf = fetch(url)
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
+        .then((data) => this.ctx!.decodeAudioData(data))
+        .catch(() => {
+          this.recordings.delete(url) // try again next time
+          return null
+        })
+      this.recordings.set(url, buf)
+    }
+    return buf
+  }
+
+  /** Loops a recording, fading it in once it has loaded (unless the music moved on meanwhile). */
+  private playRecording(url: string) {
+    const ctx = this.ctx!
+    const out = ctx.createGain()
+    out.gain.value = 0
+    out.connect(this.musicBus!)
+    const rec: { out: GainNode; src?: AudioBufferSourceNode } = { out }
+    this.recording = rec
+    void this.loadRecording(url).then((buf) => {
+      if (!buf || this.recording !== rec) return
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      src.loop = true
+      src.connect(out)
+      const t = ctx.currentTime
+      out.gain.setValueAtTime(0, t)
+      out.gain.linearRampToValueAtTime(RECORDING_LEVEL, t + 0.6)
+      src.start(t)
+      rec.src = src
+    })
   }
 
   /** Mixer strips for one song: each instrument has its own level, placement, delay and reverb sends. */
