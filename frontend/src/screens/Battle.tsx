@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { Scene } from '../App'
 import { api } from '../api'
 import { audio, type PlayOpts, type Sfx } from '../audio'
@@ -6,7 +7,7 @@ import { Board, CellOverlay } from '../components/Board'
 import { CutinLayer, DamageTally, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, tallyTier, type Cutin, type Float, type Tally } from '../components/battle'
 import { Backdrop, ShipToken, SoundToggle } from '../components/ui'
 import { fx, RAINBOW } from '../fx'
-import { CLASS_INFO, describe, footprint, historyLog, lookOfShip, SKILL_INFO, SPECIAL_INFO, stageLabel, TORPEDO_INFO, WEATHER_INFO, type Look, type LogLine } from '../game'
+import { CLASS_INFO, describe, footprint, historyLog, lookOfShip, SKILL_INFO, SPECIAL_INFO, stageLabel, TORPEDO_INFO, WEATHER_INFO, WIDE_SEA, type Look, type LogLine } from '../game'
 import { useGame } from '../state'
 import { posLabel, samePos, type ActionType, type GameView, type MatchResponse, type Pos, type Result, type Reward, type Shot, type ShipClass, type ShipView, type Special } from '../types'
 import { ResultOverlay } from './Result'
@@ -154,6 +155,8 @@ export function Battle({
   const [speed, setSpeed] = useState(loadSpeed)
   const [combo, setCombo] = useState<{ n: number; key: number } | null>(null)
   const [tally, setTally] = useState<Tally | null>(null)
+  // The all-fleet barrage on the board: whose it is, the lock-on, the swept cells and the payoff.
+  const [ult, setUlt] = useState<{ enemy: boolean; aim?: Pos; blast?: Pos[]; total?: { dmg: number; label: string } } | null>(null)
   const mounted = useRef(true)
   const speedRef = useRef(speed)
   const skip = useRef<(() => void) | null>(null)
@@ -444,6 +447,105 @@ export function Battle({
     }
   }
 
+  // barrage plays the all-fleet barrage out on the board: lock-on, every gun in the
+  // fleet opening up, shells walking out ring by ring from the aim, and one last blast.
+  const barrage = async (r: Result, shots: Shot[], mine: boolean) => {
+    const layer = layerRef.current
+    const aim = r.target!
+    const cells = footprint(game.boardSize, 'ultimate', undefined, undefined, aim, aim)
+    const ring = (p: Pos) => Math.max(Math.abs(p.row - aim.row), Math.abs(p.col - aim.col))
+    const center = cellPt(aim)
+    const hot = mine ? '#ffb347' : '#ff5a4e'
+    const byCell = (p: Pos) => shots.find((s) => samePos(s.target, p))
+
+    // 1. Lock on.
+    setUlt({ enemy: !mine, aim })
+    audio.play('lock', { pan: panOf(aim) })
+    window.setTimeout(() => mounted.current && audio.play('lock', { pan: panOf(aim) }), ms(200))
+    fx.ring(center.x, center.y, mine ? '#ffe36b' : '#ff5a6a', 260, 0.6)
+    await wait(700)
+    if (!mounted.current) return
+
+    // 2. Every gun in the fleet opens up (the enemy's from wherever we have them spotted).
+    const guns = (mine ? game.playerShips : game.enemyShips).filter((s) => s.hp > 0 && s.pos && (mine || s.spotted))
+    fx.flash(mine ? '#fff6c0' : '#ff8090', 260, 0.55)
+    fx.shake(16, 600)
+    guns.forEach((s, i) =>
+      window.setTimeout(() => {
+        if (!mounted.current) return
+        const p = cellPt(s.pos!)
+        fx.ring(p.x, p.y, '#fff6c0', 150, 0.35)
+        fx.sparkle(p.x, p.y, '#ffd36b', 16, 130)
+        audio.play('cannon', { pan: panOf(s.pos), size: 2, far: !mine })
+      }, ms(i * 70)),
+    )
+    if (!guns.length) for (let i = 0; i < 3; i++) window.setTimeout(() => mounted.current && audio.play('cannon', { pan: i - 1, size: 2, far: !mine }), ms(i * 70))
+
+    // 3. The shells walk out from the aim: the centre lands first and hardest.
+    const source = (i: number, to: { x: number; y: number }) => (guns.length ? cellPt(guns[i % guns.length].pos!) : skyPoint(to))
+    await Promise.all(
+      cells.map(async (p, i) => {
+        const k = ring(p)
+        await wait(k === 0 ? 0 : k === 1 ? 180 + i * 40 : 420 + i * 25)
+        if (!mounted.current) return
+        const to = cellPt(p)
+        const flight = ms(k === 0 ? 560 : 480)
+        if (i % 3 === 0) audio.play('shell', { pan: panOf(p), dur: flight / 1000, far: !mine })
+        // A second shell from the sky for every cell: the sea boils.
+        void flyShell(layer, skyPoint(to), { x: to.x + rnd(-8, 8), y: to.y + rnd(-8, 8) }, flight * rnd(0.9, 1.15), !mine)
+        await flyShell(layer, source(i, to), to, flight, !mine)
+        if (!mounted.current) return
+        const s = byCell(p)
+        if (k === 0) {
+          fx.flash('#fff', 260, 0.6)
+          fx.punch(1.05, 300)
+        }
+        if (s && ((s.damage ?? 0) > 0 || s.evaded)) await impact(s, mine)
+        else {
+          fx.explosion(to.x, to.y, k === 0 ? 1.3 : 0.8, hot, 0.3)
+          fx.splash(to.x, to.y, 1.5)
+          audio.play(k === 0 ? 'bigboom' : 'boom', { pan: panOf(p), far: mine })
+          fx.shake(8, 200)
+        }
+      }),
+    )
+    if (!mounted.current) return
+    columns(r)
+
+    // 4. The finale: the whole zone goes up at once.
+    const total = shots.reduce((n, s) => n + (s.damage ?? 0), 0)
+    const tier = tallyTier(total, fleetScale(mine))
+    const label = !total ? (mine ? '敵影なし……' : '被害なし！') : mine ? ['命中！', 'GREAT!!', 'EXCELLENT!!!', 'ANNIHILATION!!!!'][tier] : ['被弾', '被害拡大！', '被害甚大！！', '壊滅的打撃……'][tier]
+    setUlt({ enemy: !mine, aim, blast: cells })
+    setTally(null)
+    audio.play('ultboom', { pan: panOf(aim), far: !mine })
+    fx.flash('#fff', 900, 0.95)
+    fx.explosion(center.x, center.y, 3, mine ? '#ffd24a' : '#ff3050', 0.2)
+    fx.rays(center.x, center.y, mine ? '#fff2a8' : '#ff8090', 24, 1)
+    ;[0, 140, 280].forEach((d, i) =>
+      window.setTimeout(() => mounted.current && fx.ring(center.x, center.y, mine ? ['#fff6c0', '#ff9ad5', '#b3f0ff'][i] : '#ff5a6a', 520 + i * 160, 0.9), ms(d)),
+    )
+    for (const p of cells)
+      window.setTimeout(() => {
+        if (!mounted.current) return
+        const q = cellPt(p)
+        fx.explosion(q.x + rnd(-10, 10), q.y + rnd(-10, 10), rnd(0.5, 0.9), hot, 0)
+      }, ms(rnd(60, 600)))
+    fx.shake(32, 1200)
+    fx.punch(1.08, 520)
+    audio.buzz(mine ? 200 : 320)
+    await fx.hitstop(220)
+    if (mine && total) fx.confetti(tier >= 2 ? 160 : 90, RAINBOW)
+    // A beat for the fireball, then the tally stamps down.
+    await wait(550)
+    if (!mounted.current) return
+    setUlt({ enemy: !mine, aim, blast: cells, total: { dmg: total, label } })
+    audio.play('stamp')
+    fx.shake(12, 300)
+    await wait(1700)
+    if (mounted.current) setUlt(null)
+  }
+
   const play = async (r: Result, after: GameView) => {
     if (!mounted.current) return
     const mine = r.side === 'player'
@@ -491,10 +593,16 @@ export function Battle({
       fx.shake(10, 300)
       await show({ kind: 'special', special: r.special, look: actorLook, line: mine ? (c?.attack ?? '撃てっ！') : '……捉えた。', enemy: !mine }, 1500)
     } else if (r.type === 'ultimate') {
-      audio.play(mine ? 'charge' : 'menace')
+      // Every living ship takes its bow before the title stamps down (timed in CSS to the same beats).
+      const crew = (mine ? game.playerShips : game.enemyShips)
+        .filter((s) => s.hp > 0)
+        .map((s) => ({ look: (mine ? looks.player : looks.enemy)[s.id], line: mine ? card(s.key ?? '')?.attack : undefined }))
+      audio.play('ultcharge', { dur: ms(1050) / 1000, far: !mine })
       fx.flash(mine ? '#fff6c0' : '#ff3050', 500, 0.6)
-      if (mine) await show({ kind: 'ultimate', looks: after.playerShips.filter((s) => s.hp > 0).map((s) => looks.player[s.id]) }, 1700)
-      else await show({ kind: 'banner', text: '敵艦隊 全艦斉射！！', sub: '総員、衝撃に備えよ！', tone: 'red' }, 1300)
+      crew.forEach((_, i) => window.setTimeout(() => mounted.current && audio.play('lock', { pan: (i / Math.max(crew.length - 1, 1)) * 1.2 - 0.6 }), ms(100 + i * 160)))
+      for (let i = 0; i < 4; i++) window.setTimeout(() => mounted.current && audio.play('stamp'), ms(1100 + i * 100))
+      window.setTimeout(() => mounted.current && fx.shake(22, 500), ms(1050))
+      await show({ kind: 'ultimate', crew, enemy: !mine, speed: speedRef.current }, 2700)
     } else if (mine) {
       const title =
         r.type === 'skill'
@@ -515,20 +623,7 @@ export function Battle({
     const byCell = (p: Pos) => shots.find((s) => samePos(s.target, p))
 
     if (r.type === 'ultimate') {
-      const cells = footprint(game.boardSize, 'ultimate', undefined, undefined, { row: 0, col: 0 }, r.target!)
-      await Promise.all(
-        cells.map(async (p, i) => {
-          await wait(i * 70)
-          const to = cellPt(p)
-          gun(undefined, p, ms(420), mine, 2)
-          await flyShell(layer, skyPoint(to), to, ms(420), !mine)
-          const s = byCell(p)
-          if (s) await impact(s, mine)
-          else fx.explosion(to.x, to.y, 0.6)
-        }),
-      )
-      fx.flash('#fff', 400, 0.7)
-      fx.shake(24, 600)
+      await barrage(r, shots, mine)
     } else if (r.skill === 'airstrike') {
       audio.play('airstrike')
       const to = cellPt(r.target!)
@@ -596,7 +691,7 @@ export function Battle({
       columns(r)
     }
     if (!mounted.current) return
-    await settleTally(shots, mine)
+    if (r.type !== 'ultimate') await settleTally(shots, mine)
     setLog((l) => [line, ...l])
     setGame((g) => patchMeta(g, r))
 
@@ -718,7 +813,7 @@ export function Battle({
   const skill = ship ? SKILL_INFO[ship.skillKind] : null
 
   return (
-    <div className={`screen battle-screen ${stage.boss ? 'boss-stage' : ''}`}>
+    <div className={`screen battle-screen ${stage.boss ? 'boss-stage' : ''} ${ult ? `ult-active ${ult.enemy ? 'ult-enemy' : ''}` : ''}`}>
       <Backdrop scene="battle" dim={0.5} />
 
       {/* ---- header ---- */}
@@ -797,7 +892,14 @@ export function Battle({
               const cls: string[] = []
               // The barrage can aim anywhere: stop pulsing the whole sea once it is aimed.
               if (targets.some((t) => samePos(t, p)) && !(mode === 'ultimate' && target)) cls.push(`target-${mode === 'ultimate' ? 'skill' : mode}`)
-              if (inPreview(p)) cls.push('aoe')
+              if (inPreview(p)) {
+                cls.push('aoe')
+                if (mode === 'ultimate' && aim) {
+                  const d = Math.max(Math.abs(p.row - aim.row), Math.abs(p.col - aim.col))
+                  cls.push(d === 0 ? 'aoe-core' : d === 2 ? 'aoe-outer' : '')
+                }
+              }
+              if (ult?.blast?.some((q) => samePos(q, p))) cls.push('ult-blast', ult.aim && samePos(ult.aim, p) ? 'ult-core' : '')
               if (samePos(target, p)) cls.push('chosen')
               if (litCell(p)) cls.push(`lit-${lit!.kind}`)
               const own = game.playerShips.find((s) => s.hp > 0 && samePos(s.pos, p))
@@ -827,10 +929,17 @@ export function Battle({
                     <FloatText f={f} />
                   </CellOverlay>
                 ))}
+                {ult?.aim && !ult.blast && (
+                  <CellOverlay at={ult.aim} className="float-host">
+                    <span className={`ult-reticle ${ult.enemy ? 'enemy' : ''}`}>
+                      <b>{ult.enemy ? '敵 照準固定' : 'TARGET LOCK'}</b>
+                    </span>
+                  </CellOverlay>
+                )}
               </>
             }
           />
-          {tally && <DamageTally key={tally.key} t={tally} />}
+          {tally && !ult && <DamageTally key={tally.key} t={tally} />}
         </div>
 
         <div className="command-dock">
@@ -905,7 +1014,7 @@ export function Battle({
               {canUlt && (
                 <button className={`cmd-btn ultimate ${mode === 'ultimate' ? 'on' : ''}`} disabled={busy} onClick={() => chooseMode('ultimate')}>
                   <b>全艦斉射</b>
-                  <small>3×3 一斉砲撃</small>
+                  <small>{game.boardSize >= WIDE_SEA ? '5×5' : '13マス'} 装甲貫通</small>
                 </button>
               )}
               <button className={`cmd-btn go ${target ? 'ready' : ''} ${special ? 'special' : ''}`} disabled={busy || !target} onClick={() => void execute()}>
@@ -953,6 +1062,18 @@ export function Battle({
       </aside>
 
       <div className="projectiles" ref={layerRef} />
+
+      {/* On the stage itself, above the particle canvas, so the blast can't bury the payoff. */}
+      {ult?.total &&
+        fx.stage &&
+        createPortal(
+          <div className={`ult-total ${ult.enemy ? 'enemy' : ''}`}>
+            <small>{ult.enemy ? 'DAMAGE TAKEN' : 'TOTAL DAMAGE'}</small>
+            <b>{ult.total.dmg.toLocaleString()}</b>
+            <em>{ult.total.label}</em>
+          </div>,
+          fx.stage,
+        )}
 
       {cutin && <CutinLayer cutin={cutin} onSkip={() => skip.current?.()} />}
 

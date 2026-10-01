@@ -428,8 +428,37 @@ func TestGaugeComboAndUltimate(t *testing.T) {
 	}
 	st.Gauge[SidePlayer] = GaugeMax
 	res = apply(t, st, SidePlayer, Action{ActionUltimate, 2, Pos{3, 3}})
-	if len(res.Shots) != 9 || res.Hits() != 1 || st.Gauge[SidePlayer] != 0 {
+	if len(res.Shots) != 11 || res.Hits() != 1 || st.Gauge[SidePlayer] != 0 {
 		t.Fatalf("ultimate shots %d hits %d", len(res.Shots), res.Hits())
+	}
+}
+
+func TestUltimateFallsOffAndPinsSurvivors(t *testing.T) {
+	// Three big guns aimed at a battleship, with a cruiser two cells out and a
+	// destroyer just outside the reach (two out diagonally).
+	st := fleetGame(t, []Spec{bb, bb, bb}, []Spec{bb, ca, dd}, []Pos{{0, 0}, {0, 4}, {4, 4}}, []Pos{{2, 2}, {2, 4}, {4, 0}})
+	st.Gauge[SidePlayer] = GaugeMax
+	res := apply(t, st, SidePlayer, Action{ActionUltimate, 0, Pos{2, 2}})
+	if len(res.Shots) != 13 || res.Shots[0].Target != (Pos{2, 2}) {
+		t.Fatalf("ultimate shots %d, first at %v", len(res.Shots), res.Shots[0].Target)
+	}
+	byCell := map[Pos]Shot{}
+	for _, s := range res.Shots {
+		byCell[s.Target] = s
+	}
+	// Armour-piercing: enemy armour counts half.
+	if s := byCell[Pos{2, 2}]; s.Evaded || !between(s.Damage, 200*ultCenterPct/100, bb.Armor/2, 1) {
+		t.Fatalf("centre shot %+v", s)
+	}
+	if s := byCell[Pos{2, 4}]; s.Evaded || !between(s.Damage, 200*ultOuterPct/100, ca.Armor/2, 1) {
+		t.Fatalf("outer shot %+v", s)
+	}
+	if _, ok := byCell[Pos{4, 0}]; ok {
+		t.Fatal("the reach is a diamond on a small sea, not the 5×5")
+	}
+	// The destroyer sits next to (3,1), a shell that missed: it is pinned.
+	if st.Boards[SideCPU].Ships[2].Pinned == 0 || len(res.Columns) == 0 {
+		t.Fatalf("columns %v, destroyer pinned %d", res.Columns, st.Boards[SideCPU].Ships[2].Pinned)
 	}
 }
 
@@ -478,8 +507,11 @@ func TestTurnLimitJudgment(t *testing.T) {
 }
 
 func TestFootprintClipsToBoard(t *testing.T) {
-	if n := len(Footprint(5, ActionUltimate, "", "", Pos{}, Pos{0, 0})); n != 4 {
+	if n := len(Footprint(5, ActionUltimate, "", "", Pos{}, Pos{0, 0})); n != 6 {
 		t.Fatalf("corner ultimate covers %d cells", n)
+	}
+	if n := len(Footprint(WideSea, ActionUltimate, "", "", Pos{}, Pos{3, 3})); n != 25 {
+		t.Fatalf("ultimate on a wide sea covers %d cells", n)
 	}
 	if n := len(Footprint(5, ActionAttack, "", Battleship, Pos{}, Pos{0, 0})); n != 3 {
 		t.Fatalf("corner battleship salvo covers %d cells", n)

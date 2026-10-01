@@ -17,7 +17,9 @@
 //     moving again resolves late, after the other side's action, so it cannot
 //     dodge a shot aimed at where it is;
 //   - skill: the ship's class skill, a limited number of times per battle;
-//   - ultimate: once the fleet gauge is full, a 3×3 all-fleet barrage anywhere.
+//   - ultimate: once the fleet gauge is full, an all-fleet barrage anywhere:
+//     the 3×3 around the aim point and two cells out along its row and column
+//     (on a wide sea the whole 5×5), heaviest at the centre.
 //
 // Damage is rolled around the attacker's power, reduced by armour (and, for
 // aircraft, by the defending fleet's total anti-air) and doubled on a
@@ -465,7 +467,16 @@ func footprintLanes(size int, t ActionType, kind SkillKind, class ShipClass, fro
 	}
 	switch {
 	case t == ActionUltimate:
-		area()
+		// Centre first, then ring by ring outward: the barrage walks out from the aim.
+		for ring := 0; ring <= 2; ring++ {
+			for dr := -ring; dr <= ring; dr++ {
+				for dc := -ring; dc <= ring; dc++ {
+					if max(abs(dr), abs(dc)) == ring && (size >= WideSea || abs(dr)+abs(dc) <= 2) {
+						add(Pos{target.Row + dr, target.Col + dc})
+					}
+				}
+			}
+		}
 	case t == ActionAttack && class == Battleship:
 		add(target)
 		for _, d := range orthogonal {

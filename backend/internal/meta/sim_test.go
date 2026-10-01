@@ -40,6 +40,9 @@ type simResult struct {
 	// rounds before the first damage, and lastRounds the rounds played while
 	// the CPU was down to its last ship.
 	quiet, opening, lastRounds int
+	// ults counts the player's all-fleet barrages, ultDmg the damage they
+	// dealt and cpuUlts the CPU's.
+	ults, ultDmg, cpuUlts int
 }
 
 // kiteSide is the fleet, if any, that runs from every sighting instead of trading.
@@ -106,6 +109,14 @@ func simulate(stage Stage, n int, k kiteSide, seed uint64) simResult {
 			if h.Special != "" && h.Side == game.SidePlayer {
 				res.specials[h.Special]++
 			}
+			if h.Type == game.ActionUltimate {
+				if h.Side == game.SidePlayer {
+					res.ults++
+					res.ultDmg += h.Damage()
+				} else {
+					res.cpuUlts++
+				}
+			}
 		}
 		if st.Winner == game.SidePlayer {
 			res.wins++
@@ -138,8 +149,9 @@ func TestSimulateBalance(t *testing.T) {
 		a := simulate(s, n, noKite, uint64(i))
 		k := simulate(s, n, playerKites, uint64(i))
 		e := simulate(s, n, cpuKites, uint64(i))
-		fmt.Fprintf(&b, "%-5s %6.1f %6.1f %6.1f %6.1f %6.1f %6.1f %6.1f %6.1f %6d %6d | %6.1f %6.1f | %6.1f %6.1f  %v\n", s.ID,
+		fmt.Fprintf(&b, "%-5s %6.1f %6.1f %6.1f %6.1f %6.1f %6.1f %6.1f %6.1f %6d %6d | %6.2f %6.0f %6.2f | %6.1f %6.1f | %6.1f %6.1f  %v\n", s.ID,
 			pct(a.wins, n), float64(a.rounds)/n, pct(a.quiet, a.rounds), float64(a.opening)/n, float64(a.lastRounds)/n, pct(a.judged, n), pct(a.playerOut, n), pct(a.cpuOut, n), s.StarTurns, s.MaxTurns,
+			float64(a.ults)/n, float64(a.ultDmg)/float64(max(a.ults, 1)), float64(a.cpuUlts)/n,
 			pct(k.wins, n), float64(k.rounds)/n, pct(e.wins, n), float64(e.rounds)/n, a.specials)
 	}
 	t.Log(b.String())

@@ -48,6 +48,8 @@ export type Sfx =
   | 'warn'
   | 'alert'
   | 'menace'
+  | 'ultcharge'
+  | 'ultboom'
   | 'order'
   | 'bosun'
   | 'founder'
@@ -1335,6 +1337,65 @@ class AudioEngine {
         this.noise(d, hit, { color: 'brown', f: 220, vol: 1.1, dur: 0.5, d: 0.2, drive: 1.5 })
         this.brass(d, hit, [38, 44, 45, 50, 56], 0.7, 0.05, 3000)
         this.cymbal(d, hit, 0.2, 1.6)
+        break
+      }
+      case 'ultcharge': {
+        // The all-fleet barrage's cut-in: a longer, wider riser under a timpani roll,
+        // landing on a full orchestral hit (dissonant and sinking for the enemy's).
+        const len = clamp(opt.dur ?? 1.1, 0.3, 2)
+        this.duck(0.25, len + 1.4, 1)
+        const d = fx(0.45)
+        const [lo, hi] = far ? [62, 38] : [33, 69]
+        for (const shift of [0, 7, 12])
+          this.osc(d, t, { f: midi(lo + shift), f2: midi(hi + shift), glide: len, type: 'sawtooth', voices: 4, spread: 28, width: 0.9, vol: 0.06, a: len * 0.85, dur: len, r: 0.03, lp: 400, lp2: 7000, lpT: len })
+        this.noise(d, t, { filter: 'highpass', f: 600, f2: 9000, fT: len, vol: 0.24, a: len * 0.95, dur: len, r: 0.02, width: 0.8 })
+        this.noise(d, t, { color: 'brown', f: 180, vol: 0.34, a: len * 0.7, dur: len, r: 0.03, trem: 0.5, tremRate: 9 })
+        for (let i = 0; i < 18; i++) this.timpani(d, t + len * (1 - Math.pow(1 - i / 18, 1.4)) * 0.95, far ? 38 : 33, 0.05 + 0.18 * (i / 18))
+        const hit = t + len + 0.02
+        this.osc(d, hit, { f: 120, f2: 30, glide: 0.4, vol: 1, dur: 0.9, d: 0.35, drive: 2.2 })
+        this.noise(d, hit, { filter: 'highpass', f: 1800, vol: 0.8, dur: 0.012, d: 0.005, drive: 5 })
+        this.noise(d, hit, { color: 'brown', f: 6000, f2: 160, vol: 0.85, dur: 1, d: 0.3 })
+        this.brass(d, hit, far ? [38, 44, 45, 50, 56, 57] : [45, 52, 57, 61, 64, 69], 1.6, 0.05, 4500)
+        this.timpani(d, hit, far ? 38 : 33, 0.5)
+        this.cymbal(d, hit, 0.28, 2.2)
+        if (!far) {
+          const sides = [-0.6, 0.6].map((p) => this.out(this.sfxBus!, { pan: p, send: 0.55, vol: level }))
+          ;[81, 85, 88, 93, 97, 100].forEach((n, i) => this.bell(sides[i % 2], hit + 0.05 + i * 0.05, n, 0.05, 0.6))
+        }
+        break
+      }
+      case 'ultboom': {
+        // The barrage's last shells land together: the sea itself goes up, a chain of
+        // detonations rolls out to both sides, and the fanfare (or the dirge) rises over it.
+        this.duck(0.15, 2.2, 1.6)
+        const d = fx(0.55, { echo: 0.5 })
+        this.noise(d, t, { filter: 'highpass', f: 1800, vol: 1, dur: 0.015, d: 0.006, drive: 7 })
+        this.noise(d, t, { color: 'pink', f: 11000, f2: 200, fT: 1, vol: 1.3, dur: 0.9, d: 0.25, drive: 4, width: 0.6 })
+        this.noise(d, t, { color: 'brown', f: 180, vol: 1.7, a: 0.004, dur: 1.4, d: 0.6, drive: 2.4 })
+        this.osc(d, t, { f: 52, f2: 26, glide: 1.2, vol: 0.7, dur: 1.4, d: 0.6, drive: 1.6 })
+        for (let i = 0; i < 7; i++) {
+          const s = this.out(this.sfxBus!, { pan: (i % 2 ? 1 : -1) * (0.25 + i * 0.1), send: 0.5, echo: 0.35, vol: level })
+          const at = t + 0.12 + i * rnd(0.09, 0.15)
+          const v = 0.8 - i * 0.08
+          this.noise(s, at, { filter: 'highpass', f: 1600, vol: v * 0.6, dur: 0.01, d: 0.004, drive: 4 })
+          this.noise(s, at, { color: 'pink', f: 8000, f2: 300, fT: 0.4, vol: v, dur: 0.35, d: 0.12, drive: 2.5 })
+          this.noise(s, at, { color: 'brown', f: 240, vol: v * 1.1, dur: 0.4, d: 0.16 })
+        }
+        this.crackle(d, t + 0.1, 40, 2.4, 0.16)
+        this.noise(d, t + 0.2, { color: 'brown', f: 300, vol: 0.6, a: 0.2, dur: 3.2, d: 1.4, r: 0.8, trem: 0.4, tremRate: 4, width: 0.7 })
+        const fan = t + 0.5
+        if (far) {
+          this.brass(d, fan, [38, 41, 44, 50], 1.8, 0.05, 2600)
+          this.osc(d, fan, { f: 72, f2: 40, glide: 2, type: 'sawtooth', voices: 3, spread: 22, vol: 0.1, a: 0.4, dur: 2, d: 1, r: 0.5, lp: 380, q: 3 })
+        } else {
+          this.brass(d, fan, [57, 64, 69], 0.22, 0.045, 4200)
+          this.brass(d, fan + 0.24, [60, 67, 72], 0.22, 0.045, 4200)
+          this.brass(d, fan + 0.48, [62, 69, 74, 78], 1.8, 0.055, 5000)
+          this.timpani(d, fan + 0.48, 38, 0.6)
+          this.cymbal(d, fan + 0.48, 0.25, 2.4)
+          const sides = [-0.7, 0.7].map((p) => this.out(this.sfxBus!, { pan: p, send: 0.6, vol: level }))
+          ;[86, 90, 93, 98, 102, 105, 110].forEach((n, i) => this.bell(sides[i % 2], fan + 0.5 + i * 0.06, n, 0.045, 0.7))
+        }
         break
       }
       case 'order': {
