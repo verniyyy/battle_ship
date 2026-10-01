@@ -369,7 +369,14 @@ export interface AuthSession {
   /** Sign-in methods the server offers. */
   google: boolean
   dev: boolean
+  /** Hidden features open to this admiral: released ones, or all of them for an admin. */
+  features?: Feature[]
 }
+
+/** A feature that ships hidden until it is released. */
+export type Feature = 'duels'
+
+export const hasFeature = (s: AuthSession | null, f: Feature) => !!s?.features?.includes(f)
 
 /** A present from the operators, collected from the harbour's gift box. */
 export interface Gift {

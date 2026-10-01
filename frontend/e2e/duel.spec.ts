@@ -126,3 +126,21 @@ test('duel: the guest sees the host leave a deployment and returns to the lobby'
   await expect(other.locator('.duel-start')).toBeVisible()
   await ctx.close()
 })
+
+test('duel: hidden from the harbour and its news until released', async ({ page }) => {
+  await newAdmiral(page)
+  // The server lists no released features, as in production before the release.
+  await page.route('**/api/auth/session', async (r) => {
+    const res = await r.fetch()
+    await r.fulfill({ response: res, json: { ...(await res.json()), features: [] } })
+  })
+  await toHome(page, { news: true })
+
+  const dialog = page.getByRole('dialog', { name: 'お知らせ' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).not.toContainText('対人戦')
+  await expect(page.locator('.ticker')).not.toContainText('対人戦')
+  await expect(page.locator('.sortie-btn')).toBeVisible()
+  await expect(page.locator('.duel-btn')).toHaveCount(0)
+  await page.screenshot({ path: `${shots}/duel-hidden.png` })
+})
