@@ -235,10 +235,10 @@
 .art-glint {
   fill: #fff;
   opacity: 0;
-  animation: glint 3.2s ease-in-out infinite;
+  animation: art-glint 3.2s ease-in-out infinite;
 }
 
-@keyframes glint {
+@keyframes art-glint {
   0%,
   100% {
     opacity: 0.08;
