@@ -865,7 +865,7 @@ export function Battle({
         }
       }
       if (!alive || shownEnd.current) return
-      timer = window.setTimeout(loop, latest.current?.pending ? 2000 : 4000)
+      timer = window.setTimeout(loop, latest.current?.pending ? 4000 : 10_000)
     }
     timer = window.setTimeout(loop, 2000)
     return () => {

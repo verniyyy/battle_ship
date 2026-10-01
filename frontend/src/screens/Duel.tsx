@@ -91,9 +91,9 @@ export function Duel({ go, onBattle }: { go: (s: Scene) => void; onBattle: (d: D
           // Retried on the next beat.
         }
       }
-      if (alive) timer = window.setTimeout(loop, 3000)
+      if (alive) timer = window.setTimeout(loop, 5000)
     }
-    timer = window.setTimeout(loop, 3000)
+    timer = window.setTimeout(loop, 5000)
     const tick = window.setInterval(() => setClock(Date.now()), 1000)
     return () => {
       alive = false

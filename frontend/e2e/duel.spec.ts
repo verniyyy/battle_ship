@@ -74,7 +74,7 @@ test('duel: two admirals meet by room code, deploy, play a round and one surrend
   await expect(page.locator('.duel-waiting')).toContainText('好敵手提督')
   await expect(page.locator('.duel-clock')).toContainText('相手待ち')
   await page.screenshot({ path: `${shots}/duel-waiting.png` })
-  await expect(other.locator('.duel-ready-note')).toBeVisible({ timeout: 10_000 })
+  await expect(other.locator('.duel-ready-note')).toBeVisible({ timeout: 15_000 })
   await other.screenshot({ path: `${shots}/duel-opponent-ready.png` })
 
   // Their order completes the round, which plays out on both screens.
