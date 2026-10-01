@@ -25,6 +25,15 @@ export type NewsItem = {
 
 export const NEWS: NewsItem[] = [
   {
+    id: '2026-10-01-bgm',
+    date: '2026-10-01',
+    title: '戦闘BGMを一新',
+    items: [
+      '通常戦闘とボス戦のBGMを新曲に差し替えました。通常戦闘では 2 曲のうちどちらかが戦闘ごとにランダムで流れます。',
+      '戦闘中ずっと鳴っていた波の音をなくしました。カモメや雷などの音はときどき聞こえます。',
+    ],
+  },
+  {
     id: '2026-10-01-duel-beta',
     feature: 'duels',
     date: '2026-10-02',
