@@ -1,0 +1,123 @@
+<!doctype html>
+<!-- Source of docs/x/header.png (the X profile header, 1500x500). Regenerate with `just x-images`.
+     The avatar covers the bottom-left corner and phones crop the top and bottom, so the logo sits centre-left. -->
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex" />
+    <link rel="stylesheet" href="kv.css" />
+    <style>
+      :root {
+        --horizon: 64%;
+        --sun-x: 66%;
+      }
+      html,
+      body {
+        width: 1500px;
+        height: 500px;
+      }
+      .logo {
+        left: 330px;
+        top: 96px;
+        width: 520px;
+      }
+      .kicker {
+        font-size: 13px;
+      }
+      .jp {
+        margin: 16px 0 10px -5px;
+        font-size: 112px;
+      }
+      .en {
+        font-size: 28px;
+      }
+      .en::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        margin-left: -12px;
+        background: linear-gradient(90deg, rgba(244, 198, 90, 0.8), transparent);
+      }
+      .tagline {
+        margin-top: 24px;
+        font-size: 21px;
+      }
+      .vignette {
+        background: radial-gradient(ellipse 80% 95% at 62% 45%, transparent 55%, rgba(2, 6, 14, 0.75) 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layer sky"></div>
+    <svg class="layer clouds" width="1500" height="500">
+      <filter id="cloud" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.003 0.018" numOctaves="5" seed="7" />
+        <feColorMatrix values="0 0 0 0 1  0 0 0 0 0.82  0 0 0 0 0.7  0 0 0 2.4 -1.25" />
+      </filter>
+      <linearGradient id="cloud-fade" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity="0.15" />
+        <stop offset="0.54" stop-color="#fff" stop-opacity="1" />
+        <stop offset="0.64" stop-color="#fff" stop-opacity="0" />
+      </linearGradient>
+      <mask id="cloud-mask"><rect width="1500" height="500" fill="url(#cloud-fade)" /></mask>
+      <rect width="1500" height="500" filter="url(#cloud)" mask="url(#cloud-mask)" />
+    </svg>
+    <div class="layer sea"></div>
+    <svg class="layer glint" width="1500" height="180" viewBox="0 0 1500 180" preserveAspectRatio="none">
+      <filter id="glint">
+        <feTurbulence type="fractalNoise" baseFrequency="0.09 0.6" numOctaves="2" seed="3" />
+        <feColorMatrix values="0 0 0 0 1  0 0 0 0 0.85  0 0 0 0 0.6  0 0 0 9 -5.6" />
+      </filter>
+      <radialGradient id="glint-fade" cx="0.66" cy="0" r="0.6" gradientTransform="translate(0.66 0) scale(0.3 1) translate(-0.66 0)">
+        <stop offset="0" stop-color="#fff" />
+        <stop offset="1" stop-color="#fff" stop-opacity="0" />
+      </radialGradient>
+      <mask id="glint-mask"><rect width="1500" height="180" fill="url(#glint-fade)" /></mask>
+      <rect width="1500" height="180" filter="url(#glint)" mask="url(#glint-mask)" />
+    </svg>
+    <!-- the enemy line, hull-down on the horizon -->
+    <svg class="layer fleet" width="1500" height="500">
+      <defs><symbol id="ship" viewBox="0 0 200 40"><path d="M0 30 L8 38 H186 L200 30 Z M24 30 V26 H40 V23 H52 V30 Z M60 30 V24 H72 V16 H80 V8 H84 V2 H86 V8 H92 V14 H100 V20 H112 V30 Z M118 30 V22 H128 V18 H134 V30 Z M140 30 V25 H156 V22 H166 V30 Z M44 23 H38 V22 H52 Z M150 22 H168 V21 H150 Z" /></symbol></defs>
+      <use href="#ship" x="70" y="304" width="110" height="22" />
+      <use href="#ship" x="196" y="310" width="72" height="14.4" />
+      <use href="#ship" x="282" y="313" width="48" height="9.6" />
+    </svg>
+    <div class="layer grid"><i></i></div>
+    <div class="layer horizon-line"></div>
+    <div class="layer rays"></div>
+
+    <div class="layer crew">
+      <img class="mid" src="../frontend/public/portraits/bb_susanoo.webp" style="left: 1124px; top: -4px; height: 700px" />
+      <img class="mid" src="../frontend/public/portraits/bb_guren.webp" style="left: 1178px; top: 50px; height: 720px" />
+      <img class="mid" src="../frontend/public/portraits/bb_tsurugi.webp" style="left: 780px; top: 34px; height: 700px" />
+      <img class="front" src="../frontend/public/portraits/bb_amaterasu.webp" style="left: 856px; top: -26px; height: 820px" />
+    </div>
+    <div class="layer embers" data-count="54" data-area="820 0 680 500"></div>
+
+    <div class="layer floor"></div>
+    <div class="layer vignette"></div>
+    <svg class="layer grain" width="1500" height="500">
+      <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="1" /></filter>
+      <rect width="1500" height="500" filter="url(#grain)" />
+    </svg>
+
+    <div class="corner tl" style="left: 24px; top: 24px"></div>
+    <div class="corner tr" style="right: 24px; top: 24px"></div>
+    <div class="corner br" style="right: 24px; bottom: 24px"></div>
+
+    <div class="lock" style="left: 640px; top: 372px">
+      <div class="reticle" style="inset: 0"></div>
+      <div class="reticle inner" style="inset: 18px"></div>
+    </div>
+
+    <div class="logo">
+      <p class="kicker">NAVAL TACTICS × FLEET COLLECTION</p>
+      <h1>
+        <span class="jp">蒼海戦記</span>
+        <span class="en">BATTLE SHIP</span>
+      </h1>
+      <p class="tagline">見えざる艦隊を、撃滅せよ。</p>
+    </div>
+    <script src="kv.js"></script>
+  </body>
+</html>
