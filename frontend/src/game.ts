@@ -8,7 +8,7 @@ export const DIRECTION = { north: '北', south: '南', east: '東', west: '西' 
 export const CLASS_INFO: Record<ShipClass, { kanji: string; name: string; color: string; gun: number; move: number; role: string }> = {
   battleship: { kanji: '戦', name: '戦艦', color: '#e0a93a', gun: 2, move: 1, role: '主砲は十字に着弾。外れても水柱で敵を足止め' },
   cruiser: { kanji: '巡', name: '巡洋艦', color: '#9b7bff', gun: 2, move: 2, role: '射程 2 の主砲と魚雷を併せ持つ万能艦' },
-  destroyer: { kanji: '駆', name: '駆逐艦', color: '#3fa6f0', gun: 1, move: 3, role: '最速。砲撃は潜水艦に 2 倍、魚雷も強力' },
+  destroyer: { kanji: '駆', name: '駆逐艦', color: '#3fa6f0', gun: 2, move: 3, role: '最速。射程 2 の主砲で手負いの敵を仕留める。砲撃は潜水艦に 2 倍' },
   submarine: { kanji: '潜', name: '潜水艦', color: '#e25d8a', gun: 0, move: 2, role: 'ソナーでしか見つからず移動も秘匿。ただし紙装甲' },
   carrier: { kanji: '空', name: '空母', color: '#3fcf8e', gun: 1, move: 1, role: '全域へ高威力の爆撃。敵艦隊の対空で威力減' },
 }
