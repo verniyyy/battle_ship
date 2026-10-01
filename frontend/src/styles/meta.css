@@ -1205,6 +1205,9 @@ button.card:active {
   animation: blink 1s ease-in-out infinite;
 }
 
+/* The harbour's secondary doors: one dark, brass-trimmed plate each, told apart
+   by their line icons rather than by colour, so the sortie and duel buttons stay
+   the only loud things on the menu. */
 .menu-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -1212,52 +1215,139 @@ button.card:active {
 }
 
 .menu-tile {
+  --trim: rgba(222, 190, 122, 0.55);
+  --ink: #efe3c4;
   position: relative;
-  height: 78px;
+  height: 80px;
   display: grid;
+  grid-template-rows: auto auto auto;
   place-content: center;
   justify-items: center;
-  gap: 4px;
-  border-radius: 14px;
-  font-weight: 900;
-  font-size: 15px;
-  letter-spacing: 0.1em;
-  background: linear-gradient(180deg, rgba(40, 84, 140, 0.95), rgba(14, 34, 62, 0.95));
-  border: 2px solid rgba(160, 210, 255, 0.5);
+  gap: 3px;
+  border-radius: 6px;
+  color: var(--ink);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 42%),
+    radial-gradient(ellipse at 50% 0%, rgba(120, 170, 230, 0.22), transparent 70%),
+    linear-gradient(180deg, rgba(22, 44, 76, 0.94), rgba(7, 17, 33, 0.96));
+  border: 1px solid var(--trim);
   box-shadow:
-    0 5px 0 #06142a,
-    0 8px 18px rgba(0, 0, 0, 0.5);
-  transition: transform 0.08s;
+    inset 0 0 0 3px rgba(5, 12, 24, 0.55),
+    inset 0 0 0 4px rgba(222, 190, 122, 0.16),
+    0 3px 0 rgba(2, 8, 18, 0.9),
+    0 8px 18px rgba(0, 0, 0, 0.45);
+  transition:
+    transform 0.12s ease-out,
+    border-color 0.15s,
+    box-shadow 0.15s,
+    color 0.15s;
 }
 
-.menu-tile b {
-  font-size: 26px;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+/* brass rivets in the corners */
+.menu-tile::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle, var(--trim) 1.2px, transparent 1.6px) 0 0 / 8px 8px no-repeat,
+    radial-gradient(circle, var(--trim) 1.2px, transparent 1.6px) 100% 0 / 8px 8px no-repeat,
+    radial-gradient(circle, var(--trim) 1.2px, transparent 1.6px) 0 100% / 8px 8px no-repeat,
+    radial-gradient(circle, var(--trim) 1.2px, transparent 1.6px) 100% 100% / 8px 8px no-repeat;
+}
+
+.menu-ico {
+  width: 26px;
+  height: 26px;
+  margin-bottom: 1px;
+  color: #f4d48a;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7));
+  transition: filter 0.15s;
+}
+
+.menu-jp {
+  font-family: 'Title Mincho', var(--serif);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0.12em;
+  margin-right: -0.12em;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* five characters only fit a fifth of the menu without the tracking */
+.menu-tile.ranking .menu-jp {
+  font-size: 15px;
+  letter-spacing: 0;
+  margin-right: 0;
+}
+
+.menu-en {
+  font-family: 'Title Cinzel', var(--serif);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.2em;
+  margin-right: -0.2em;
+  color: rgba(222, 190, 122, 0.7);
+}
+
+.menu-tile:hover {
+  --trim: rgba(255, 222, 150, 0.9);
+  color: #fff7e2;
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 0 0 3px rgba(5, 12, 24, 0.55),
+    inset 0 0 0 4px rgba(255, 222, 150, 0.28),
+    0 5px 0 rgba(2, 8, 18, 0.9),
+    0 10px 22px rgba(0, 0, 0, 0.5),
+    0 0 18px rgba(244, 198, 90, 0.25);
+}
+
+.menu-tile:hover .menu-ico {
+  filter: drop-shadow(0 0 6px rgba(244, 198, 90, 0.7));
 }
 
 .menu-tile:active {
-  transform: translateY(4px);
-  box-shadow: 0 1px 0 #06142a;
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 0 0 3px rgba(5, 12, 24, 0.55),
+    inset 0 0 0 4px rgba(222, 190, 122, 0.16),
+    0 1px 0 rgba(2, 8, 18, 0.9);
 }
 
+/* something waiting behind the door: the trim lights up and breathes */
 .menu-tile.hot {
-  border-color: var(--gold);
-  box-shadow:
-    0 5px 0 #06142a,
-    0 0 20px rgba(244, 198, 90, 0.6);
+  --trim: var(--gold);
   animation: tile-glow 1.6s ease-in-out infinite;
 }
 
-@keyframes tile-glow {
-  50% {
-    box-shadow:
-      0 5px 0 #06142a,
-      0 0 34px rgba(244, 198, 90, 0.9);
-  }
+/* a worded badge sits above the plate so it doesn't cover the icon */
+.menu-tile .badge.text {
+  top: -14px;
 }
 
-.menu-tile.gacha {
-  background: linear-gradient(180deg, rgba(150, 70, 200, 0.95), rgba(60, 20, 100, 0.95));
+.menu-tile.hot .menu-ico {
+  color: var(--gold-hi);
+}
+
+@keyframes tile-glow {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 3px rgba(5, 12, 24, 0.55),
+      inset 0 0 0 4px rgba(244, 198, 90, 0.3),
+      0 3px 0 rgba(2, 8, 18, 0.9),
+      0 0 12px rgba(244, 198, 90, 0.35);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 3px rgba(5, 12, 24, 0.55),
+      inset 0 0 0 4px rgba(244, 198, 90, 0.5),
+      0 3px 0 rgba(2, 8, 18, 0.9),
+      0 0 26px rgba(244, 198, 90, 0.75);
+  }
 }
 
 .home-callout {

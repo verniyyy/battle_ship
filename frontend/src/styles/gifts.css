@@ -16,7 +16,15 @@
   box-shadow:
     0 5px 0 #7a4f06,
     0 0 22px rgba(244, 198, 90, 0.55);
-  animation: tile-glow 1.6s ease-in-out infinite;
+  animation: gift-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes gift-glow {
+  50% {
+    box-shadow:
+      0 5px 0 #7a4f06,
+      0 0 34px rgba(244, 198, 90, 0.9);
+  }
 }
 
 .gift-banner b {
