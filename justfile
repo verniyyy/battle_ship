@@ -26,8 +26,16 @@ logs *service:
     docker compose logs -f {{service}}
 
 # Render the link-preview image (frontend/public/og.png) from scripts/og.html and the local portraits
-og:
-    google-chrome --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1200,630 --allow-file-access-from-files --screenshot=frontend/public/og.png "file://{{justfile_directory()}}/scripts/og.html"
+og: (shot "scripts/og.html" "1200,630" "frontend/public/og.png")
+
+# Render the X profile header and avatar (docs/x/) from scripts/x-*.html and the local portraits
+x-images: (shot "scripts/x-header.html" "1500,500" "docs/x/header.png") (shot "scripts/x-icon.html" "400,400" "docs/x/icon.png")
+
+# Screenshot a key-visual page (the time budget lets the web fonts load first)
+[private]
+shot page size out:
+    mkdir -p "$(dirname {{out}})"
+    google-chrome --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size={{size}} --allow-file-access-from-files --virtual-time-budget=8000 --screenshot={{out}} "file://{{justfile_directory()}}/{{page}}"
 
 # Deploy the Go API to Vercel (production)
 deploy-api:
