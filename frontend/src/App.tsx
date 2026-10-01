@@ -8,6 +8,7 @@ import { Battle } from './screens/Battle'
 import { Dock } from './screens/Dock'
 import { Enlist } from './screens/Enlist'
 import { Formation } from './screens/Formation'
+import { Friends } from './screens/Friends'
 import { Gacha } from './screens/Gacha'
 import { Home } from './screens/Home'
 import { Missions } from './screens/Missions'
@@ -30,6 +31,7 @@ export type Scene =
   | { name: 'gacha' }
   | { name: 'dock' }
   | { name: 'missions' }
+  | { name: 'friends' }
   | { name: 'admin' }
 
 const CURTAIN_MS = 380
@@ -133,6 +135,7 @@ export function App() {
       {scene.name === 'gacha' && <Gacha onBack={() => go({ name: 'home' })} />}
       {scene.name === 'dock' && <Dock onBack={() => go({ name: 'home' })} />}
       {scene.name === 'missions' && <Missions onBack={() => go({ name: 'home' })} />}
+      {scene.name === 'friends' && <Friends onBack={() => go({ name: 'home' })} />}
       {scene.name === 'admin' && <Admin onBack={() => go({ name: 'home' })} />}
       {choosing && resumable && (
         <ResumeChoice match={resumable} onResume={() => startBattle(resumable, true)} onAbandon={abandon} onClose={() => setChoosing(false)} />

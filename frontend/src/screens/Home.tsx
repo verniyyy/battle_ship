@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Scene } from '../App'
-import { api } from '../api'
+import { api, friends as friendsApi } from '../api'
 import { audio } from '../audio'
 import { PortraitImg, ShipArt } from '../components/ShipArt'
 import { Backdrop, Badge, Modal, ResumeBanner, TopBar } from '../components/ui'
 import { fx } from '../fx'
 import { markNewsSeen, NEWS, unreadNews } from '../news'
+import { MAX_FRIENDS } from './Friends'
 import { lookOfCard, SKILL_INFO, SPECIAL_INFO, CLASS_INFO, TIPS, TORPEDO_INFO } from '../game'
 import { celebrateGrant, useGame } from '../state'
 import { portraitOf, useAssets } from '../theme'
-import type { Catalog, GameSummary, Gift, Grant, MatchResponse, Profile } from '../types'
+import type { Catalog, FriendList, GameSummary, Gift, Grant, MatchResponse, Profile } from '../types'
 
 type Dialog = 'record' | 'rules' | 'login' | 'profile' | 'news' | 'gifts' | null
 
@@ -27,6 +28,7 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
   const [newsShown, setNewsShown] = useState(false)
   const [gifts, setGifts] = useState<Gift[]>([])
   const [giftsShown, setGiftsShown] = useState(false)
+  const [friends, setFriends] = useState<FriendList | null>(null)
   const lineTimer = useRef<number>(undefined)
   const artRef = useRef<HTMLButtonElement>(null)
 
@@ -87,6 +89,10 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
       .gifts()
       .then((r) => setGifts(r.gifts))
       .catch(() => setGifts([]))
+    friendsApi
+      .list()
+      .then((r) => setFriends(r.friends))
+      .catch(() => setFriends(null))
   }, [])
 
   // Gifts from the operators pop up once per visit, after the bonus and the news.
@@ -220,6 +226,18 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
             <Badge n={unread} />
           </button>
         </div>
+        <button className={`friend-bar ${friends?.incoming.length || friends?.cheers ? 'hot' : ''}`} onClick={() => nav({ name: 'friends' })}>
+          <b>👥</b>
+          <span className="friend-bar-title">フレンド</span>
+          {friends && (
+            <span className="friend-bar-info">
+              {friends.friends.length}/{MAX_FRIENDS} 人
+              {friends.cheers > 0 && <em>💌 エール {friends.cheers} 件</em>}
+              {friends.incoming.length > 0 && <em>✉ 申請 {friends.incoming.length} 件</em>}
+            </span>
+          )}
+          <Badge n={(friends?.incoming.length ?? 0) + (friends?.cheers ?? 0)} />
+        </button>
         {gifts.length > 0 && (
           <button className="gift-banner" onClick={() => open('gifts')}>
             <span className="gift-ico">🎀</span>
