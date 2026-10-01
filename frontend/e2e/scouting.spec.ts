@@ -83,3 +83,54 @@ test('a locked-on enemy shows crosshairs, and shots on it get the marked cut-in'
   await expect(cutin).toContainText('照準射撃')
   await page.screenshot({ path: `${shots}/marked-cutin.png` })
 })
+
+test("an enemy sonar that finds the fleet gives its destroyer's position away", async ({ page }) => {
+  const p = await newAdmiral(page)
+  // The CPU's reply is doctored into a sonar that found the battleship; the
+  // rules (heard, not tracked) are covered by the Go tests.
+  const emitter = { row: 0, col: 3 }
+  await page.route('**/api/games/*/actions', async (route) => {
+    const res = await route.fetch()
+    const r = (await res.json()) as ActionResponse
+    const i = r.results.findIndex((x) => x.side === 'cpu' && x.type !== 'recon')
+    const ping = {
+      side: 'cpu' as const,
+      type: 'skill' as const,
+      skill: 'sonar' as const,
+      shipId: 0,
+      round: r.results[0].round,
+      speed: 10,
+      target: emitter,
+      emitter,
+      scanned: [0, 1, 2, 3, 4].map((col) => ({ row: 0, col })),
+      revealed: [{ shipId: 0, pos: { row: 0, col: 0 }, turn: r.results[0].round }],
+      combo: 0,
+      gauge: 0,
+    }
+    if (i >= 0) r.results[i] = ping
+    else r.results.push(ping)
+    const h = r.game.history.findIndex((x) => x.side === 'cpu' && x.type !== 'recon' && x.round === ping.round)
+    if (h >= 0) r.game.history[h] = ping
+    else r.game.history.push(ping)
+    await route.fulfill({ response: res, json: r })
+  })
+  await toBattle(page, [uidOf(p, 'bb_kurogane'), uidOf(p, 'dd_asanagi'), uidOf(p, 'ss_senryu')], [
+    { row: 0, col: 0 },
+    { row: 2, col: 1 },
+    { row: 4, col: 4 },
+  ])
+  await page.locator('[data-plate="p1"]').click()
+  await page.locator('.cmd-btn.skill').click()
+  await page.locator('.cmd-btn.go').click()
+
+  // The ping is staged at the emitter, then stays marked until the next order.
+  await expect(cell(page, 0, 3).locator('.sonar-echo')).toBeVisible({ timeout: 30_000 })
+  await page.screenshot({ path: `${shots}/sonar-echo-ping.png` })
+  await expect(page.locator('.flagship-line')).toContainText('行動する艦を選んで', { timeout: 30_000 })
+  await expect(cell(page, 0, 3).locator('.sonar-echo')).toBeVisible()
+  await expect(page.locator('.sonar-echo')).toHaveCount(1)
+  // Heard, not tracked: no enemy ship is shown there.
+  await expect(cell(page, 0, 3).locator('.ship-token')).toHaveCount(0)
+  await expect(page.locator('.battle-log')).toContainText('探信源はD1')
+  await page.screenshot({ path: `${shots}/sonar-echo-after.png` })
+})
