@@ -112,6 +112,8 @@ func authConfig() (auth.Config, *auth.Sessions, error) {
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		DevLogin:           os.Getenv("DEV_LOGIN") == "1",
+		// Comma-separated, e.g. google:1234567890 (see README).
+		AdminSubjects: strings.Split(os.Getenv("ADMIN_SUBJECTS"), ","),
 	}
 	secret := os.Getenv("SESSION_SECRET")
 	switch {

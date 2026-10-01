@@ -149,7 +149,7 @@ func do(t *testing.T, ts *httptest.Server, player, method, path string, body any
 	}
 	req, _ := http.NewRequest(method, ts.URL+path, r)
 	if player != "" {
-		token, _ := sessions.Token(player, "")
+		token, _ := sessions.Token(auth.Session{PlayerID: player})
 		req.AddCookie(&http.Cookie{Name: "session", Value: token})
 	}
 	res, err := http.DefaultClient.Do(req)

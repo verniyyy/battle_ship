@@ -25,6 +25,8 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       DEV_LOGIN: "1"
+      # The dev login's admin (and any Google account added in .env) may open the admin console.
+      ADMIN_SUBJECTS: dev:admin${ADMIN_SUBJECTS:+,$ADMIN_SUBJECTS}
       APP_VERSION: ${APP_VERSION:-dev}
     depends_on:
       db:
