@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Scene } from '../App'
-import { api, ApiError } from '../api'
+import { api, ApiError, duels } from '../api'
 import { audio, type PlayOpts, type Sfx } from '../audio'
 import { Board, CellOverlay } from '../components/Board'
 import { CutinLayer, DamageTally, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, tallyTier, type Cutin, type Float, type Tally } from '../components/battle'
@@ -9,7 +9,8 @@ import { Backdrop, ShipToken, SoundToggle } from '../components/ui'
 import { fx, RAINBOW } from '../fx'
 import { CLASS_INFO, describe, footprint, historyLog, lookOfShip, SKILL_INFO, SPECIAL_INFO, stageLabel, TORPEDO_INFO, WEATHER_INFO, WIDE_SEA, type Look, type LogLine } from '../game'
 import { useGame } from '../state'
-import { posLabel, samePos, type ActionType, type GameView, type MatchResponse, type Pos, type Result, type Reward, type Shot, type ShipClass, type ShipView, type Special } from '../types'
+import { posLabel, samePos, type ActionType, type DuelResponse, type DuelView, type GameView, type MatchResponse, type Pos, type Result, type Reward, type Shot, type ShipClass, type ShipView, type Special } from '../types'
+import { DuelResult, duelEndLine } from './Duel'
 import { ResultOverlay } from './Result'
 
 type Marker = 'hit' | 'splash' | 'miss' | 'enemy-fire'
@@ -132,13 +133,16 @@ export function Battle({
   resumed,
   onRematch,
   go,
+  duel,
 }: {
   initial: MatchResponse
   resumed?: boolean
   onRematch: (m: MatchResponse) => void
   go: (s: Scene) => void
+  /** A duel against another admiral (beta): rounds resolve once both have given orders. */
+  duel?: DuelResponse
 }) {
-  const { catalog, card, setProfile, refresh } = useGame()
+  const { catalog, card, setProfile, refresh, notify } = useGame()
   const gameId = initial.id
   const stage = initial.stage
   const [game, setGame] = useState(initial.game)
@@ -159,6 +163,11 @@ export function Battle({
   // The all-fleet barrage on the board: whose it is, the lock-on, the swept cells and the payoff.
   const [ult, setUlt] = useState<{ enemy: boolean; aim?: Pos; blast?: Pos[]; total?: { dmg: number; label: string } } | null>(null)
   const mounted = useRef(true)
+  // Duels: the latest view of the duel, when its round runs out, and a clock to count down with.
+  const [dv, setDv] = useState<DuelView | undefined>(duel?.duel)
+  const [clock, setClock] = useState(() => Date.now())
+  const deadline = useRef(Date.now() + (duel?.duel.secondsLeft ?? 0) * 1000)
+  const [surrendering, setSurrendering] = useState(false)
   const speedRef = useRef(speed)
   const skip = useRef<(() => void) | null>(null)
   const boardRef = useRef<HTMLDivElement>(null)
@@ -170,7 +179,7 @@ export function Battle({
   const looks = useMemo(
     () => ({
       player: game.playerShips.map((s) => lookOfShip(catalog, s, false)),
-      enemy: game.enemyShips.map((s) => lookOfShip(catalog, s, true)),
+      enemy: game.enemyShips.map((s) => lookOfShip(catalog, s, true, !!duel)),
     }),
     // Looks depend on identity, not on HP, so the initial fleets are enough.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -259,7 +268,17 @@ export function Battle({
       ;(async () => {
         setBusy(true)
         const w = WEATHER_INFO[initial.game.weather ?? 'clear']
-        if (resumed || initial.game.history.length > 0) {
+        const rival = duel?.duel.opponent
+        if (rival && initial.game.history.length > 0) {
+          audio.play('alarm')
+          await show({ kind: 'intro', text: '対戦に復帰！', sub: `vs ${rival.name} 提督` }, 1200)
+        } else if (rival) {
+          audio.play('bosun')
+          await show({ kind: 'intro', text: '対人戦 開始！', sub: `vs ${rival.name} 提督（Lv.${rival.level}）` }, 1300)
+          if (initial.game.weather !== 'clear') await show({ kind: 'banner', text: `${w.icon} ${w.name}`, sub: w.desc, tone: 'blue' }, 1300)
+          audio.play('alarm')
+          await show({ kind: 'intro', text: '敵艦隊は海域のどこかに！', sub: `敵 ${game.enemyShips.length} 隻 ／ 相手の陣地は奥の ${duel.duel.zoneRows} 列` }, 1300)
+        } else if (resumed || initial.game.history.length > 0) {
           audio.play('alarm')
           await show({ kind: 'intro', text: '敵艦隊 見ゆ！', sub: `${stageLabel(stage)} ${stage.name}` }, 1300)
         } else {
@@ -307,8 +326,12 @@ export function Battle({
   // The cell the fleet just shelled: big guns firing there again get spotting fire.
   const spotCell = mode === 'attack' && (ship?.class === 'battleship' || ship?.class === 'cruiser') ? game.lastGun : undefined
 
+  // Duels: my order for this round is in and the other admiral's is awaited.
+  const waiting = !!dv?.pending && !finished
+  const secondsLeft = duel && !finished ? Math.max(0, Math.ceil((deadline.current - clock) / 1000)) : undefined
+
   const selectShip = (id: number) => {
-    if (busy || finished) return
+    if (busy || finished || waiting) return
     const s = game.playerShips[id]
     if (!s || s.hp <= 0) return
     audio.play('select')
@@ -328,7 +351,7 @@ export function Battle({
   }
 
   const onCell = (p: Pos) => {
-    if (busy || finished) return
+    if (busy || finished || waiting) return
     if (targets.some((t) => samePos(t, p))) {
       if (samePos(target, p)) {
         void execute()
@@ -744,54 +767,179 @@ export function Battle({
     }
   }
 
+  // finale stamps the outcome on a battle that has just ended.
+  const finale = async (after: GameView) => {
+    await wait(400)
+    const why = after.endReason
+    if (duel && !after.winner) {
+      audio.play('bell')
+      await show({ kind: 'banner', text: 'DRAW', sub: duelEndLine('draw', why), tone: 'blue' }, 2000)
+    } else if (after.winner === 'player') {
+      audio.play('victory')
+      fx.confetti(220, RAINBOW)
+      fx.rays(640, 330, '#fff2a8', 18, 2)
+      const sub = duel ? duelEndLine('win', why) : why === 'judgment' ? '判定勝利' : why === 'disarmed' ? '敵艦隊、撤退！' : '敵艦隊を撃滅！'
+      await show({ kind: 'banner', text: 'VICTORY', sub, tone: 'rainbow' }, 2200)
+    } else {
+      audio.play('defeat')
+      const sub = duel ? duelEndLine('lose', why) : why === 'judgment' ? '判定敗北' : why === 'disarmed' ? '攻撃手段が尽き、戦略的撤退…' : '艦隊全滅…'
+      await show({ kind: 'banner', text: 'DEFEAT', sub, tone: 'red' }, 2000)
+    }
+    if (mounted.current) setShowResult(true)
+  }
+
+  // playRound plays a round's results out on the board, then settles on the view after it.
+  const playRound = async (results: Result[], after: GameView, onEnd?: () => void) => {
+    for (const r of results) {
+      if (!mounted.current) return
+      await play(r, after)
+    }
+    if (!mounted.current) return
+    setGame(after)
+    if (after.status === 'finished') {
+      onEnd?.()
+      await finale(after)
+    } else if (results.length) {
+      const left = after.maxTurns ? after.maxTurns - after.turn : undefined
+      if (left !== undefined && left <= 3) audio.play('alarm')
+      else audio.play('bell')
+      await show({ kind: 'turn', turn: after.turn + 1, left }, 750)
+    }
+  }
+
+  // ---- duels: both admirals poll; rounds play out here once both orders are in ----
+  const shownTurn = useRef(initial.game.turn)
+  const shownEnd = useRef(initial.game.status === 'finished')
+  const latest = useRef(duel?.duel)
+  const syncing = useRef(false)
+
+  // syncDuel catches the board up with the duel as the server has it, playing
+  // out every round resolved since (and the ending) in order.
+  const syncDuel = async (v: DuelView) => {
+    latest.current = v
+    setDv(v)
+    deadline.current = Date.now() + v.secondsLeft * 1000
+    if (syncing.current) return
+    syncing.current = true
+    try {
+      for (;;) {
+        const g: GameView | undefined = latest.current?.game
+        if (!g || !mounted.current) return
+        const fresh = g.history.filter((r) => r.round > shownTurn.current)
+        const ends = g.status === 'finished' && !shownEnd.current
+        if (!fresh.length && !ends) {
+          setGame(g)
+          return
+        }
+        shownTurn.current = g.turn
+        shownEnd.current = g.status === 'finished'
+        setBusy(true)
+        setSelected(null)
+        setMode(null)
+        setTarget(null)
+        setHover(null)
+        await playRound(fresh, g)
+        if (mounted.current) setBusy(false)
+        if (latest.current?.game === g) return
+      }
+    } finally {
+      syncing.current = false
+    }
+  }
+  const syncRef = useRef(syncDuel)
+  syncRef.current = syncDuel
+
+  // Poll the duel: briskly while waiting on the other admiral, gently while choosing.
+  useEffect(() => {
+    if (!duel) return
+    let alive = true
+    let timer = 0
+    const loop = async () => {
+      if (!alive) return
+      if (!syncing.current && document.visibilityState === 'visible') {
+        try {
+          const r = await duels.get(duel.id, latest.current?.rev)
+          if (r && alive) await syncRef.current(r.duel)
+        } catch {
+          // A dropped poll is retried on the next beat.
+        }
+      }
+      if (!alive || shownEnd.current) return
+      timer = window.setTimeout(loop, latest.current?.pending ? 2000 : 4000)
+    }
+    timer = window.setTimeout(loop, 2000)
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+  }, [duel])
+
+  // The round clock.
+  useEffect(() => {
+    if (!duel || game.status === 'finished') return
+    const t = window.setInterval(() => setClock(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [duel, game.status])
+
+  const resyncDuel = async () => {
+    if (!duel) return
+    try {
+      const r = await duels.get(duel.id)
+      if (r && mounted.current) await syncDuel(r.duel)
+    } catch {
+      // The poll will catch up.
+    }
+  }
+
+  const surrender = async () => {
+    if (!duel) return
+    if (!surrendering) {
+      audio.play('warn')
+      setSurrendering(true)
+      window.setTimeout(() => mounted.current && setSurrendering(false), 3000)
+      return
+    }
+    setSurrendering(false)
+    try {
+      await syncDuel((await duels.leave(duel.id)).duel)
+    } catch (e) {
+      notify((e as Error).message, 'error')
+    }
+  }
+
   const execute = async () => {
-    if (!mode || !target || busy) return
+    if (!mode || !target || busy || dv?.pending) return
     const shipId = mode === 'ultimate' ? flagship?.id : selected
     if (shipId === undefined || shipId === null) return
     setBusy(true)
     setHover(null)
     try {
+      if (duel) {
+        const res = await duels.act(duel.id, mode, shipId, target, game.turn)
+        audio.play('order')
+        setSelected(null)
+        setMode(null)
+        setTarget(null)
+        setBusy(false)
+        await syncDuel(res.duel)
+        return
+      }
       const res = await api.act(gameId, mode, shipId, target, game.turn)
       setSelected(null)
       setMode(null)
       setTarget(null)
-      for (const r of res.results) {
-        if (!mounted.current) return
-        await play(r, res.game)
-      }
-      if (!mounted.current) return
-      setGame(res.game)
-      if (res.game.status === 'finished') {
+      await playRound(res.results, res.game, () => {
         if (res.profile) setProfile(res.profile)
         setReward(res.reward)
-        const win = res.game.winner === 'player'
-        await wait(400)
-        if (win) {
-          audio.play('victory')
-          fx.confetti(220, RAINBOW)
-          fx.rays(640, 330, '#fff2a8', 18, 2)
-          const sub = res.game.endReason === 'judgment' ? '判定勝利' : res.game.endReason === 'disarmed' ? '敵艦隊、撤退！' : '敵艦隊を撃滅！'
-          await show({ kind: 'banner', text: 'VICTORY', sub, tone: 'rainbow' }, 2200)
-        } else {
-          audio.play('defeat')
-          const sub = res.game.endReason === 'judgment' ? '判定敗北' : res.game.endReason === 'disarmed' ? '攻撃手段が尽き、戦略的撤退…' : '艦隊全滅…'
-          await show({ kind: 'banner', text: 'DEFEAT', sub, tone: 'red' }, 2000)
-        }
-        if (mounted.current) setShowResult(true)
-      } else {
-        const left = res.game.maxTurns ? res.game.maxTurns - res.game.turn : undefined
-        if (left !== undefined && left <= 3) audio.play('alarm')
-        else audio.play('bell')
-        await show({ kind: 'turn', turn: res.game.turn + 1, left }, 750)
-      }
+      })
     } catch (e) {
       audio.play('error')
       setCutin({ kind: 'notice', side: 'cpu', text: (e as Error).message })
       window.setTimeout(() => mounted.current && setCutin(null), 1500)
       // 409: the battle moved on (or ended) on another device; catch up with it.
-      if (e instanceof ApiError && e.status === 409) await resync()
+      if (e instanceof ApiError && e.status === 409) await (duel ? resyncDuel() : resync())
     } finally {
-      if (mounted.current) setBusy(false)
+      if (mounted.current && !syncing.current) setBusy(false)
     }
   }
 
@@ -841,10 +989,19 @@ export function Battle({
 
       {/* ---- header ---- */}
       <header className="battle-hud">
-        <div className={`turn-plate ${turnsLeft !== undefined && turnsLeft <= 3 && !finished ? 'urgent' : ''}`}>
-          <small>TURN</small>
-          <b>{turn}</b>
-          {game.maxTurns > 0 && <span>/{game.maxTurns}</span>}
+        <div className="hud-left">
+          <div className={`turn-plate ${turnsLeft !== undefined && turnsLeft <= 3 && !finished ? 'urgent' : ''}`}>
+            <small>TURN</small>
+            <b>{turn}</b>
+            {game.maxTurns > 0 && <span>/{game.maxTurns}</span>}
+          </div>
+          {secondsLeft !== undefined && (
+            <div className={`duel-clock ${secondsLeft <= 10 ? 'urgent' : ''}`} title="時間切れのターンは行動なし。続けて時間切れになると敗北">
+              <small>{waiting ? '相手待ち' : '残り'}</small>
+              <b>{secondsLeft}</b>
+              <span>秒</span>
+            </div>
+          )}
         </div>
         <div className="hud-center">
           <GaugeBar value={game.gauge} />
@@ -855,9 +1012,7 @@ export function Battle({
           )}
         </div>
         <div className="hud-tools">
-          <span className="stage-chip">
-            {stageLabel(stage)} {stage.name}
-          </span>
+          <span className="stage-chip">{duel ? stage.name : `${stageLabel(stage)} ${stage.name}`}</span>
           <span className={`weather-chip ${game.weather}`} title={WEATHER_INFO[game.weather ?? 'clear'].desc}>
             {WEATHER_INFO[game.weather ?? 'clear'].icon} {WEATHER_INFO[game.weather ?? 'clear'].name}
           </span>
@@ -865,10 +1020,20 @@ export function Battle({
             ▶▶ ×{speed}
           </button>
           <SoundToggle />
-          {!finished && (
+          {!finished && !duel && (
             <button className="chip-btn" onClick={() => go({ name: 'home' })} title="戦闘を中断して母港へ。あとで復帰するか撤退するかを選べます">
               中断
             </button>
+          )}
+          {!finished && duel && (
+            <>
+              <button className="chip-btn" onClick={() => go({ name: 'duel' })} title="対戦ロビーへ。対戦は続いているので、ロビーから復帰できます">
+                退出
+              </button>
+              <button className={`chip-btn surrender ${surrendering ? 'armed' : ''}`} onClick={() => void surrender()} disabled={busy}>
+                {surrendering ? '本当に降伏？' : '降伏'}
+              </button>
+            </>
           )}
         </div>
       </header>
@@ -885,19 +1050,21 @@ export function Battle({
               ? '戦闘終了。お疲れさま！'
               : busy
                 ? '交戦中……'
-                : mode === 'ultimate'
-                  ? '全艦、斉射用意！目標を！'
-                  : ship
-                    ? mode === 'attack'
-                      ? '目標はどこ？'
-                      : mode === 'torpedo'
-                        ? '魚雷の針路は？'
-                        : mode === 'move'
-                        ? '針路を指示して。'
-                        : mode === 'skill'
-                          ? `${skill!.name}、いつでもいけるよ！`
-                          : '指示をちょうだい。'
-                    : '行動する艦を選んで。'}
+                : waiting
+                  ? '指示は出したよ。相手の出方を待とう。'
+                  : mode === 'ultimate'
+                    ? '全艦、斉射用意！目標を！'
+                    : ship
+                      ? mode === 'attack'
+                        ? '目標はどこ？'
+                        : mode === 'torpedo'
+                          ? '魚雷の針路は？'
+                          : mode === 'move'
+                            ? '針路を指示して。'
+                            : mode === 'skill'
+                              ? `${skill!.name}、いつでもいけるよ！`
+                              : '指示をちょうだい。'
+                      : '行動する艦を選んで。'}
           </div>
         )}
       </aside>
@@ -970,15 +1137,21 @@ export function Battle({
             !showResult && (
               <>
                 <button className="pill-btn" onClick={() => setShowResult(true)}>
-                  戦果報告
+                  {duel ? '対戦結果' : '戦果報告'}
                 </button>
-                <button className="pill-btn ghost" onClick={() => go({ name: 'home' })}>
-                  母港へ
+                <button className="pill-btn ghost" onClick={() => go({ name: duel ? 'duel' : 'home' })}>
+                  {duel ? 'ロビーへ' : '母港へ'}
                 </button>
               </>
             )
+          ) : waiting ? (
+            <p className="dock-hint duel-waiting">
+              <span className="duel-spinner" aria-hidden />
+              行動決定済み。<b>{dv?.opponent?.name ?? '相手'}</b> 提督の指示を待っています…
+            </p>
           ) : (
             <>
+              {duel && dv?.opponent?.ready && !busy && <p className="duel-ready-note">相手は行動を決定済み！</p>}
               {ship ? (
                 <>
                   {ship.maxAmmo > 0 && (
@@ -1100,7 +1273,9 @@ export function Battle({
 
       {cutin && <CutinLayer cutin={cutin} onSkip={() => skip.current?.()} />}
 
-      {showResult && reward && (
+      {showResult && duel && dv && <DuelResult duel={dv} game={game} onBoard={() => setShowResult(false)} go={go} />}
+
+      {showResult && !duel && reward && (
         <ResultOverlay
           gameId={gameId}
           game={game}

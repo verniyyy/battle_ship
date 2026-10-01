@@ -5,7 +5,7 @@ export type ActionType = 'attack' | 'torpedo' | 'move' | 'skill' | 'ultimate'
 export type Special = 'spotting' | 'precision' | 'pointblank' | 'marked'
 export type Weather = 'clear' | 'fog' | 'storm' | 'night'
 export type Direction = 'north' | 'south' | 'east' | 'west'
-export type EndReason = 'annihilated' | 'disarmed' | 'judgment' | 'abandoned'
+export type EndReason = 'annihilated' | 'disarmed' | 'judgment' | 'abandoned' | 'surrender' | 'timeout'
 export type Rarity = 0 | 1 | 2 | 3 | 4
 
 export interface Pos {
@@ -488,4 +488,67 @@ export interface Ranking {
   entries: RankEntry[]
   total: number
   me: RankEntry
+}
+
+// ---- duels (beta) ----
+
+export type DuelPhase = 'open' | 'placing' | 'battle' | 'finished' | 'cancelled'
+export type DuelOutcome = 'win' | 'lose' | 'draw'
+
+export interface DuelShip {
+  key: string
+  class: ShipClass
+  name: string
+  rarity: number
+  hp: number
+  speed: number
+}
+
+export interface Duellist {
+  name: string
+  level: number
+  power: number
+  fleet: DuelShip[]
+  /** Deployed (placing) or this round's order given (battle). */
+  ready: boolean
+  missed?: number
+}
+
+/** A duel from my side: "player" in game is always me, at the bottom of the sea. */
+export interface DuelView {
+  code: string
+  phase: DuelPhase
+  rev: number
+  host: boolean
+  me: Duellist
+  opponent?: Duellist
+  secondsLeft: number
+  placement?: Pos[]
+  pending?: { type: ActionType; shipId: number; target: Pos }
+  game?: GameView
+  outcome?: DuelOutcome
+  boardSize: number
+  zoneRows: number
+  maxTurns: number
+  maxMisses: number
+  roundSeconds: number
+}
+
+export interface DuelResponse {
+  id: string
+  duel: DuelView
+}
+
+export interface DuelSummary {
+  opponent: string
+  outcome: DuelOutcome
+  endReason: EndReason
+  turns: number
+  finishedAt: string
+}
+
+export interface DuelLobby {
+  id: string | null
+  duel: DuelView | null
+  record: { wins: number; losses: number; draws: number; recent: DuelSummary[] }
 }

@@ -6,6 +6,7 @@ import { ResumeChoice, Toasts } from './components/ui'
 import { Admin } from './screens/Admin'
 import { Battle } from './screens/Battle'
 import { Dock } from './screens/Dock'
+import { Duel } from './screens/Duel'
 import { Enlist } from './screens/Enlist'
 import { Formation } from './screens/Formation'
 import { Friends } from './screens/Friends'
@@ -17,7 +18,7 @@ import { Sortie } from './screens/Sortie'
 import { StageMap } from './screens/StageMap'
 import { Title } from './screens/Title'
 import { useGame } from './state'
-import type { MatchResponse, Stage as StageT } from './types'
+import type { DuelResponse, MatchResponse, Stage as StageT } from './types'
 
 export type Scene =
   | { name: 'title' }
@@ -28,7 +29,9 @@ export type Scene =
   // Opened from the sortie screen, the formation screen returns there.
   | { name: 'formation'; returnTo?: StageT }
   | { name: 'sortie'; stage: StageT }
-  | { name: 'battle'; match: MatchResponse; resumed?: boolean }
+  | { name: 'battle'; match: MatchResponse; resumed?: boolean; duel?: DuelResponse }
+  // Duels against other admirals (beta): the lobby, the room and the deployment.
+  | { name: 'duel' }
   | { name: 'gacha' }
   | { name: 'dock' }
   | { name: 'missions' }
@@ -37,6 +40,16 @@ export type Scene =
   | { name: 'admin' }
 
 const CURTAIN_MS = 380
+
+/** A duel's battle is shown as a match on a stage of its own. */
+function duelMatch(d: DuelResponse): MatchResponse {
+  const size = d.duel.boardSize
+  const stage: StageT = {
+    id: 'PvP', area: 0, no: 0, name: '対人戦 β', brief: '', size, maxTurns: d.duel.maxTurns, starTurns: 0, ai: 0,
+    enemies: [], coins: 0, exp: 0, firstGems: 0, dropRate: 0, dropWeights: [],
+  }
+  return { id: d.id, game: d.duel.game!, stage, fleet: [] }
+}
 
 export function App() {
   const [scene, setScene] = useState<Scene>({ name: 'title' })
@@ -132,6 +145,7 @@ export function App() {
           resumed={scene.resumed}
           onRematch={(m) => startBattle(m)}
           go={go}
+          duel={scene.duel}
         />
       )}
       {scene.name === 'gacha' && <Gacha onBack={() => go({ name: 'home' })} />}
@@ -139,6 +153,7 @@ export function App() {
       {scene.name === 'missions' && <Missions onBack={() => go({ name: 'home' })} />}
       {scene.name === 'friends' && <Friends onBack={() => go({ name: 'home' })} />}
       {scene.name === 'ranking' && <Ranking onBack={() => go({ name: 'home' })} />}
+      {scene.name === 'duel' && <Duel go={go} onBattle={(d) => go({ name: 'battle', match: duelMatch(d), duel: d })} />}
       {scene.name === 'admin' && <Admin onBack={() => go({ name: 'home' })} />}
       {choosing && resumable && (
         <ResumeChoice match={resumable} onResume={() => startBattle(resumable, true)} onAbandon={abandon} onClose={() => setChoosing(false)} />
