@@ -113,16 +113,16 @@ cd backend && SIM=1 go test ./internal/meta -run Simulate -v
 
 ## API
 
-`/api/catalog`・`/api/version`・`/api/auth/*` 以外はすべてログインが必要です（セッション Cookie がなければ 401）。
+`/api/catalog`・`/api/version`・`/api/auth/*` 以外はすべてログインが必要です（セッション Cookie がなければ 401）。`/api/admin/*` は管理者のみ（それ以外は 403。状態を変える操作は自サイトのページからのリクエストだけを受け付けます）。
 
 | メソッド | パス | 説明 |
 | --- | --- | --- |
 | GET | `/api/version` | 動いている backend のバージョン `{"version":"cbee965"}` |
-| GET | `/api/auth/session` | ログイン状態 `{"signedIn":true,"email":"...","google":true,"dev":false}`（`google` / `dev` は使えるログイン方法） |
+| GET | `/api/auth/session` | ログイン状態 `{"signedIn":true,"email":"...","admin":false,"google":true,"dev":false}`（`google` / `dev` は使えるログイン方法、`admin` は管理画面を開けるか） |
 | GET | `/api/auth/google/login?guest=<UUID>` | Google のログイン画面へリダイレクト。`guest` はログイン機能より前にこのブラウザで遊んでいたプレイヤー ID で、そのアカウントの初回ログイン時に進行状況を引き継ぐ |
 | GET | `/api/auth/google/callback` | Google からの戻り先。セッション Cookie を発行して `/` へ（失敗時は `/?login=cancelled\|expired\|failed`） |
 | POST | `/api/auth/logout` | ログアウト |
-| POST | `/api/auth/dev` | 開発用ログイン `{"guest":"<UUID>"}`（`DEV_LOGIN=1` のときだけ存在） |
+| POST | `/api/auth/dev` | 開発用ログイン `{"guest":"<UUID>","admin":false}`（`DEV_LOGIN=1` のときだけ存在。`admin` で管理者 `dev:admin` としてログイン） |
 | GET | `/api/catalog` | 艦カード・敵・海域・ガチャ・任務などの静的データ |
 | GET | `/api/profile` | プロフィール（初回アクセスで作成） |
 | POST | `/api/profile/login` | ログインボーナス受取 |
@@ -139,6 +139,22 @@ cd backend && SIM=1 go test ./internal/meta -run Simulate -v
 | POST | `/api/games/{id}/chest` | 宝箱を開ける `{"index":0}` |
 | POST | `/api/games/{id}/abandon` | 中断中の戦闘から完全に撤退（敗北扱い・報酬なし） |
 | GET | `/api/games?limit=20` | 終了した対局の一覧 |
+| GET | `/api/gifts` | 受け取れる運営からの贈り物 |
+| POST | `/api/gifts/claim` | 贈り物を受け取る `{"id":"<UUID>"}`（`id` を省くとすべて） |
+| GET | `/api/admin/gifts` | 【管理】配布の一覧（受取人数・受取件数つき） |
+| POST | `/api/admin/gifts` | 【管理】配布を作成 `{"gift":{"title":"...","message":"...","gems":300,"coins":0,"cards":[],"startsAt":"...","endsAt":"...","everyone":true,"joinedBefore":"..."},"recipients":["<UUID>"]}` |
+| POST | `/api/admin/gifts/{id}/revoke` | 【管理】配布を停止（受け取り済みの分はそのまま） |
+| GET | `/api/admin/players?q=...` | 【管理】提督を ID・名前・メールアドレスで検索 |
+| GET | `/api/admin/audit` | 【管理】操作ログ |
+
+### 運営からの配布（管理画面）
+
+不具合のお詫びや記念の配布は、管理者アカウントでログインして母港の「🛠 管理」から行います。デプロイは不要です。
+
+- **配布先**: 全員（「この日時より前に着任した提督のみ」で、障害のあとに作ったアカウントを対象外にできます）か、指定した提督（名前・メールアドレス・提督 ID で検索。提督 ID はプロフィールに表示され、問い合わせのときに伝えてもらえます）
+- **内容**: ジェム・コイン・艦カード（重複は建造と同じく限界突破）。誤入力を防ぐため、1 件あたりジェム 10,000・コイン 1,000,000・艦カード 5 枚・受取人 500 人・期間 180 日が上限です
+- 提督は期間中に母港の「贈り物」から受け取ります。受け取りはプロフィールの更新と同じトランザクションで確定し、二重には受け取れません
+- 作成後に内容は変えられませんが、停止はできます。作成と停止はすべて `admin_audit` テーブル（管理画面の「操作ログ」）に残ります
 
 ## デプロイ
 
@@ -187,6 +203,7 @@ just versions        # 手元・公開中の frontend（/version.json）・backe
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`（Google OAuth クライアント） | Vercel の環境変数（Production, Secret） |
 | `SESSION_SECRET`（セッション Cookie の署名鍵。32 文字以上のランダム値） | Vercel の環境変数（Production, Secret） |
 | `PUBLIC_URL`（`https://battleship.verniyyy.workers.dev`。Google からの戻り先と Cookie の `Secure` 判定に使う） | Vercel の環境変数（Production） |
+| `ADMIN_SUBJECTS`（管理者のアカウント。カンマ区切りの `google:<sub>`） | Vercel の環境変数（Production） |
 | `ORIGIN_SECRET`（Worker と Vercel の共有シークレット） | Vercel の環境変数、Cloudflare の Worker シークレット、Vercel WAF のカスタムルール「Only via edge proxy」の 3 か所 |
 | 転送先 URL・1 日の上限・レート制限 | `edge/wrangler.jsonc` |
 
@@ -212,6 +229,24 @@ just versions        # 手元・公開中の frontend（/version.json）・backe
    echo https://battleship.verniyyy.workers.dev | vercel env add PUBLIC_URL production
    cd .. && just deploy
    ```
+
+#### 管理者を登録する
+
+管理者は Google アカウントの `sub`（変わらない ID）で指定します。メールアドレスは使いません。
+
+1. 管理者にしたいアカウントで一度ログインする
+2. DB で `sub` を調べる: `SELECT subject FROM accounts WHERE provider = 'google' AND email = 'you@example.com';`
+3. `google:` を付けて登録し、反映する（複数人ならカンマ区切り）
+
+   ```sh
+   cd backend
+   echo google:123456789012345678901 | vercel env add ADMIN_SUBJECTS production
+   cd .. && just deploy-api
+   ```
+
+4. 管理者はログインし直す（それ以前のセッションには `sub` が入っていないため）
+
+外すときは `ADMIN_SUBJECTS` から消して `just deploy-api` します。リストは毎リクエスト確認するので、反映した時点で管理画面に入れなくなります。ローカルの docker compose では、タイトル画面の「開発用ログイン（管理者）」で管理者 `dev:admin` として入れます。
 
 ログインの仕組み: Authorization Code フロー（PKCE・state・nonce 付き）で Google から ID トークンを受け取り、Google の公開鍵で検証して `sub` をアカウントのキーにします（`accounts` テーブル）。セッションは DB を使わない HMAC 署名付き Cookie（30 日、使っていれば自動延長）です。Google アカウントの初回ログインでは、ログイン機能より前にそのブラウザで遊んでいた進行状況を引き継ぎます（ほかのアカウントに引き継がれていない場合のみ）。
 
