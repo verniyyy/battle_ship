@@ -1207,13 +1207,13 @@ button.card:active {
 
 .menu-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
 
 .menu-tile {
   position: relative;
-  height: 96px;
+  height: 78px;
   display: grid;
   place-content: center;
   justify-items: center;
@@ -1231,7 +1231,7 @@ button.card:active {
 }
 
 .menu-tile b {
-  font-size: 30px;
+  font-size: 26px;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
 }
 

@@ -1,53 +1,8 @@
 /* ---------- friends ---------- */
 
-/* harbour entrance, under the menu tiles */
-.friend-bar {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 52px;
-  padding: 0 18px;
-  border-radius: 12px;
-  font-weight: 700;
-  text-align: left;
+/* harbour entrance */
+.menu-tile.friends {
   background: linear-gradient(180deg, rgba(36, 112, 120, 0.95), rgba(12, 52, 70, 0.95));
-  border: 2px solid rgba(160, 230, 255, 0.45);
-  box-shadow: 0 5px 0 #06142a;
-  transition: transform 0.1s;
-}
-
-.friend-bar:active {
-  transform: translateY(4px);
-  box-shadow: 0 1px 0 #06142a;
-}
-
-.friend-bar.hot {
-  border-color: var(--gold);
-  animation: tile-glow 1.6s ease-in-out infinite;
-}
-
-.friend-bar > b {
-  font-size: 24px;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
-}
-
-.friend-bar-title {
-  font-size: 16px;
-  letter-spacing: 0.1em;
-}
-
-.friend-bar-info {
-  display: flex;
-  gap: 12px;
-  margin-left: auto;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.friend-bar-info em {
-  font-style: normal;
-  color: var(--gold-hi);
 }
 
 /* the admiral's face: their secretary ship in a disc (see .portrait-img.bust) */

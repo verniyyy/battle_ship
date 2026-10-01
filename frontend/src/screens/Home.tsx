@@ -6,7 +6,6 @@ import { PortraitImg, ShipArt } from '../components/ShipArt'
 import { Backdrop, Badge, Modal, ResumeBanner, TopBar } from '../components/ui'
 import { fx } from '../fx'
 import { markNewsSeen, NEWS, unreadNews } from '../news'
-import { MAX_FRIENDS } from './Friends'
 import { lookOfCard, SKILL_INFO, SPECIAL_INFO, CLASS_INFO, TIPS, TORPEDO_INFO } from '../game'
 import { celebrateGrant, useGame } from '../state'
 import { portraitOf, useAssets } from '../theme'
@@ -138,6 +137,8 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
   const next = nextStage(catalog, profile)
   const endless = !next
   const b = profile.badges
+  // New requests and cheers waiting on the friends screen.
+  const friendNews = (friends?.incoming.length ?? 0) + (friends?.cheers ?? 0)
 
   return (
     <div className="screen home-screen">
@@ -211,12 +212,16 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
             <b>🎖</b>任務
             <Badge n={b.missions + b.achievements} />
           </button>
-          <button className="menu-tile record" onClick={() => open('record')}>
-            <b>📜</b>戦績
-          </button>
           <button className={`menu-tile login ${b.login ? 'hot' : ''}`} onClick={() => open('login')}>
             <b>🎁</b>ログボ
             <Badge n={b.login} />
+          </button>
+          <button className={`menu-tile friends ${friendNews ? 'hot' : ''}`} onClick={() => nav({ name: 'friends' })}>
+            <b>👥</b>フレンド
+            <Badge n={friendNews} />
+          </button>
+          <button className="menu-tile record" onClick={() => open('record')}>
+            <b>📜</b>戦績
           </button>
           <button className="menu-tile rules" onClick={() => open('rules')}>
             <b>📘</b>要綱
@@ -226,18 +231,6 @@ export function Home({ go, resumable, onResume }: { go: (s: Scene) => void; resu
             <Badge n={unread} />
           </button>
         </div>
-        <button className={`friend-bar ${friends?.incoming.length || friends?.cheers ? 'hot' : ''}`} onClick={() => nav({ name: 'friends' })}>
-          <b>👥</b>
-          <span className="friend-bar-title">フレンド</span>
-          {friends && (
-            <span className="friend-bar-info">
-              {friends.friends.length}/{MAX_FRIENDS} 人
-              {friends.cheers > 0 && <em>💌 エール {friends.cheers} 件</em>}
-              {friends.incoming.length > 0 && <em>✉ 申請 {friends.incoming.length} 件</em>}
-            </span>
-          )}
-          <Badge n={(friends?.incoming.length ?? 0) + (friends?.cheers ?? 0)} />
-        </button>
         {gifts.length > 0 && (
           <button className="gift-banner" onClick={() => open('gifts')}>
             <span className="gift-ico">🎀</span>

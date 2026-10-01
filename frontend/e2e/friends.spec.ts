@@ -16,7 +16,7 @@ test('friends: two admirals swap codes, become friends, cheer and part', async (
 
   // I open the friends screen from the harbour and ask by their code, typed loosely.
   await toHome(page)
-  await page.locator('.friend-bar').click()
+  await page.locator('.menu-tile.friends').click()
   await expect(page.locator('.friends-screen')).toBeVisible()
   await expect(page.locator('.friend-empty')).toContainText('まだフレンドがいません')
   await expect(page.locator('.friend-code')).toHaveText(/^[2-9A-Z]{4}-[2-9A-Z]{4}$/)
@@ -33,9 +33,9 @@ test('friends: two admirals swap codes, become friends, cheer and part', async (
 
   // They see the request at the harbour, look at me, and say yes.
   await toHome(other)
-  await expect(other.locator('.friend-bar')).toContainText('申請 1 件')
-  await other.screenshot({ path: `${shots}/friends-harbour-bar.png` })
-  await other.locator('.friend-bar').click()
+  await expect(other.locator('.menu-tile.friends .badge')).toBeVisible()
+  await other.screenshot({ path: `${shots}/friends-harbour-tile.png` })
+  await other.locator('.menu-tile.friends').click()
   await other.locator('.friends-tabs').getByRole('button', { name: /届いた申請/ }).click()
   const request = other.locator(`[data-friend]`).filter({ hasText: 'E2E提督' })
   await request.locator('.friend-who').click()
@@ -53,8 +53,8 @@ test('friends: two admirals swap codes, become friends, cheer and part', async (
   // I collect the cheer.
   await page.reload()
   await page.locator('.title-screen').click()
-  await expect(page.locator('.friend-bar')).toContainText('エール 1 件')
-  await page.locator('.friend-bar').click()
+  await expect(page.locator('.menu-tile.friends .badge')).toBeVisible()
+  await page.locator('.menu-tile.friends').click()
   const friend = page.locator('.friend-row').filter({ hasText: '僚艦提督' })
   await expect(friend).toContainText('よろしくお願いします！')
   await expect(friend).toContainText('エールが届きました')
