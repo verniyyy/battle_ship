@@ -1,5 +1,6 @@
-import { expect, test } from '@playwright/test'
-import { newAdmiral, toHome } from './helpers'
+import { expect, test, type Page } from '@playwright/test'
+import type { Profile } from '../src/types'
+import { call, newAdmiral, toHome } from './helpers'
 
 const shots = 'e2e/results/shots'
 
@@ -49,4 +50,93 @@ test('the construction banner can be turned by hand: arrows, dots, swipe and key
   // A ship picked by hand stays up longer than the auto-advance's 3.2 s.
   await page.waitForTimeout(4500)
   await expect(name).toHaveText(names[pick]!)
+})
+
+/**
+ * Serves the next pulls with the given rarities (cards picked from the catalogue) and enough
+ * gems to pay, so the top-rarity show can be checked without luck.
+ */
+async function rigPulls(page: Page, rarities: number[]) {
+  const { cards } = await call<{ cards: { id: string; rarity: number }[] }>(page, 'GET', '/catalog')
+  await page.route('**/api/profile', async (r) => {
+    const res = await r.fetch()
+    const json = await res.json()
+    json.profile.gems = 99999
+    await r.fulfill({ response: res, json })
+  })
+  await page.route('**/api/gacha', async (r) => {
+    const { profile } = await call<{ profile: Profile }>(page, 'GET', '/profile')
+    const gains = rarities.map((rarity, i) => ({ card: cards.find((c) => c.rarity === rarity)!.id, uid: `rig-${i}`, rarity, new: true, stars: 1 }))
+    await r.fulfill({ json: { profile: { ...profile, gems: 99999 }, gains } })
+  })
+}
+
+test('a ten-pull with a UR and an SSR plays the full top-rarity show', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  await newAdmiral(page)
+  await rigPulls(page, [1, 0, 3, 1, 0, 2, 0, 4, 1, 0])
+  await toHome(page)
+  await page.locator('.menu-tile.gacha').click()
+  await page.locator('.pull-btn.ten').click()
+
+  // A UR always opens on the glitch omen, then the dock hammers up to prism.
+  await expect(page.locator('.omen-glitch')).toBeVisible()
+  await page.waitForTimeout(700)
+  await page.screenshot({ path: `${shots}/gacha-omen-glitch.png` })
+  await expect(page.locator('.dock-light.o4')).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('.step-pips i.on')).toHaveCount(3)
+  await expect(page.locator('.roll-text')).toHaveText('超・確定！！！')
+  await page.screenshot({ path: `${shots}/gacha-roll-prism.png` })
+
+  // The reveal holds its breath over the SSR before turning it.
+  await expect(page.locator('.flip.tease.r3')).toBeVisible({ timeout: 10_000 })
+  await page.waitForTimeout(500)
+  await page.screenshot({ path: `${shots}/gacha-tease.png` })
+
+  // Each top rarity gets a cut-in, then its stage: SSR first, in card order.
+  const spot = page.locator('.spotlight')
+  await expect(spot.locator('.intro-word')).toHaveText('SSR', { timeout: 10_000 })
+  await page.waitForTimeout(700)
+  await page.screenshot({ path: `${shots}/gacha-cutin-ssr.png` })
+  await expect(spot.locator('.spot-rarity')).toHaveText('SSR', { timeout: 5_000 })
+  await page.waitForTimeout(1600)
+  await page.screenshot({ path: `${shots}/gacha-spotlight-ssr.png` })
+  await spot.click()
+
+  // Tapping the cut-in goes straight to the ship.
+  await expect(spot.locator('.intro-word')).toHaveText('UR')
+  await spot.click()
+  await expect(spot.locator('.spot-rarity')).toHaveText('UR')
+  await expect(spot.locator('.spot-new')).toBeVisible()
+  await page.waitForTimeout(1800)
+  await page.screenshot({ path: `${shots}/gacha-spotlight-ur.png` })
+  await spot.click()
+
+  // The haul calls out the double.
+  await expect(page.locator('.haul em')).toHaveText('DOUBLE!!')
+  await expect(page.locator('.haul b')).toHaveText('UR ×1SSR ×1獲得！')
+  await expect(page.locator('.flip.open')).toHaveCount(10)
+  await page.waitForTimeout(800)
+  await page.screenshot({ path: `${shots}/gacha-haul.png` })
+  expect(errors).toEqual([])
+})
+
+test('an SSR single pull can open on the 激熱 omen', async ({ page }) => {
+  await newAdmiral(page)
+  await rigPulls(page, [3])
+  await toHome(page)
+  await page.locator('.menu-tile.gacha').click()
+  // 0.69 picks the kanji omen with no fake-out (see rollPlan).
+  await page.evaluate(() => (Math.random = () => 0.69))
+  await page.locator('.pull-btn.one').click()
+  await expect(page.locator('.omen-kanji.hot b')).toHaveText('激熱')
+  await page.waitForTimeout(1500)
+  await page.screenshot({ path: `${shots}/gacha-omen-kanji.png` })
+  await expect(page.locator('.dock-light.o3')).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('.roll-text')).toHaveText('確定！！')
+  // Skipping still lands on the ship's spotlight.
+  await page.locator('.gacha-roll').click()
+  await page.locator('.gacha-results').click()
+  await expect(page.locator('.spotlight .intro-word')).toHaveText('SSR')
 })
