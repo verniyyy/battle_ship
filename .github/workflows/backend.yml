@@ -1,14 +1,15 @@
 name: backend
 
+# Pull requests run this through ci.yml, which always reports the required check.
 on:
   push:
     paths: ["backend/**", ".github/workflows/backend.yml"]
-  pull_request:
-    paths: ["backend/**", ".github/workflows/backend.yml"]
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Named literally: under ci.yml, github.workflow would be "ci" for every called workflow.
+  group: backend-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:

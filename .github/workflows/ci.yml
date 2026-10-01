@@ -1,0 +1,58 @@
+name: ci
+
+# Runs on every pull request, calls the per-area workflows for the paths that changed,
+# and sums them up in ci-ok: the one check the main ruleset requires. (The area
+# workflows are path-filtered, so requiring them directly would block PRs that skip them.)
+on:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      web: ${{ steps.filter.outputs.web }}
+      portraitgen: ${{ steps.filter.outputs.portraitgen }}
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            backend: ["backend/**", ".github/workflows/backend.yml", ".github/workflows/ci.yml"]
+            web: ["frontend/**", "edge/**", ".github/workflows/web.yml", ".github/workflows/ci.yml"]
+            portraitgen: ["tools/portraitgen/**", ".github/workflows/portraitgen.yml", ".github/workflows/ci.yml"]
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    uses: ./.github/workflows/backend.yml
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    uses: ./.github/workflows/web.yml
+
+  portraitgen:
+    needs: changes
+    if: needs.changes.outputs.portraitgen == 'true'
+    uses: ./.github/workflows/portraitgen.yml
+
+  ci-ok:
+    needs: [changes, backend, web, portraitgen]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job that ran passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1 ;; esac
