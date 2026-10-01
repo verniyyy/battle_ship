@@ -316,12 +316,24 @@ type actionResponse struct {
 	Profile *meta.ProfileView `json:"profile,omitempty"`
 }
 
+// actRequest is the player's action and, optionally, the turn it was chosen on.
+type actRequest struct {
+	game.Action
+	// Turn is the number of rounds played in the view the action was chosen
+	// from. When the battle has moved on since (played from another device),
+	// the action is refused rather than applied to a board its sender never saw.
+	Turn *int `json:"turn,omitempty"`
+}
+
+// errStaleTurn refuses an action chosen on an out-of-date view of the battle.
+var errStaleTurn = errors.New("他の端末で戦況が進んだため、最新の状態に更新します")
+
 // act plays one round: the player's action against the CPU's, which it
 // commits without seeing the player's. The battle that ends here is settled in
 // the same transaction.
 func (s *Server) act(w http.ResponseWriter, r *http.Request, pid string) {
-	var a game.Action
-	if !s.decode(w, r, &a) {
+	var req actRequest
+	if !s.decode(w, r, &req) {
 		return
 	}
 	id := r.PathValue("id")
@@ -331,9 +343,12 @@ func (s *Server) act(w http.ResponseWriter, r *http.Request, pid string) {
 		if m.PlayerID != pid {
 			return store.ErrNotFound
 		}
+		if req.Turn != nil && *req.Turn != m.Game.Turn && m.Game.Status == game.StatusInProgress {
+			return errStaleTurn
+		}
 		var err error
 		s.withRng(func(rng *rand.Rand) {
-			if resp.Results, err = m.Game.Round(a, rng); err != nil {
+			if resp.Results, err = m.Game.Round(req.Action, rng); err != nil {
 				return
 			}
 			meta.Settle(m, p, rng, now)
@@ -439,7 +454,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, meta.ErrInsufficient):
 		writeError(w, http.StatusPaymentRequired, err.Error())
-	case errors.Is(err, game.ErrGameOver), errors.Is(err, store.ErrInBattle):
+	case errors.Is(err, game.ErrGameOver), errors.Is(err, store.ErrInBattle), errors.Is(err, errStaleTurn):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
 		s.log.Error("internal error", "err", err)

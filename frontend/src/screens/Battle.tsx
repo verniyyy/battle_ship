@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Scene } from '../App'
-import { api } from '../api'
+import { api, ApiError } from '../api'
 import { audio, type PlayOpts, type Sfx } from '../audio'
 import { Board, CellOverlay } from '../components/Board'
 import { CutinLayer, DamageTally, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, tallyTier, type Cutin, type Float, type Tally } from '../components/battle'
@@ -138,7 +138,7 @@ export function Battle({
   onRematch: (m: MatchResponse) => void
   go: (s: Scene) => void
 }) {
-  const { catalog, card, setProfile } = useGame()
+  const { catalog, card, setProfile, refresh } = useGame()
   const gameId = initial.id
   const stage = initial.stage
   const [game, setGame] = useState(initial.game)
@@ -724,6 +724,26 @@ export function Battle({
     }
   }
 
+  // resync reloads the battle as the server has it, e.g. after it was played on from another device.
+  const resync = async () => {
+    try {
+      const m = await api.getGame(gameId)
+      if (!mounted.current) return
+      setSelected(null)
+      setMode(null)
+      setTarget(null)
+      setGame(m.game)
+      setLog(historyLog(m.game))
+      setReward(m.reward)
+      if (m.game.status === 'finished') {
+        void refresh()
+        setShowResult(true)
+      }
+    } catch {
+      // The notice already told the admiral; the next action will try again.
+    }
+  }
+
   const execute = async () => {
     if (!mode || !target || busy) return
     const shipId = mode === 'ultimate' ? flagship?.id : selected
@@ -731,7 +751,7 @@ export function Battle({
     setBusy(true)
     setHover(null)
     try {
-      const res = await api.act(gameId, mode, shipId, target)
+      const res = await api.act(gameId, mode, shipId, target, game.turn)
       setSelected(null)
       setMode(null)
       setTarget(null)
@@ -768,6 +788,8 @@ export function Battle({
       audio.play('error')
       setCutin({ kind: 'notice', side: 'cpu', text: (e as Error).message })
       window.setTimeout(() => mounted.current && setCutin(null), 1500)
+      // 409: the battle moved on (or ended) on another device; catch up with it.
+      if (e instanceof ApiError && e.status === 409) await resync()
     } finally {
       if (mounted.current) setBusy(false)
     }
