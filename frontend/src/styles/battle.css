@@ -1372,11 +1372,73 @@
     rgba(79, 213, 255, 0.22) 20deg 24deg,
     transparent 24deg 30deg
   );
+  /* A conic gradient pinches into an aliased pinwheel where its rays meet, so
+     they fade in away from the centre and the core's glow stands in for it. */
+  mask: radial-gradient(circle, transparent 50px, rgba(0, 0, 0, 0.35) 130px, #000 300px);
   animation: speed-spin calc(1.4s * var(--k)) linear infinite;
 }
 
 .cutin.ultimate.enemy-side .ult-rays {
   background: repeating-conic-gradient(from 0deg, rgba(255, 40, 60, 0.28) 0 5deg, transparent 5deg 15deg);
+}
+
+/* The streaks share the rays' vanishing point instead of the screen centre. */
+.cutin.ultimate .speedlines {
+  inset: auto;
+  left: 50%;
+  top: 55%;
+  width: 2000px;
+  height: 2000px;
+  margin: -1000px 0 0 -1000px;
+  mask: radial-gradient(circle, transparent 150px, #000 420px);
+}
+
+/* The light everything bursts out of: a white-hot point blooming through gold. */
+.ult-core {
+  position: absolute;
+  left: 50%;
+  top: 55%;
+  width: 560px;
+  height: 560px;
+  margin: -280px 0 0 -280px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    #fff 0 4%,
+    rgba(255, 246, 214, 0.95) 9%,
+    rgba(255, 210, 74, 0.55) 22%,
+    rgba(255, 120, 60, 0.22) 40%,
+    transparent 68%
+  );
+  mix-blend-mode: screen;
+  animation:
+    ult-core-in calc(0.5s * var(--k)) cubic-bezier(0.2, 1.4, 0.4, 1) both,
+    ult-core-pulse calc(0.24s * var(--k)) ease-in-out calc(0.5s * var(--k)) infinite alternate;
+}
+
+.cutin.ultimate.enemy-side .ult-core {
+  background: radial-gradient(
+    circle,
+    #fff 0 4%,
+    rgba(255, 214, 214, 0.95) 9%,
+    rgba(255, 50, 70, 0.6) 22%,
+    rgba(160, 0, 20, 0.28) 40%,
+    transparent 68%
+  );
+}
+
+@keyframes ult-core-in {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+}
+
+@keyframes ult-core-pulse {
+  to {
+    transform: scale(1.08);
+    opacity: 0.85;
+  }
 }
 
 .letterbox {
