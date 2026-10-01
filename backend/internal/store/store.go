@@ -43,6 +43,7 @@ type Store interface {
 	Gifts
 	Friends
 	Rankings
+	Duels
 }
 
 // Gifts keeps the operators' presents and who has collected them.
