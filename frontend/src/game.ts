@@ -16,7 +16,7 @@ export const KANJI = Object.fromEntries(Object.entries(CLASS_INFO).map(([k, v]) 
 
 export const SKILL_INFO: Record<SkillKind, { name: string; short: string; desc: string; icon: string }> = {
   barrage: { name: '一斉射', short: '3×3砲撃', desc: '3マス先までの3×3を砲撃（火力70%）。外れても水柱で足止め', icon: '✚' },
-  flare: { name: '照明弾', short: '全域広域索敵', desc: '海域のどこでも、狙った地点から2マス以内（7×7以上の広い海域では5×5）を照らし水上艦を発見・捕捉（潜水艦は映らない）。捕捉した艦への攻撃は次のターンまで回避されず必ず会心。敵艦を見つけると探信音を聴かれ、自艦の位置もそのターンだけ敵に知られる（追跡はされない）', icon: '✦' },
+  flare: { name: '照明弾', short: '全域広域索敵', desc: '海域のどこでも、狙った地点から2マス以内（7×7以上の広い海域では5×5）を照らし水上艦を発見・捕捉（潜水艦は映らない）。捕捉した艦への攻撃は次のターンまで回避されず必ず会心。敵艦を見つけると探信音を聴かれ、自艦の位置もそのターンだけ敵に知られる（追跡はされない）。何も見つからなければ、追跡されていない限り敵には「何らかの号令」としか伝わらない', icon: '✦' },
   sonar: { name: 'ソナー', short: '縦横＋周囲索敵', desc: '自艦の縦横一列（7×7以上の広い海域では3列幅）と周囲1マスを探信し潜水艦も含め全艦を発見・捕捉。捕捉した艦への攻撃は次のターンまで回避されず必ず会心', icon: '◎' },
   spread: { name: '扇状雷撃', short: '3列魚雷', desc: '並んだ3本の魚雷を同時に放つ（雷装80%・後攻・発射位置が露見）', icon: '⋙' },
   airstrike: { name: '航空攻撃', short: '全域爆撃', desc: '海域のどこでも1マスを爆撃。回避されにくいが敵の対空で減衰。敵の対空見張りに迎撃されると威力が落ち、艦載機を余分に失い位置も露見する', icon: '✈' },
@@ -189,7 +189,15 @@ export function describe(r: Result, game: GameView): LogLine {
   if (r.revealed !== undefined || r.scanned) {
     const n = r.revealed?.length ?? 0
     const what = SKILL_INFO[r.skill!].name
-    const heard = r.emitter ? (mine ? '（探信音を聴かれ位置露見）' : `（探信源は${posLabel(r.emitter)}）`) : ''
+    const heard = r.emitter
+      ? mine
+        ? '（探信音を聴かれ位置露見）'
+        : `（探信源は${posLabel(r.emitter)}）`
+      : mine && r.skill === 'sonar'
+        ? r.hidden
+          ? '（敵には伏せられた）'
+          : '（敵に察知された）'
+        : ''
     if (!mine) return line(`${actor}の${what}！${n ? `味方${n}隻が発見された` : '味方は見つからなかった'}${heard}`, n ? 'bad' : 'info')
     return line(`${actor}の${what}！${n ? `敵艦${n}隻を発見・捕捉！` : '反応なし'}${heard}`, n ? 'great' : 'info')
   }

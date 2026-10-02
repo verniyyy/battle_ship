@@ -117,8 +117,19 @@ func (st *State) ViewFor(me Side) View {
 		}
 		v.PlayerShips = append(v.PlayerShips, sv)
 	}
+	// Orders the enemy kept from us must not show in their ships' counters.
+	unseen := map[ActionType]map[int]int{ActionSkill: {}, ActionWatch: {}}
+	for _, r := range st.History {
+		if r.Side != me && r.Hidden && unseen[r.Type] != nil {
+			unseen[r.Type][r.ShipID]++
+		}
+	}
 	for _, s := range foe.Ships {
 		sv := shipView(s, foe)
+		if inProgress {
+			sv.Skill = min(sv.Skill+unseen[ActionSkill][s.ID], sv.MaxSkill)
+			sv.Watches = min(sv.Watches+unseen[ActionWatch][s.ID], watchUses(s.Spec))
+		}
 		if inProgress && s.Alive() {
 			sv.Pos = nil
 			if seen, ok := st.Intel[me][key(s.ID)]; ok {
@@ -154,12 +165,12 @@ func shipView(s *Ship, b *Board) ShipView {
 }
 
 // Redact returns results as side me may see them: an anti-air watch ordered
-// by a ship the enemy was not tracking shows up as an unknown order, without
-// the ship or its initiative.
+// by a ship the enemy was not tracking, or a sonar from one that found
+// nothing, shows up as an unknown order, without the ship or its initiative.
 func Redact(me Side, rs []Result) []Result {
 	out := make([]Result, len(rs))
 	for i, r := range rs {
-		if r.Side != me && r.Type == ActionWatch && r.Hidden {
+		if r.Side != me && (r.Type == ActionWatch || r.Type == ActionSkill) && r.Hidden {
 			r = Result{Side: r.Side, Type: ActionUnknown, ShipID: -1, Round: r.Round, Combo: r.Combo, Gauge: r.Gauge}
 		}
 		out[i] = r
