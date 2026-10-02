@@ -3068,3 +3068,14 @@
     opacity: 0;
   }
 }
+
+/* Backs out of the current choice: the target, the order, then the ship. */
+.cmd-btn.cancel {
+  flex: 0 1 96px;
+  background: linear-gradient(180deg, rgba(70, 78, 96, 0.95), rgba(26, 30, 42, 0.95));
+  border-color: rgba(220, 228, 240, 0.55);
+}
+
+.cmd-btn.cancel small {
+  white-space: nowrap;
+}
