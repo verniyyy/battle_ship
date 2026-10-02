@@ -205,7 +205,8 @@ export interface Gain {
   rarity: Rarity
   new: boolean
   stars: number
-  gems?: number
+  /** Coins paid instead of a limit break when the ship is already ★5. */
+  coins?: number
 }
 
 export interface Grant {
@@ -362,6 +363,8 @@ export interface Catalog {
   pullCost: number
   tenPullCost: number
   pityPulls: number
+  /** Coins, by rarity, paid for a duplicate of a ★5 ship. */
+  overflowCoins: number[]
   missions: Mission[]
   dailyAll: Mission
   achievements: Mission[]

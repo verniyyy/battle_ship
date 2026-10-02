@@ -115,8 +115,32 @@ func TestDuplicatesLimitBreak(t *testing.T) {
 	for i := 0; i <= MaxStars; i++ {
 		g = p.addCard("bb_kurogane", t0)
 	}
-	if g.New || g.Stars != MaxStars || g.Gems != OverflowGems || len(p.Ships) != 3 {
+	if g.New || g.Stars != MaxStars || g.Coins != OverflowCoins[g.Rarity] || len(p.Ships) != 3 {
 		t.Fatalf("got %+v with %d ships", g, len(p.Ships))
+	}
+	if p.Coins != StartCoins+g.Coins || p.Gems != StartGems {
+		t.Fatalf("overflow paid %d coins, %d gems", p.Coins-StartCoins, p.Gems-StartGems)
+	}
+}
+
+func TestChestGemsAreRare(t *testing.T) {
+	r := rng(7)
+	stage := Stages[0]
+	maxShare := [3]float64{0.18, 0.32, 0.25} // expected 1/8, 1/4, 1/6
+	for tier, limit := range maxShare {
+		const n = 3000
+		gems := 0
+		for i := 0; i < n; i++ {
+			c := rollChest(r, stage, tier)
+			if c.Grant.Gems > 0 {
+				gems++
+			} else if c.Grant.Coins == 0 && len(c.Grant.Cards) == 0 {
+				t.Fatalf("tier %d chest is empty", tier)
+			}
+		}
+		if share := float64(gems) / n; share > limit || share == 0 {
+			t.Errorf("tier %d gem share %.3f, want (0, %.2f]", tier, share, limit)
+		}
 	}
 }
 
@@ -355,7 +379,7 @@ func TestChestsAreHiddenUntilOpened(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Coins-coins != c.Grant.Coins || p.Gems-gems < c.Grant.Gems || (len(c.Grant.Cards) > 0 && c.Grant.Cards[0].UID == "" && len(p.Ships) == ships) {
+	if p.Coins-coins < c.Grant.Coins || p.Gems-gems != c.Grant.Gems || (len(c.Grant.Cards) > 0 && c.Grant.Cards[0].UID == "" && len(p.Ships) == ships) {
 		t.Fatalf("chest not paid: %+v", c)
 	}
 	if _, err := OpenChest(m, p, 0, t0); err == nil {

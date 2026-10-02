@@ -302,7 +302,7 @@ export function ResultOverlay({
             <div className={`drop ${beat >= 5 ? 'in' : ''} r${reward.drop.rarity}`}>
               <span className="drop-label">DROP!</span>
               <CardView look={lookOfCard(dropCard)} size="md" fresh={reward.drop.new} stars={reward.drop.stars} />
-              {!reward.drop.new && <span className="lb">限界突破 ★{reward.drop.stars}</span>}
+              {!reward.drop.new && <span className="lb">{reward.drop.coins ? `💰+${reward.drop.coins.toLocaleString()}` : `限界突破 ★${reward.drop.stars}`}</span>}
             </div>
           )}
           {reward.win && (

@@ -370,11 +370,14 @@ func FleetSlots(level int) int {
 // ---- gacha ----
 
 const (
-	PullCost     = 100
-	TenPullCost  = 1000
-	PityPulls    = 60 // SSR or better guaranteed by this pull
-	OverflowGems = 30 // compensation for a duplicate of a fully limit-broken ship
+	PullCost    = 100
+	TenPullCost = 1000
+	PityPulls   = 60 // SSR or better guaranteed by this pull
 )
+
+// OverflowCoins is the coin compensation, by rarity, for a duplicate of a fully
+// limit-broken ship. It pays coins rather than gems so duplicates do not fund more pulls.
+var OverflowCoins = [5]int{300, 500, 1000, 2000, 4000}
 
 // PullRates are per-mille weights for N..UR.
 var PullRates = [5]int{400, 350, 180, 60, 10}

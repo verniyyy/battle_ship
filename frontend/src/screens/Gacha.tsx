@@ -553,7 +553,7 @@ export function Gacha({ onBack }: { onBack: () => void }) {
             <button className="mini-btn" onClick={() => setRates(true)}>
               提供割合
             </button>
-            <p className="gacha-note">同じ艦が出ると「限界突破」。レベル上限とステータスが上昇！</p>
+            <p className="gacha-note">同じ艦が出ると「限界突破」。レベル上限とステータスが上昇！★5 の艦が被ったときはコインに。</p>
           </section>
         </div>
       )}
@@ -629,7 +629,7 @@ export function Gacha({ onBack }: { onBack: () => void }) {
                     </div>
                     <div className="flip-front">
                       <CardView look={lookOfCard(c)} size={gains.length === 1 ? 'lg' : 'md'} fresh={g.new} stars={g.stars} />
-                      {!g.new && <span className="lb-tag">{g.gems ? `💎+${g.gems}` : `限界突破 ★${g.stars}`}</span>}
+                      {!g.new && <span className="lb-tag">{g.coins ? `💰+${g.coins.toLocaleString()}` : `限界突破 ★${g.stars}`}</span>}
                     </div>
                   </div>
                 </div>
@@ -669,6 +669,10 @@ export function Gacha({ onBack }: { onBack: () => void }) {
             ))}
           </ul>
           <p className="muted">10連建造は SR 以上が 1 枠確定。{catalog.pityPulls} 回以内に SSR 以上が必ず出現します。</p>
+          <p className="muted">
+            ★5 まで限界突破した艦が被ったときは、コインに交換されます（
+            {catalog.overflowCoins.map((c, r) => `${rarityName(r)} 💰${c.toLocaleString()}`).join('・')}）。
+          </p>
         </Modal>
       )}
     </div>
