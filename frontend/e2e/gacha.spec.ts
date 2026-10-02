@@ -56,7 +56,7 @@ test('the construction banner can be turned by hand: arrows, dots, swipe and key
  * Serves the next pulls with the given rarities (cards picked from the catalogue) and enough
  * gems to pay, so the top-rarity show can be checked without luck.
  */
-async function rigPulls(page: Page, rarities: number[]) {
+async function rigPulls(page: Page, rarities: number[], dupe: { stars: number; coins?: number } | null = null) {
   const { cards } = await call<{ cards: { id: string; rarity: number }[] }>(page, 'GET', '/catalog')
   await page.route('**/api/profile', async (r) => {
     const res = await r.fetch()
@@ -66,7 +66,7 @@ async function rigPulls(page: Page, rarities: number[]) {
   })
   await page.route('**/api/gacha', async (r) => {
     const { profile } = await call<{ profile: Profile }>(page, 'GET', '/profile')
-    const gains = rarities.map((rarity, i) => ({ card: cards.find((c) => c.rarity === rarity)!.id, uid: `rig-${i}`, rarity, new: true, stars: 1 }))
+    const gains = rarities.map((rarity, i) => ({ card: cards.find((c) => c.rarity === rarity)!.id, uid: `rig-${i}`, rarity, new: true, stars: 1, ...(dupe && { new: false, ...dupe }) }))
     await r.fulfill({ json: { profile: { ...profile, gems: 99999 }, gains } })
   })
 }
@@ -170,3 +170,24 @@ for (const [omen, rnd] of [
     await expect(page.locator('.spotlight .spot-rarity')).toHaveText('SSR', { timeout: 8_000 })
     expect(await shown(page)).toEqual(['cutin:SSR open:0', 'turn:r3', 'spot:SSR'])
   })
+
+test('a duplicate of a ★5 ship pays coins, and the rates say so', async ({ page }) => {
+  await newAdmiral(page)
+  await rigPulls(page, [0], { stars: 5, coins: 300 })
+  await toHome(page)
+  await page.locator('.menu-tile.gacha').click()
+
+  await page.getByRole('button', { name: '提供割合' }).click()
+  await expect(page.locator('.modal')).toContainText('★5 まで限界突破した艦が被ったときは、コインに交換されます（N 💰300・R 💰500・SR 💰1,000・SSR 💰2,000・UR 💰4,000）')
+  await page.screenshot({ path: `${shots}/gacha-rates-overflow.png` })
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.modal')).toHaveCount(0)
+
+  await page.locator('.pull-btn.one').click()
+  for (let i = 0; i < 6 && !(await page.locator('.gacha-again').isVisible()); i++) {
+    await page.mouse.click(640, 640)
+    await page.waitForTimeout(400)
+  }
+  await expect(page.locator('.lb-tag')).toHaveText('💰+300', { timeout: 10_000 })
+  await page.screenshot({ path: `${shots}/gacha-overflow-coins.png` })
+})

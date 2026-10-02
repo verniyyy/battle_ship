@@ -92,18 +92,19 @@ func (p *Profile) View(now time.Time) ProfileView {
 
 // Catalog is the static game data the client needs.
 type Catalog struct {
-	Cards        []Card      `json:"cards"`
-	Areas        []Area      `json:"areas"`
-	Stages       []Stage     `json:"stages"`
-	Enemies      []game.Spec `json:"enemies"`
-	PullRates    [5]int      `json:"pullRates"`
-	PullCost     int         `json:"pullCost"`
-	TenPullCost  int         `json:"tenPullCost"`
-	PityPulls    int         `json:"pityPulls"`
-	Missions     []Mission   `json:"missions"`
-	DailyAll     Mission     `json:"dailyAll"`
-	Achievements []Mission   `json:"achievements"`
-	LoginRewards []Grant     `json:"loginRewards"`
+	Cards         []Card      `json:"cards"`
+	Areas         []Area      `json:"areas"`
+	Stages        []Stage     `json:"stages"`
+	Enemies       []game.Spec `json:"enemies"`
+	PullRates     [5]int      `json:"pullRates"`
+	PullCost      int         `json:"pullCost"`
+	TenPullCost   int         `json:"tenPullCost"`
+	PityPulls     int         `json:"pityPulls"`
+	OverflowCoins [5]int      `json:"overflowCoins"`
+	Missions      []Mission   `json:"missions"`
+	DailyAll      Mission     `json:"dailyAll"`
+	Achievements  []Mission   `json:"achievements"`
+	LoginRewards  []Grant     `json:"loginRewards"`
 }
 
 func BuildCatalog() Catalog {
@@ -115,7 +116,7 @@ func BuildCatalog() Catalog {
 	enemies := enemySpecs(keys)
 	return Catalog{
 		Cards: Cards, Areas: Areas, Stages: Stages, Enemies: enemies,
-		PullRates: PullRates, PullCost: PullCost, TenPullCost: TenPullCost, PityPulls: PityPulls,
+		PullRates: PullRates, PullCost: PullCost, TenPullCost: TenPullCost, PityPulls: PityPulls, OverflowCoins: OverflowCoins,
 		Missions: DailyMissions, DailyAll: DailyAll, Achievements: Achievements, LoginRewards: LoginRewards,
 	}
 }

@@ -185,8 +185,8 @@ type Gain struct {
 	UID    string `json:"uid"`
 	Rarity Rarity `json:"rarity"`
 	New    bool   `json:"new"`
-	Stars  int    `json:"stars"`          // limit breaks after this gain
-	Gems   int    `json:"gems,omitempty"` // compensation when already maxed
+	Stars  int    `json:"stars"`           // limit breaks after this gain
+	Coins  int    `json:"coins,omitempty"` // compensation when already maxed
 }
 
 // addCard adds a card to the roster; duplicates limit-break the owned copy.
@@ -200,8 +200,8 @@ func (p *Profile) addCard(card string, now time.Time) Gain {
 		if s.Stars < MaxStars {
 			s.Stars++
 		} else {
-			g.Gems = OverflowGems
-			p.Gems += OverflowGems
+			g.Coins = OverflowCoins[c.Rarity]
+			p.Coins += g.Coins
 		}
 		g.Stars = s.Stars
 		return g

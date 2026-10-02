@@ -355,26 +355,31 @@ func popcount(n int) int {
 	return c
 }
 
+// rollChest fills one chest. Gems are the rarer prize in every tier, so wins do
+// not hand out pulls too freely; coins fill the rest.
 func rollChest(rng *rand.Rand, stage Stage, tier int) Chest {
 	c := Chest{Tier: tier}
 	switch tier {
 	case 0:
-		if rng.IntN(3) == 0 {
+		if rng.IntN(8) == 0 {
 			c.Grant.Gems = 10 * (1 + rng.IntN(3))
 		} else {
 			c.Grant.Coins = stage.Coins * (2 + rng.IntN(3)) / 5
 		}
 	case 1:
-		if rng.IntN(2) == 0 {
+		if rng.IntN(4) == 0 {
 			c.Grant.Gems = 50
 		} else {
 			c.Grant.Coins = stage.Coins * 2
 		}
 	default:
-		if rng.IntN(3) == 0 {
+		switch n := rng.IntN(6); {
+		case n < 2:
 			c.Grant.Cards = []Gain{{Card: randomCard(rng, rollRarity(rng, PullRates, SR))}}
-		} else {
+		case n < 3:
 			c.Grant.Gems = 200
+		default:
+			c.Grant.Coins = stage.Coins * 5
 		}
 	}
 	return c
