@@ -355,6 +355,11 @@ export function Battle({
     if (busy || finished || waiting) return
     const s = game.playerShips[id]
     if (!s || s.hp <= 0) return
+    // Tapping the chosen ship again lets go of it.
+    if (id === selected) {
+      deselect()
+      return
+    }
     audio.play('select')
     setSelected(id)
     setMode(null)
@@ -364,11 +369,34 @@ export function Battle({
     fx.sparkle(c.x, c.y, looks.player[id].color, 8, 60)
   }
 
+  const deselect = () => {
+    audio.play('tap')
+    setSelected(null)
+    setMode(null)
+    setTarget(null)
+  }
+
+  // Sonar and the watch aim at the ship itself: there is no target of their own to drop.
+  const selfAimed = (m: ActionType | null) => (m === 'skill' && ship?.skillKind === 'sonar') || m === 'watch'
+  // cancel backs out one step: the target, then the order, then the ship.
+  const cancel = () => {
+    if (busy || finished || waiting) return
+    if (target && !selfAimed(mode)) {
+      audio.play('tap')
+      setTarget(null)
+    } else if (mode) {
+      audio.play('tap')
+      setMode(null)
+      setTarget(null)
+    } else if (selected !== null) deselect()
+  }
+  const cancelLabel = target && !selfAimed(mode) ? '目標を解除' : mode ? '行動を戻す' : '選択を解除'
+
   const chooseMode = (m: ActionType) => {
     audio.play('tap')
     setMode(m)
     setTarget(null)
-    if (((m === 'skill' && ship?.skillKind === 'sonar') || m === 'watch') && ship?.pos) setTarget(ship.pos)
+    if (selfAimed(m) && ship?.pos) setTarget(ship.pos)
   }
 
   const onCell = (p: Pos) => {
@@ -1032,10 +1060,7 @@ export function Battle({
       else if (e.key === 'w' && ship && ship.watchTargets?.length) chooseMode('watch')
       else if (e.key === 'u' && canUlt) chooseMode('ultimate')
       else if (e.key === 'Enter') void execute()
-      else if (e.key === 'Escape') {
-        setMode(null)
-        setTarget(null)
-      }
+      else if (e.key === 'Escape') cancel()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -1148,7 +1173,16 @@ export function Battle({
 
       {/* ---- board ---- */}
       <main className="battle-center">
-        <div ref={boardRef} className={`board-wrap ${mode === 'ultimate' && !target ? 'ult-aim' : ''}`}>
+        <div
+          ref={boardRef}
+          className={`board-wrap ${mode === 'ultimate' && !target ? 'ult-aim' : ''}`}
+          onContextMenu={(e) => {
+            // Right-click backs out like Esc while something is chosen.
+            if (selected === null && !mode) return
+            e.preventDefault()
+            cancel()
+          }}
+        >
           <Board
             size={game.boardSize}
             span={span}
@@ -1234,6 +1268,12 @@ export function Battle({
           ) : (
             <>
               {duel && dv?.opponent?.ready && !busy && <p className="duel-ready-note">相手は行動を決定済み！</p>}
+              {(ship || mode) && (
+                <button className="cmd-btn cancel" disabled={busy} onClick={cancel} title="ひとつ前に戻る（Esc／右クリック）" data-testid="cmd-cancel">
+                  <b>✕ 取消</b>
+                  <small>{cancelLabel}</small>
+                </button>
+              )}
               {ship ? (
                 <>
                   {ship.maxAmmo > 0 && (
