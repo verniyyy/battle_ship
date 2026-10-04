@@ -33,7 +33,9 @@ export function PortraitImg({ portrait, frame, className = '' }: { portrait: Por
       ['--fy' as string]: y0,
     }
   }
-  return <img className={`portrait-img ${mode} ${className}`} src={portrait.src} alt="" draggable={false} decoding="async" style={style} />
+  // Lazy: a long card list only fetches and decodes the portraits scrolled into view
+  // (about 7MB of bitmap each once decoded, which adds up fast on a phone).
+  return <img className={`portrait-img ${mode} ${className}`} src={portrait.src} alt="" draggable={false} decoding="async" loading="lazy" style={style} />
 }
 
 interface Hull {
