@@ -1,6 +1,8 @@
 // Screen-space juice: a canvas particle system laid over the whole stage, plus
 // shake, hit-stop and flash helpers. Coordinates are stage pixels (1280x720).
 
+import { liteFx } from './gfx'
+
 type Kind = 'spark' | 'ember' | 'smoke' | 'debris' | 'ring' | 'glow' | 'drop' | 'confetti' | 'star' | 'coin' | 'bubble' | 'ray' | 'shard'
 
 interface Particle {
@@ -84,7 +86,8 @@ class FxEngine {
       additive: true,
       ...p,
     })
-    if (this.parts.length > 1400) this.parts.splice(0, this.parts.length - 1400)
+    const cap = liteFx() ? 600 : 1400
+    if (this.parts.length > cap) this.parts.splice(0, this.parts.length - cap)
     if (!this.raf) {
       this.canvas!.style.visibility = 'visible'
       this.last = performance.now()

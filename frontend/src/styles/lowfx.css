@@ -1,0 +1,61 @@
+/* =========================================================
+   Light effects mode (html.lowfx, see gfx.ts): the decorative
+   loops hold still so a phone isn't asked for dozens of
+   compositor layers at once. What answers a tap still moves.
+   ========================================================= */
+
+/* ---------- card art: a still picture ---------- */
+
+.lowfx .ship-art svg *,
+.lowfx .card .card-shine {
+  animation: none;
+}
+
+/* motes and the UR sheen only exist to move */
+.lowfx .art-staging .art-mote,
+.lowfx .art-staging .art-holo {
+  display: none;
+}
+
+/* ---------- harbour ---------- */
+
+.lowfx .sc-harbor .sc-stars i,
+.lowfx .sc-harbor .sc-glints i,
+.lowfx .sc-harbor .sc-sun-pulse {
+  animation: none;
+}
+
+/* ---------- construction dock ---------- */
+
+/* sparks, the scan line and the floor's glide sit still or go; the rings
+   only turn while a build runs, when they are the show */
+.lowfx .sc-dock .sc-sparks,
+.lowfx .sc-dock .sc-blueprint-scan {
+  display: none;
+}
+
+.lowfx .sc-dock .sc-dock-floor i,
+.lowfx .sc-dock .sc-dock-glow,
+.lowfx .sc-dock .sc-pillars i {
+  animation: none;
+}
+
+.lowfx .sc-dock .sc-pillars i {
+  opacity: 0.5;
+}
+
+.lowfx .phase-idle .sc-dock .sc-ring {
+  animation: none;
+}
+
+/* the spotlight keeps one fan of rays: each is a 2000px square turning */
+.lowfx .spot-rays.two {
+  display: none;
+}
+
+/* ---------- operations chart ---------- */
+
+.lowfx .sc-chart .sc-contact {
+  animation: none;
+  opacity: 0.55;
+}

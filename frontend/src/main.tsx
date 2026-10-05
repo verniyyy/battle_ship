@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { apply as applyGfx } from './gfx'
 import { GameDataProvider } from './state'
 import { AssetProvider } from './theme'
 import './styles.css'
@@ -12,6 +13,9 @@ import './styles/gifts.css'
 import './styles/friends.css'
 import './styles/ranking.css'
 import './styles/duel.css'
+import './styles/lowfx.css'
+
+applyGfx()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

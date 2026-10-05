@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { fx } from '../fx'
+import { liteFx } from '../gfx'
 
 export const STAGE_W = 1280
 export const STAGE_H = 720
@@ -25,11 +26,12 @@ export function Stage({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('resize', fit)
   }, [])
 
-  // Render particles at device resolution so they stay crisp when scaled up.
+  // Render particles at device resolution so they stay crisp when scaled up
+  // (up to 2x; in light mode at stage resolution, a quarter of the memory).
   useEffect(() => {
     const c = canvas.current
     if (!c) return
-    const k = Math.min(2, Math.max(1, view.scale * (window.devicePixelRatio || 1)))
+    const k = Math.min(liteFx() ? 1 : 2, Math.max(1, view.scale * (window.devicePixelRatio || 1)))
     c.width = STAGE_W * k
     c.height = STAGE_H * k
     c.getContext('2d')?.setTransform(k, 0, 0, k, 0, 0)

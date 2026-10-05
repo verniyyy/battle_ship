@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { audio } from '../audio'
 import { CLASS_INFO, KANJI, rarityName, stageLabel, type Look } from '../game'
+import { liteFx, onGfxChange, setGfxMode } from '../gfx'
 import { anchors, useGame } from '../state'
 import { backdropUrl, portraitOf, useAssets, type Backdrop as BackdropName } from '../theme'
 import type { MatchResponse, ShipClass } from '../types'
@@ -333,12 +334,13 @@ export function Modal({ title, onClose, children, wide, className = '' }: { titl
   )
 }
 
-/** Speaker button that opens a small panel with BGM/SE volume sliders and a mute switch. */
+/** Speaker button that opens a small panel with BGM/SE volume sliders, a mute switch and the effects mode. */
 export function SoundToggle() {
   const [, rerender] = useState(0)
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
   useEffect(() => audio.onChange(() => rerender((n) => n + 1)), [])
+  useEffect(() => onGfxChange(() => rerender((n) => n + 1)), [])
   useEffect(() => {
     if (!open) return
     const away = (e: PointerEvent) => wrap.current?.contains(e.target as Node) || setOpen(false)
@@ -382,6 +384,20 @@ export function SoundToggle() {
           <button className={`chip-btn mute ${audio.muted ? 'on' : ''}`} onClick={() => audio.setMuted(!audio.muted)}>
             {audio.muted ? '🔇 ミュート中' : '🔈 ミュート'}
           </button>
+          {/* Light mode holds the decorative loops still; on by default on phones (see gfx.ts). */}
+          <div className="gfx-row" role="radiogroup" aria-label="演出">
+            <span>演出</span>
+            {(
+              [
+                ['full', '標準'],
+                ['lite', '軽量'],
+              ] as const
+            ).map(([m, label]) => (
+              <button key={m} role="radio" aria-checked={liteFx() === (m === 'lite')} className={`chip-btn ${liteFx() === (m === 'lite') ? 'on' : ''}`} onClick={() => setGfxMode(m)}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -353,6 +353,16 @@ p {
   justify-self: stretch;
 }
 
+.gfx-row {
+  display: grid;
+  grid-template-columns: 38px 1fr 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
 .chip-btn {
   height: 34px;
   padding: 0 14px;
