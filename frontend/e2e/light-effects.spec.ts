@@ -31,6 +31,9 @@ test.describe('on a phone', () => {
     expect(await moving(page, '.ship-art')).toBe(0)
     await page.screenshot({ path: `${shots}/light-formation.png` })
 
+    // No drop-shadow filters on the portraits: Safari keeps a device-resolution buffer for each.
+    expect(await page.locator('.roster-grid .art-portrait').first().evaluate((e) => getComputedStyle(e).filter)).toBe('none')
+
     // Idle full-stage overlays are hidden, so they aren't layers over everything.
     await expect(page.locator('.curtain')).toBeHidden()
     expect(await page.locator('.stage > .fx-canvas').evaluate((c) => getComputedStyle(c).visibility)).toBe('hidden')
@@ -42,6 +45,21 @@ test.describe('on a phone', () => {
     await page.reload()
     await expect(page.locator('html')).not.toHaveClass(/lowfx/)
   })
+})
+
+test('the stage is zoomed to the window rather than scaled, and the title logo carries no filters', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 })
+  await page.goto('/')
+  const scale = Math.min(844 / 1280, 390 / 720)
+  // Zoomed, Safari lays the stage out at the size it is shown instead of drawing it at 1280x720 and shrinking it.
+  const style = await page.locator('.stage').evaluate((e) => ({ zoom: Number(getComputedStyle(e).zoom), transform: getComputedStyle(e).transform }))
+  expect(style.zoom).toBeCloseTo(scale, 3)
+  expect(style.transform).toBe('none')
+  // The logo's shadows are text-shadow on a copy behind it, not drop-shadow filters (about 400MB in Safari).
+  for (const sel of ['.title-jp', '.title-jp > span', '.title-en > span', '.title-en > span > span']) {
+    expect(await page.locator(sel).evaluate((e) => getComputedStyle(e).filter)).toBe('none')
+  }
+  expect(await page.locator('.title-jp').evaluate((e) => getComputedStyle(e, '::before').textShadow)).not.toBe('none')
 })
 
 test('on a desktop the full effects play, and list cards still hold still', async ({ page }) => {

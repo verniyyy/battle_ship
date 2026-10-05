@@ -17,6 +17,31 @@
   display: none;
 }
 
+/* ---------- drop shadows ----------
+   Safari renders each drop-shadow filter into buffers of its own at device
+   resolution, kept while the element is shown: on the portraits of a card list
+   or the big cut-in letters they add up to hundreds of megabytes. */
+
+.lowfx .art-portrait,
+.lowfx .menu-ico,
+.lowfx .haul em,
+.lowfx .intro-word b,
+.lowfx .spot-rarity,
+.lowfx .boss-mark,
+.lowfx .boss-mark .eye,
+.lowfx .abyss-depth b,
+.lowfx .plane,
+.lowfx .combo-burst b,
+.lowfx .float-text,
+.lowfx .ult-kanji i,
+.lowfx .ult-total b,
+.lowfx .cutin .banner-text,
+.lowfx .result-en,
+.lowfx .rank-letter,
+.lowfx .special-title b {
+  filter: none !important;
+}
+
 /* ---------- harbour ---------- */
 
 .lowfx .sc-harbor .sc-stars i,
