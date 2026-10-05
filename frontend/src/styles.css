@@ -91,18 +91,24 @@ p {
   background: radial-gradient(ellipse at center, #0b1a30, #000 75%);
 }
 
-.stage {
-  /* centred by position, not by grid/flex: a 1280px item in a narrower
-     window would push its track off screen before the scale shrinks it */
+/* The box the stage is shown in, sized to it in window pixels (see Stage) and
+   centred; the stage is zoomed (or, without zoom, scaled) from its corner. */
+.stage-frame {
   position: absolute;
-  left: 50%;
-  top: 50%;
+  inset: 0;
+  margin: auto;
+}
+
+.stage {
+  position: absolute;
+  left: 0;
+  top: 0;
   width: 1280px;
   height: 720px;
   /* clip, not hidden: nothing (focus, scrollIntoView) may scroll the stage
      towards the off-screen curtain and shift the whole game up */
   overflow: clip;
-  transform-origin: center;
+  transform-origin: 0 0;
   background: var(--navy-900);
   box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
 }

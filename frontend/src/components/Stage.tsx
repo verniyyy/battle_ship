@@ -8,6 +8,14 @@ export const STAGE_H = 720
 // Stage lays the game out on a fixed 1280x720 canvas and scales it to fit the
 // window (letterboxed), the way browser games of this genre do. It also hosts
 // the full-screen effect layers: the shake wrapper, particles and flash.
+//
+// The scaling is CSS zoom, not a scale transform. Under a transform, Safari
+// draws every compositor layer and filter at the unscaled 1280x720 times the
+// device pixel ratio, then shrinks the result: on a phone (scale about 0.5,
+// 3x screen) that is several times the pixels it shows, which took a tab over
+// 2GB on a ten-pull. Zoomed, the stage lays out at the size it is shown.
+// Coordinates still work: fx.center measures against the stage's own box.
+const ZOOM = typeof CSS !== 'undefined' && CSS.supports('zoom', '0.5')
 export function Stage({ children }: { children: ReactNode }) {
   const [view, setView] = useState({ scale: 1, portrait: false })
   const stage = useRef<HTMLDivElement>(null)
@@ -44,12 +52,14 @@ export function Stage({ children }: { children: ReactNode }) {
 
   return (
     <div className="viewport">
-      <div className="stage" ref={stage} style={{ transform: `translate(-50%, -50%) scale(${view.scale})` }}>
-        <div className="shaker" ref={shaker}>
-          {children}
+      <div className="stage-frame" style={{ width: STAGE_W * view.scale, height: STAGE_H * view.scale }}>
+        <div className="stage" ref={stage} style={ZOOM ? { zoom: view.scale } : { transform: `scale(${view.scale})` }}>
+          <div className="shaker" ref={shaker}>
+            {children}
+          </div>
+          <canvas className="fx-canvas" ref={canvas} width={STAGE_W} height={STAGE_H} />
+          <div className="fx-flash" ref={flash} />
         </div>
-        <canvas className="fx-canvas" ref={canvas} width={STAGE_W} height={STAGE_H} />
-        <div className="fx-flash" ref={flash} />
       </div>
       {view.portrait && <div className="rotate-hint">📱↻ 横向きにするとより快適に遊べます</div>}
     </div>
