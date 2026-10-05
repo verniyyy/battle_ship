@@ -537,6 +537,11 @@
   display: none;
 }
 
+/* list cards hold still (see ShipArt's lite) */
+.ship-art.lite svg * {
+  animation: none;
+}
+
 /* tiny cards keep just the aura and rim light */
 @container (max-width: 90px) {
   .art-staging {

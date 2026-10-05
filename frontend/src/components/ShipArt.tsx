@@ -163,7 +163,10 @@ function palette(look: Look) {
 // motion plays the card's motion effect (Card.fx) over the art; for the
 // large showcases only, where it is worth the frames. staged shows the
 // card's staged illustration instead, where one exists (also showcases).
-// lite leaves out the twinkling glints on the water, for long card lists.
+// lite holds the art still, for long card lists: every moving part of a
+// card is a compositor layer of its own (and pulls the parts drawn over it
+// into layers too), which a list of dozens multiplies past what a phone
+// can hold. The staging's motes and sheen, which only exist to move, go.
 // thumb shows the portrait's small copy, for boxes no bigger than a card.
 export function ShipArt({
   look,
@@ -234,7 +237,7 @@ function SceneArt({
   const x0 = 100 - (hull.len * k) / 2
 
   return (
-    <div className={`ship-art r${look.rarity} tier${tier} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${portrait ? 'has-portrait' : ''} ${fx.on ? 'has-fx' : ''} ${className}`}>
+    <div className={`ship-art r${look.rarity} tier${tier} ${look.enemy ? 'enemy' : ''} ${look.boss ? 'boss' : ''} ${portrait ? 'has-portrait' : ''} ${fx.on ? 'has-fx' : ''} ${lite ? 'lite' : ''} ${className}`}>
       <svg viewBox="0 0 200 280" preserveAspectRatio="xMidYMid slice" aria-hidden>
         <defs>
           <linearGradient id={`sky${id}`} x1="0" y1="0" x2="0" y2="1">
@@ -311,7 +314,7 @@ function SceneArt({
       </svg>
       {fx.on && <FxBack fx={fx} />}
       {portrait && <PortraitImg portrait={portrait} frame={frame} thumb={thumb} className="art-portrait" />}
-      {tier >= 2 && <Staging tier={tier} floor={frame === 'full' && !!portrait} />}
+      {tier >= 2 && !lite && <Staging tier={tier} floor={frame === 'full' && !!portrait} />}
       {fx.on && look.fx && <FxFront fx={fx} preset={look.fx} portrait={portrait} frame={frame} />}
     </div>
   )

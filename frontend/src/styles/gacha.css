@@ -328,16 +328,18 @@
 }
 
 /* Speed lines wheeling round the orb, faster and wilder the hotter it is. */
+/* Only as big as the mask leaves visible (it fades out 662px from the centre):
+   it spins, so its whole square is a texture, and a phone pays for every pixel. */
 .roll-bg {
   position: absolute;
   left: 50%;
   top: 46%;
-  width: 1800px;
-  height: 1800px;
-  margin: -900px 0 0 -900px;
+  width: 1328px;
+  height: 1328px;
+  margin: -664px 0 0 -664px;
   background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--orb) 30%, transparent) 0 2deg, transparent 2deg 10deg);
-  -webkit-mask-image: radial-gradient(circle, transparent 6%, #000 18%, transparent 52%);
-  mask-image: radial-gradient(circle, transparent 6%, #000 18%, transparent 52%);
+  -webkit-mask-image: radial-gradient(circle, transparent 76px, #000 229px, transparent 662px);
+  mask-image: radial-gradient(circle, transparent 76px, #000 229px, transparent 662px);
   opacity: 0.45;
   animation: spin 9s linear infinite;
 }

@@ -160,6 +160,11 @@ p {
   pointer-events: auto;
 }
 
+/* Out of the way between scene changes, so it isn't a full-stage layer over everything. */
+.curtain.idle {
+  visibility: hidden;
+}
+
 .curtain-half {
   position: absolute;
   left: 0;
@@ -1523,6 +1528,8 @@ p {
   transform-origin: center;
 }
 
+/* Both are hidden while idle (fx.ts shows them): visible, each would be a
+   full-stage compositor layer, which costs a phone dearly. */
 .fx-canvas {
   position: absolute;
   inset: 0;
@@ -1538,6 +1545,11 @@ p {
   z-index: 91;
   pointer-events: none;
   opacity: 0;
+}
+
+.stage > .fx-canvas,
+.stage > .fx-flash {
+  visibility: hidden;
 }
 
 /* Hit-stop: freeze every CSS animation for a beat on heavy impacts. */

@@ -202,7 +202,6 @@
 }
 
 .sc-harbor .sc-wave-row {
-  top: 0;
   left: 0;
   animation: wave-roll linear infinite;
 }

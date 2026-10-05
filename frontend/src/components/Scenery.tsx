@@ -116,6 +116,10 @@ function crane(x: number, h: number, flip = false) {
   )
 }
 
+// A puff reaches this far above and below its centre (see the ellipses below).
+const PUFF_UP = 42
+const PUFF_DOWN = 20
+
 function Clouds({ seed, y0, y1, count, p }: { seed: number; y0: number; y1: number; count: number; p: Palette }) {
   const r = rng(seed)
   const puffs = Array.from({ length: count }, () => {
@@ -125,8 +129,11 @@ function Clouds({ seed, y0, y1, count, p }: { seed: number; y0: number; y1: numb
     return { cx, cy, w, h: 6 + r() * 14 }
   })
   // Drawn twice, one stage-width apart, so the layer can scroll a full width and loop.
+  // Only the band the puffs fill: the layer moves, so its whole area is a texture.
+  const top = y0 - PUFF_UP
+  const h = y1 - y0 + PUFF_UP + PUFF_DOWN
   return (
-    <svg width={W * 2} height={H} viewBox={`0 0 ${W * 2} ${H}`} aria-hidden>
+    <svg width={W * 2} height={h} viewBox={`0 ${top} ${W * 2} ${h}`} style={{ marginTop: top }} aria-hidden>
       <defs>
         <linearGradient id={`cloud-${seed}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor={p.cloud[0]} />
@@ -296,10 +303,15 @@ function HarborScene() {
         { y: HORIZON + 110, p: 240, a: 7, w: 2, t: 15, o: 0.18 },
         { y: HORIZON + 196, p: 360, a: 11, w: 3, t: 11, o: 0.14 },
       ].map((l, i) => (
-        <div key={i} className={`sc-wave-row ${i % 2 ? 'sc-rev' : ''}`} style={vars({ '--period': `${l.p}px`, animationDuration: `${l.t}s` })}>
-          <svg width={W + l.p * 2} height={H} aria-hidden>
+        // Each row is a strip just tall enough for its line: the layer moves, so its whole area is a texture.
+        <div
+          key={i}
+          className={`sc-wave-row ${i % 2 ? 'sc-rev' : ''}`}
+          style={vars({ '--period': `${l.p}px`, top: l.y - l.a - l.w, animationDuration: `${l.t}s` })}
+        >
+          <svg width={W + l.p * 2} height={2 * (l.a + l.w)} aria-hidden>
             <path
-              d={wave(W + l.p * 2, l.p, l.a, l.y)}
+              d={wave(W + l.p * 2, l.p, l.a, l.a + l.w)}
               stroke="var(--glint)"
               strokeWidth={l.w}
               opacity={l.o}
