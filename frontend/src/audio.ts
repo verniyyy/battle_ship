@@ -334,6 +334,15 @@ const SONGS: Record<Exclude<Track, FileTrack>, Song> = {
   },
 }
 
+interface Recording {
+  el: HTMLAudioElement
+  out: GainNode
+  /** Started once from a gesture, as mobile browsers require before playing it later. */
+  primed: boolean
+  /** Pending pause once its fade-out ends. */
+  stop?: number
+}
+
 interface Channels {
   out: GainNode
   pad: AudioNode
@@ -389,8 +398,8 @@ class AudioEngine {
   private nextTime = 0
   private step = 0
 
-  private recordings = new Map<string, Promise<AudioBuffer | null>>()
-  private recording?: { out: GainNode; src?: AudioBufferSourceNode }
+  private recordings = new Map<string, Recording>()
+  private recording?: Recording
 
   private ambience: Ambience | null = null
   private ambNodes: AudioNode[] = []
@@ -402,6 +411,15 @@ class AudioEngine {
     if (!this.ctx) this.build()
     this.resume()
     void this.pump()
+    // Mobile browsers only let a media element play once it has been started from a
+    // gesture: start every recording here once, and retry one that was refused.
+    for (const rec of this.recordings.values()) {
+      if (!rec.primed) {
+        rec.primed = true
+        if (rec !== this.recording) rec.el.play().then(() => rec !== this.recording && rec.el.pause(), () => (rec.primed = false))
+      }
+    }
+    if (this.recording?.el.paused) this.startRecording(this.recording)
     const t = this.track
     if (t && !this.seqTimer && !this.recording) {
       this.track = null
@@ -477,8 +495,8 @@ class AudioEngine {
     this.echoIn = seaEcho(ctx, this.sfxBus)
 
     this.noiseBufs = { white: this.noiseBuffer('white'), pink: this.noiseBuffer('pink'), brown: this.noiseBuffer('brown') }
-    // Fetched and decoded up front so a battle doesn't open in silence.
-    for (const url of Object.values(FILES).flat()) void this.loadRecording(url)
+    // Set up front so a battle doesn't open in silence.
+    for (const url of Object.values(FILES).flat()) this.loadRecording(url)
   }
 
   /** The context can be suspended after the first gesture (tab switch, device change); wake it on the next one. */
@@ -1708,10 +1726,7 @@ class AudioEngine {
       rec.out.gain.cancelScheduledValues(t)
       rec.out.gain.setValueAtTime(rec.out.gain.value, t)
       rec.out.gain.linearRampToValueAtTime(0, t + Math.max(sec, 0.02))
-      window.setTimeout(() => {
-        rec.src?.stop()
-        rec.out.disconnect()
-      }, (sec + 0.1) * 1000)
+      rec.stop = window.setTimeout(() => rec.el.pause(), (sec + 0.1) * 1000)
     }
     const ch = this.ch
     this.ch = undefined
@@ -1723,41 +1738,49 @@ class AudioEngine {
     window.setTimeout(() => ch.nodes.forEach((n) => n.disconnect()), (sec + 3) * 1000)
   }
 
+  /**
+   * A recording is streamed by a looping media element through the music bus. Decoded
+   * into an AudioBuffer it would sit in memory as raw PCM: well over 100MB per track,
+   * enough for a phone to kill the tab.
+   */
   private loadRecording(url: string) {
-    let buf = this.recordings.get(url)
-    if (!buf) {
-      buf = fetch(url)
-        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
-        .then((data) => this.ctx!.decodeAudioData(data))
-        .catch(() => {
-          this.recordings.delete(url) // try again next time
-          return null
-        })
-      this.recordings.set(url, buf)
+    let rec = this.recordings.get(url)
+    if (!rec) {
+      const ctx = this.ctx!
+      const el = new Audio(url)
+      el.loop = true
+      el.preload = 'auto'
+      const out = ctx.createGain()
+      out.gain.value = 0
+      ctx.createMediaElementSource(el).connect(out).connect(this.musicBus!)
+      rec = { el, out, primed: false }
+      this.recordings.set(url, rec)
     }
-    return buf
+    return rec
   }
 
-  /** Loops a recording, fading it in once it has loaded (unless the music moved on meanwhile). */
+  /** Loops a recording from the top, fading it in once it is playing. */
   private playRecording(url: string) {
-    const ctx = this.ctx!
-    const out = ctx.createGain()
-    out.gain.value = 0
-    out.connect(this.musicBus!)
-    const rec: { out: GainNode; src?: AudioBufferSourceNode } = { out }
+    const rec = this.loadRecording(url)
+    clearTimeout(rec.stop)
     this.recording = rec
-    void this.loadRecording(url).then((buf) => {
-      if (!buf || this.recording !== rec) return
-      const src = ctx.createBufferSource()
-      src.buffer = buf
-      src.loop = true
-      src.connect(out)
-      const t = ctx.currentTime
-      out.gain.setValueAtTime(0, t)
-      out.gain.linearRampToValueAtTime(RECORDING_LEVEL, t + 0.6)
-      src.start(t)
-      rec.src = src
-    })
+    rec.el.currentTime = 0
+    this.startRecording(rec)
+  }
+
+  private startRecording(rec: Recording) {
+    // Refused without a gesture on some phones: unlock() tries again on the next tap.
+    rec.el.play().then(
+      () => {
+        if (this.recording !== rec || !this.ctx) return
+        const g = rec.out.gain
+        const t = this.ctx.currentTime
+        g.cancelScheduledValues(t)
+        g.setValueAtTime(g.value, t)
+        g.linearRampToValueAtTime(RECORDING_LEVEL, t + 0.6)
+      },
+      () => {},
+    )
   }
 
   /** Mixer strips for one song: each instrument has its own level, placement, delay and reverb sends. */

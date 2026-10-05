@@ -10,14 +10,20 @@ for (const { name, boss, roll, file } of [
 ]) {
   test(`${name} loops the recorded ${file} theme`, async ({ page }) => {
     await page.addInitScript((r) => (Math.random = () => r), roll)
-    // Note every buffer the game starts looping, by length.
+    // Note every media element the game plays, and every decode it asks for.
     await page.addInitScript(() => {
-      const w = window as unknown as { loops: number[] }
-      w.loops = []
-      const start = AudioBufferSourceNode.prototype.start
-      AudioBufferSourceNode.prototype.start = function (...args: Parameters<typeof start>) {
-        if (this.loop && this.buffer) w.loops.push(this.buffer.duration)
-        return start.apply(this, args)
+      const w = window as unknown as { media: Set<HTMLMediaElement>; decodes: number }
+      w.media = new Set()
+      w.decodes = 0
+      const play = HTMLMediaElement.prototype.play
+      HTMLMediaElement.prototype.play = function () {
+        w.media.add(this)
+        return play.call(this)
+      }
+      const decode = BaseAudioContext.prototype.decodeAudioData
+      BaseAudioContext.prototype.decodeAudioData = function (...args: Parameters<typeof decode>) {
+        w.decodes++
+        return decode.apply(this, args)
       }
     })
     const p = await newAdmiral(page)
@@ -38,14 +44,15 @@ for (const { name, boss, roll, file } of [
     const res = await bgm
     expect(res.ok()).toBeTruthy()
     expect(res.headers()['content-type']).toContain('audio/mpeg')
-    // What loops is this theme, told apart from the other by its length.
-    const want = await page.evaluate(async (url) => {
-      const data = await (await fetch(url)).arrayBuffer()
-      return (await new OfflineAudioContext(2, 1, 44100).decodeAudioData(data)).duration
-    }, `/bgm/${file}.mp3`)
-    expect(want).toBeGreaterThan(60)
+    // Only this theme keeps playing, on a loop (the others were only started to unlock them).
     await expect
-      .poll(() => page.evaluate(() => (window as unknown as { loops: number[] }).loops))
-      .toContainEqual(expect.closeTo(want, 0.1))
+      .poll(() =>
+        page.evaluate(() =>
+          [...(window as unknown as { media: Set<HTMLMediaElement> }).media].filter((m) => !m.paused).map((m) => `${new URL(m.src).pathname} ${m.loop}`),
+        ),
+      )
+      .toEqual([`/bgm/${file}.mp3 true`])
+    // Streamed, never decoded: a decoded track holds well over 100MB, enough for a phone to drop the tab.
+    expect(await page.evaluate(() => (window as unknown as { decodes: number }).decodes)).toBe(0)
   })
 }
