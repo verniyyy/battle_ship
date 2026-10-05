@@ -272,12 +272,16 @@
   pointer-events: none;
 }
 
+/* In percentages of the box and of the image itself, not cq units: Safari
+   applies the stage's zoom to cq units a second time, which shrank and shifted
+   the figures on every card. */
 .portrait-img.bust {
-  --ih: calc(var(--face-h) / var(--fh) * 100cqh);
-  height: var(--ih);
-  width: calc(var(--ih) * var(--ar));
-  left: calc(50cqw - var(--fx) * var(--ih) * var(--ar));
-  top: calc(var(--face-top) * 100cqh - var(--fy) * var(--ih));
+  height: calc(var(--face-h) / var(--fh) * 100%);
+  width: auto;
+  aspect-ratio: var(--ar);
+  left: 50%;
+  top: calc(var(--face-top) * 100%);
+  translate: calc(var(--fx) * -100%) calc(var(--fy) * -100%);
 }
 
 .portrait-img.full {
@@ -403,9 +407,9 @@
 
 .art-mote {
   position: absolute;
-  width: calc(3.2cqw * var(--s) + 3px);
+  width: calc(3.2% * var(--s) + 3px);
   aspect-ratio: 1;
-  margin: -1cqw 0 0 -1cqw;
+  margin: -1% 0 0 -1%;
   border-radius: 50%;
   background: radial-gradient(closest-side, #fff, var(--fx) 45%, transparent);
   opacity: 0;
@@ -415,7 +419,7 @@
   background: radial-gradient(closest-side, #fff, var(--fx2) 45%, transparent);
 }
 .art-mote.star {
-  width: calc(6cqw * var(--s) + 5px);
+  width: calc(6% * var(--s) + 5px);
   border-radius: 0;
   background: #fff;
   clip-path: polygon(50% 0, 58% 42%, 100% 50%, 58% 58%, 50% 100%, 42% 58%, 0 50%, 42% 42%);

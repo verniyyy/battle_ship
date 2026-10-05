@@ -15,6 +15,10 @@ export const STAGE_H = 720
 // 3x screen) that is several times the pixels it shows, which took a tab over
 // 2GB on a ten-pull. Zoomed, the stage lays out at the size it is shown.
 // Coordinates still work: fx.center measures against the stage's own box.
+// Only when shrinking, where the memory goes: Safari also zooms cq units a
+// second time, so sizes in cq units (the cards' rim light and motes) come
+// out a little off under zoom, and a full-size or larger stage keeps the
+// transform it was drawn for.
 const ZOOM = typeof CSS !== 'undefined' && CSS.supports('zoom', '0.5')
 export function Stage({ children }: { children: ReactNode }) {
   const [view, setView] = useState({ scale: 1, portrait: false })
@@ -53,7 +57,7 @@ export function Stage({ children }: { children: ReactNode }) {
   return (
     <div className="viewport">
       <div className="stage-frame" style={{ width: STAGE_W * view.scale, height: STAGE_H * view.scale }}>
-        <div className="stage" ref={stage} style={ZOOM ? { zoom: view.scale } : { transform: `scale(${view.scale})` }}>
+        <div className="stage" ref={stage} style={ZOOM && view.scale < 1 ? { zoom: view.scale } : { transform: `scale(${view.scale})` }}>
           <div className="shaker" ref={shaker}>
             {children}
           </div>
