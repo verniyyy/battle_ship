@@ -11,6 +11,8 @@
 // <card id>.webp files into frontend/public/portraits (and the staged
 // illustrations of high-rarity cards into its staged/ folder) and records
 // their framing metadata in manifest.json there, which the frontend reads.
+// Each portrait also gets a scaled-down copy in thumb/ for cards and map
+// tokens (made with cwebp; `thumbs` remakes them for what is installed).
 package main
 
 import (
@@ -25,9 +27,11 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/verniyyy/battle_ship/backend/internal/meta"
@@ -36,6 +40,7 @@ import (
 const usage = `usage:
   portraits kit    [-out file] [-only ids]   bundle the generator and prompts for the GPU notebook
   portraits import [-dir dir] portraits.zip  install finished portraits and update manifest.json
+  portraits thumbs [-dir dir]                remake the small copies of the installed portraits
 `
 
 func main() {
@@ -50,6 +55,8 @@ func main() {
 		err = kitCmd(args)
 	case "import":
 		err = importCmd(args)
+	case "thumbs":
+		err = thumbsCmd(args)
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
@@ -346,6 +353,9 @@ type Portrait struct {
 	Face []float64 `json:"face"`
 	// The portrait set in its scene, for showcase screens; high rarities only.
 	Staged *Staged `json:"staged,omitempty"`
+	// The same image scaled down to thumbHeight, for cards, map tokens and
+	// faces. Same framing, so the face box applies to it too.
+	Thumb string `json:"thumb,omitempty"`
 }
 
 // Staged is a staged illustration: the portrait over a painted backdrop,
@@ -435,6 +445,7 @@ func install(zipPath, dir string) (int, error) {
 			return n, err
 		}
 		entry := Portrait{File: id + ".webp?v=" + sum[:10], W: p.W, H: p.H, Face: p.Face}
+		entry.Thumb = thumbOf(dir, id, p.H)
 		// A new portrait makes the old staged illustration stale: it goes
 		// unless the zip brings a new one.
 		stagedFile := filepath.Join(dir, "staged", id+".webp")
@@ -454,6 +465,67 @@ func install(zipPath, dir string) (int, error) {
 		n++
 	}
 	return n, writeManifest(dir, m)
+}
+
+// ---- thumbnails ----
+
+// Cards show a portrait a few hundred pixels tall at most, but a browser
+// holds every image it shows decoded at full size: about 7MB for a
+// 1100x1600 portrait, which a roster or a ten-pull multiplies past what a
+// phone allows a tab. Small boxes load this copy instead (a quarter of it).
+const thumbHeight = 800
+
+// shrink writes src scaled to height h as WebP to dst.
+var shrink = func(src, dst string, h int) error {
+	out, err := exec.Command("cwebp", "-quiet", "-q", "84", "-alpha_q", "90", "-m", "6", "-resize", "0", strconv.Itoa(h), src, "-o", dst).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("cwebp: %w: %s", err, out)
+	}
+	return nil
+}
+
+// thumbOf makes the small copy of an installed portrait and returns its
+// manifest path, or "" when the portrait is small already or cwebp failed
+// (the frontend then uses the portrait itself).
+func thumbOf(dir, id string, h int) string {
+	dst := filepath.Join(dir, "thumb", id+".webp")
+	os.Remove(dst)
+	if h <= thumbHeight {
+		return ""
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		log.Printf("thumb %s: %v", id, err)
+		return ""
+	}
+	if err := shrink(filepath.Join(dir, id+".webp"), dst, thumbHeight); err != nil {
+		log.Printf("thumb %s: %v (is cwebp installed? it is in the nix dev shell)", id, err)
+		os.Remove(dst)
+		return ""
+	}
+	buf, err := os.ReadFile(dst)
+	if err != nil {
+		log.Printf("thumb %s: %v", id, err)
+		return ""
+	}
+	sum := sha256.Sum256(buf)
+	return "thumb/" + id + ".webp?v=" + hex.EncodeToString(sum[:])[:10]
+}
+
+func thumbsCmd(args []string) error {
+	fs := flag.NewFlagSet("thumbs", flag.ExitOnError)
+	dir := fs.String("dir", "../frontend/public/portraits", "frontend portrait directory")
+	fs.Parse(args)
+	m := readManifest(*dir)
+	n := 0
+	for id, p := range m.Portraits {
+		p.Thumb = thumbOf(*dir, id, p.H)
+		if p.Thumb != "" {
+			n++
+		}
+		m.Portraits[id] = p
+	}
+	log.Printf("made %d thumbnail(s) in %s", n, filepath.Join(*dir, "thumb"))
+	return writeManifest(*dir, m)
 }
 
 func readJSON(f *zip.File, v any) error {
@@ -477,6 +549,11 @@ func readManifest(dir string) manifest {
 				if p.Staged != nil {
 					if file, _, _ := strings.Cut(p.Staged.File, "?"); !exists(filepath.Join(dir, file)) {
 						p.Staged = nil
+					}
+				}
+				if p.Thumb != "" {
+					if file, _, _ := strings.Cut(p.Thumb, "?"); !exists(filepath.Join(dir, file)) {
+						p.Thumb = ""
 					}
 				}
 				m.Portraits[id] = p
