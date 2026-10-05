@@ -34,6 +34,10 @@ export interface Portrait {
   // The staged illustration (SR and up, where one has been painted): the
   // same figure over a painted background with its effects, opaque.
   staged?: Portrait
+  // The same image scaled down, for small boxes (cards, map tokens, faces):
+  // a browser keeps every image decoded at full size, which long lists
+  // multiply past what a phone allows a tab.
+  thumb?: string
 }
 
 interface ManifestArt {
@@ -45,7 +49,7 @@ interface ManifestArt {
 
 interface PortraitManifest {
   version: 2
-  portraits: Record<string, ManifestArt & { staged?: ManifestArt }>
+  portraits: Record<string, ManifestArt & { staged?: ManifestArt; thumb?: string }>
 }
 
 const artOf = (p: ManifestArt): Portrait => ({ src: `${PORTRAITS}/${p.file}`, w: p.w, h: p.h, face: p.face ?? undefined })
@@ -93,7 +97,7 @@ export function AssetProvider({ children }: { children: ReactNode }) {
     ]).then(([legacy, ui, portraits]) => {
       const art = new Map<string, Portrait>()
       for (const [id, p] of Object.entries(portraits?.portraits ?? {})) {
-        art.set(id, { ...artOf(p), staged: p.staged && artOf(p.staged) })
+        art.set(id, { ...artOf(p), staged: p.staged && artOf(p.staged), thumb: p.thumb ? `${PORTRAITS}/${p.thumb}` : undefined })
       }
       setPacks({ legacy: !!legacy, ui: !!ui, portraits: art, ready: true })
     })

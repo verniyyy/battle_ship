@@ -54,7 +54,7 @@ export function Enlist({ onDone }: { onDone: () => void }) {
         </header>
         <div className="modal-body">
           <div className="profile-head">
-            <div className="profile-face">{portrait ? <PortraitImg portrait={portrait} frame="bust" /> : '⚓'}</div>
+            <div className="profile-face">{portrait ? <PortraitImg portrait={portrait} frame="bust" thumb /> : '⚓'}</div>
             <div className="profile-fields">
               <p className="enlist-greet">
                 {secCard ? <b>{secCard.name}</b> : '秘書艦'}「はじめまして。提督のお名前を教えてください」

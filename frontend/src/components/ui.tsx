@@ -46,7 +46,7 @@ export function ShipToken({ look, no, sunk, spotted, marked }: { look: Look; no:
       style={{ ['--c' as string]: look.enemy ? undefined : look.color }}
     >
       <span className="token-disc">
-        {portrait ? <PortraitImg portrait={portrait} frame="bust" className="token-face" /> : <span className="token-kanji">{look.enemy && look.boss ? '王' : KANJI[look.cls]}</span>}
+        {portrait ? <PortraitImg portrait={portrait} frame="bust" thumb className="token-face" /> : <span className="token-kanji">{look.enemy && look.boss ? '王' : KANJI[look.cls]}</span>}
       </span>
       <span className="token-no">{no}</span>
       {portrait && <span className="token-class">{KANJI[look.cls]}</span>}
@@ -99,7 +99,7 @@ export function CardView({
   const Tag = onClick ? 'button' : 'div'
   return (
     <Tag className={`card card-${size} r${look.rarity} ${className}`} onClick={onClick} type={onClick ? 'button' : undefined}>
-      <ShipArt look={look} motion={motion} lite={lite} />
+      <ShipArt look={look} motion={motion} lite={lite} thumb={size !== 'lg'} />
       <span className="card-shine" />
       <span className="card-top">
         <RarityBadge r={look.rarity} />
