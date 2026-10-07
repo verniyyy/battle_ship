@@ -502,7 +502,7 @@ function ProfileDialog({ profile, onClose }: { profile: Profile; onClose: () => 
   return (
     <Modal title="提督プロフィール" onClose={onClose} wide className="profile-modal">
       <div className="profile-head">
-        <div className="profile-face">{portrait ? <PortraitImg portrait={portrait} frame="bust" /> : '⚓'}</div>
+        <div className="profile-face">{portrait ? <PortraitImg portrait={portrait} frame="bust" thumb /> : '⚓'}</div>
         <div className="profile-fields">
           <label>
             <span>

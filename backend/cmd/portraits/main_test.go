@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -269,5 +270,62 @@ func TestStageIsForHighRaritiesAndAllowsItsEffects(t *testing.T) {
 	}
 	if staged == 0 {
 		t.Error("no card has a stage")
+	}
+}
+
+// Each tall portrait gets a small copy for cards, recorded in the manifest;
+// one that fails to shrink falls back to the portrait itself.
+func TestInstallMakesThumbnails(t *testing.T) {
+	dir := t.TempDir()
+	saved := shrink
+	defer func() { shrink = saved }()
+	shrink = func(src, dst string, h int) error {
+		if h != thumbHeight {
+			t.Errorf("shrink to %d, want %d", h, thumbHeight)
+		}
+		if strings.Contains(src, "dd_asanagi") {
+			return fmt.Errorf("broken")
+		}
+		buf, err := os.ReadFile(src)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(dst, append([]byte("small "), buf...), 0o644)
+	}
+	pack := writeZip(t, map[string]string{
+		"bb_kurogane.webp": "one",
+		"dd_asanagi.webp":  "two",
+		"ss_kaien.webp":    "three",
+		"portraits.json": `{"bb_kurogane": {"w": 900, "h": 1500, "face": [0.4, 0.1, 0.6, 0.2]},
+			"dd_asanagi": {"w": 800, "h": 1400, "face": [0.45, 0.12, 0.62, 0.22]},
+			"ss_kaien": {"w": 500, "h": 700, "face": [0.45, 0.12, 0.62, 0.22]}}`,
+	})
+	if _, err := install(pack, dir); err != nil {
+		t.Fatal(err)
+	}
+	m := readManifest(dir)
+	if th := m.Portraits["bb_kurogane"].Thumb; !strings.HasPrefix(th, "thumb/bb_kurogane.webp?v=") {
+		t.Errorf("bb_kurogane thumb = %q", th)
+	}
+	if buf, _ := os.ReadFile(filepath.Join(dir, "thumb", "bb_kurogane.webp")); string(buf) != "small one" {
+		t.Errorf("thumb file = %q", buf)
+	}
+	if th := m.Portraits["dd_asanagi"].Thumb; th != "" || exists(filepath.Join(dir, "thumb", "dd_asanagi.webp")) {
+		t.Errorf("failed shrink left thumb %q", th)
+	}
+	if th := m.Portraits["ss_kaien"].Thumb; th != "" {
+		t.Errorf("small portrait got a thumb %q", th)
+	}
+
+	// A thumbnail deleted by hand drops out of the manifest; thumbs remakes it.
+	os.Remove(filepath.Join(dir, "thumb", "bb_kurogane.webp"))
+	if th := readManifest(dir).Portraits["bb_kurogane"].Thumb; th != "" {
+		t.Errorf("missing thumb kept: %q", th)
+	}
+	if err := thumbsCmd([]string{"-dir", dir}); err != nil {
+		t.Fatal(err)
+	}
+	if th := readManifest(dir).Portraits["bb_kurogane"].Thumb; th == "" {
+		t.Error("thumbs did not remake the thumbnail")
 	}
 }

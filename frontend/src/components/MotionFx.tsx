@@ -9,6 +9,7 @@
 //   storm - slanting rain in two depths, lightning striking behind her
 //           that flashes the scene and lights her from the bolt's side
 import { useEffect, useRef, type CSSProperties, type RefObject } from 'react'
+import { liteFx } from '../gfx'
 import type { FxPreset } from '../types'
 import type { Frame } from './ShipArt'
 import type { Portrait } from '../theme'
@@ -31,7 +32,8 @@ export function useMotionFx(preset: FxPreset | undefined): FxRefs & { on: boolea
     light: useRef<HTMLDivElement>(null),
     flash: useRef<HTMLDivElement>(null),
   }
-  const on = !!preset && !reducedMotion()
+  // Two canvases redrawn every frame over a full-size portrait: too much for a phone (see gfx.ts).
+  const on = !!preset && !reducedMotion() && !liteFx()
   useEffect(() => {
     const back = refs.back.current
     const front = refs.front.current

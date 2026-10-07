@@ -1,6 +1,8 @@
 // Screen-space juice: a canvas particle system laid over the whole stage, plus
 // shake, hit-stop and flash helpers. Coordinates are stage pixels (1280x720).
 
+import { liteFx } from './gfx'
+
 type Kind = 'spark' | 'ember' | 'smoke' | 'debris' | 'ring' | 'glow' | 'drop' | 'confetti' | 'star' | 'coin' | 'bubble' | 'ray' | 'shard'
 
 interface Particle {
@@ -84,8 +86,10 @@ class FxEngine {
       additive: true,
       ...p,
     })
-    if (this.parts.length > 1400) this.parts.splice(0, this.parts.length - 1400)
+    const cap = liteFx() ? 600 : 1400
+    if (this.parts.length > cap) this.parts.splice(0, this.parts.length - cap)
     if (!this.raf) {
+      this.canvas!.style.visibility = 'visible'
       this.last = performance.now()
       this.raf = requestAnimationFrame(this.tick)
     }
@@ -360,7 +364,8 @@ class FxEngine {
   }
 
   flash(color = '#fff', ms = 260, opacity = 0.8) {
-    this.flashEl?.animate([{ background: color, opacity }, { background: color, opacity: 0 }], { duration: ms, easing: 'ease-out' })
+    // Hidden between flashes (see .fx-flash), so it isn't a full-stage layer the whole time.
+    this.flashEl?.animate([{ background: color, opacity, visibility: 'visible' }, { background: color, opacity: 0, visibility: 'visible' }], { duration: ms, easing: 'ease-out' })
   }
 
   /** Zoom punch on the shaker (camera kick). */
@@ -413,7 +418,11 @@ class FxEngine {
     ctx.globalCompositeOperation = 'source-over'
     ctx.globalAlpha = 1
     if (alive.length) this.raf = requestAnimationFrame(this.tick)
-    else this.raf = 0
+    else {
+      this.raf = 0
+      // An idle canvas still costs a full-stage compositor layer; hide it until the next burst.
+      this.canvas.style.visibility = 'hidden'
+    }
   }
 
   private draw(ctx: CanvasRenderingContext2D, p: Particle) {

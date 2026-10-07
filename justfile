@@ -25,6 +25,10 @@ e2e *args:
 logs *service:
     docker compose logs -f {{service}}
 
+# Remake the small copies of the installed portraits that cards and map tokens load (run inside `nix develop`)
+portrait-thumbs:
+    cd backend && go run ./cmd/portraits thumbs
+
 # Render the link-preview image (frontend/public/og.png) from scripts/og.html and the local portraits
 og: (shot "scripts/og.html" "1200,630" "frontend/public/og.png")
 

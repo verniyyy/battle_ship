@@ -29,7 +29,7 @@ export function ShipPlate({
       data-plate={`${enemy ? 'e' : 'p'}${ship.id}`}
     >
       <span className="plate-art">
-        <ShipArt look={look} showKanji={false} />
+        <ShipArt look={look} showKanji={false} thumb />
         <span className="plate-no">{ship.id + 1}</span>
       </span>
       <span className="plate-body">

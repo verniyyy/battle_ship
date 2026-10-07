@@ -29,7 +29,7 @@ export function FriendFace({ secretary, big }: { secretary: string; big?: boolea
   const packs = useAssets()
   const c = card(secretary)
   const portrait = c ? portraitOf(lookOfCard(c), packs) : undefined
-  return <span className={`friend-face ${big ? 'big' : ''}`}>{portrait ? <PortraitImg portrait={portrait} frame="bust" /> : '⚓'}</span>
+  return <span className={`friend-face ${big ? 'big' : ''}`}>{portrait ? <PortraitImg portrait={portrait} frame="bust" thumb /> : '⚓'}</span>
 }
 
 export function Friends({ onBack }: { onBack: () => void }) {

@@ -69,9 +69,13 @@ export function Title({ onStart }: { onStart: () => void }) {
       <div className="title-logo">
         <p className="title-kicker">NAVAL TACTICS × FLEET COLLECTION</p>
         <h1>
-          <span className="title-jp">蒼海戦記</span>
+          <span className="title-jp" data-text="蒼海戦記">
+            <span>蒼海戦記</span>
+          </span>
           <span className="title-en">
-            <span>BATTLE SHIP</span>
+            <span data-text="BATTLE SHIP">
+              <span>BATTLE SHIP</span>
+            </span>
           </span>
         </h1>
         <p className="title-sub">見えざる艦隊を、撃滅せよ。</p>
