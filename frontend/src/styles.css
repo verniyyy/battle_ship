@@ -40,6 +40,13 @@ body,
   background: #000;
 }
 
+/* iOS enlarges text when the phone turns sideways; the stage is laid out to
+   the pixel, so text keeps the size it is given */
+html {
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   -webkit-tap-highlight-color: transparent;
   user-select: none;
