@@ -85,8 +85,9 @@ export type Channel = 'bgm' | 'se'
 // normalised, which voice it from end to end: the air the cut-in comes in on, the cards
 // sweeping in, the charge (a bright riser over a low one) that snaps off on the whiteout,
 // the hit and the quake under it, the title's slams, the breath before the guns, the
-// salvo, each ship's gun and the roll, then the finale's hit, blast and the sea going
-// up, its sub and echo, and the tally's thud.
+// salvo, each ship's gun and the roll, then the finale's hit and blast, the thunder of
+// the fleet's shells rolling on, its sub and echo, and the tally's thud. All of it is
+// gunfire and explosions: no energy-weapon sounds, which read as beams, not shells.
 const CLIPS = [
   'open',
   'card',
@@ -104,7 +105,7 @@ const CLIPS = [
   'roll',
   'finale',
   'blast',
-  'eruption',
+  'thunder',
   'rumble',
   'echo',
   'tally',

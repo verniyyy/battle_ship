@@ -610,15 +610,16 @@ export function Battle({
     const label = !total ? (mine ? '敵影なし……' : '被害なし！') : mine ? ['命中！', 'GREAT!!', 'EXCELLENT!!!', 'ANNIHILATION!!!!'][tier] : ['被弾', '被害拡大！', '被害甚大！！', '壊滅的打撃……'][tier]
     setUlt({ enemy: !mine, aim, blast: cells })
     setTally(null)
-    // Ours clears the board's ringing out of the way for the finale: a hit, the blast and
-    // the sea going up, its sub under them and a last echo rolling off the horizon.
+    // Ours clears the board's ringing out of the way for the finale: a hit and the blast,
+    // the fleet's shells thundering on with the sub under them, and a last echo rolling
+    // off the horizon.
     if (mine) {
       audio.spotlight(0.3, 0.3, 0.9)
       audio.focus(0.15, 0.03)
       audio.cue([
         ['finale', { pan: panOf(aim) * 0.5, vol: 1.8, hero: true }],
         ['blast', { vol: 1.6, send: 0.1, hero: true }],
-        ['eruption', { at: 0.05, vol: 2.2, hero: true }],
+        ['thunder', { at: 0.05, vol: 1.8, hero: true }],
         ['rumble', { vol: 1.2, hero: true }],
         ['echo', { at: 0.9, vol: 0.6, send: 0.1, hero: true }],
       ])
