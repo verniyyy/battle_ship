@@ -733,8 +733,9 @@ export function Battle({
           // snaps off into the whiteout's hit and quake, and the title stamps down after it.
           audio.focus(0.2)
           const cards = crew.map((_, i): [Clip, CueOpts] => ['card', { at: (0.1 + i * 0.16) * k, pan: side(i), vol: 0.06, rate: 1 + i * 0.04 }])
-          // The first character lands inside the hit; the other three get a slam each, climbing.
-          const stamps = [1, 2, 3].map((i): [Clip, CueOpts] => ['stamp', { at: (1.16 + i * 0.1) * k, pan: (i - 2) * 0.25, vol: 0.4 + i * 0.12, rate: 0.94 + i * 0.06 }])
+          // The first character lands inside the hit; the other three get a slam each, climbing:
+          // a recorded hit under the synthesised drum (ultstamp), which carries the snap.
+          const stamps = [1, 2, 3].map((i): [Clip, CueOpts] => ['stamp', { at: (1.16 + i * 0.1) * k, pan: (i - 2) * 0.25, vol: 0.25 + i * 0.08, rate: 0.94 + i * 0.06 }])
           cue = audio.cue([
             ['open', { vol: 2 }],
             ...cards,
@@ -746,6 +747,7 @@ export function Battle({
           ])
           // Each ship's radar locks on as its card lands.
           crew.forEach((_, i) => at(250 + i * 160, () => lock(i)))
+          for (let i = 1; i < 4; i++) at(1160 + i * 100, () => audio.play('ultstamp', { pitch: i }))
           // Once the title is down the music comes back up a little, so the hold before the
           // lock-on is a breath, not dead air.
           at(1600, () => audio.focus(0.35, 0.8))

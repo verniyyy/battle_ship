@@ -58,6 +58,7 @@ export type Sfx =
   | 'alert'
   | 'menace'
   | 'ultcharge'
+  | 'ultstamp'
   | 'ultboom'
   | 'order'
   | 'bosun'
@@ -82,12 +83,12 @@ export type Ambience = 'clear' | 'fog' | 'storm' | 'night'
 export type Channel = 'bgm' | 'se'
 
 // Recorded clips for our all-fleet barrage (frontend/public/se/ult), trimmed and peak
-// normalised, which voice it with the radar's synthesised lock-on beeps: the air the
-// cut-in comes in on, the cards sweeping in, the charge (a bright riser over a low one)
-// that snaps off on the whiteout, the hit and the quake under it, the title's slams
-// (one of which also lands the tally), the breath before the guns, the salvo, each
-// ship's gun and the roll, then the finale's hit and blast, the thunder of the fleet's
-// shells rolling on, its sub and echo. No energy-weapon sounds: they read as beams.
+// normalised, which voice it with the synthesised radar beeps and title drums: the
+// air the cut-in comes in on, the cards sweeping in, the charge (a bright riser over a
+// low one) that snaps off on the whiteout, the hit and the quake under it, the title's
+// slams (one of which also lands the tally), the breath before the guns, the salvo,
+// each ship's gun and the roll, then the finale's hit and blast, the thunder of the
+// fleet's shells rolling on, its sub and echo. No energy-weapon sounds: they read as beams.
 const CLIPS = [
   'open',
   'card',
@@ -1536,6 +1537,20 @@ class AudioEngine {
         if (!far) {
           const sides = [-0.6, 0.6].map((p) => this.out(this.sfxBus!, { pan: p, send: 0.55, vol: level }))
           ;[81, 85, 88, 93, 97, 100].forEach((n, i) => this.bell(sides[i % 2], hit + 0.05 + i * 0.05, n, 0.05, 0.6))
+        }
+        break
+      }
+      case 'ultstamp': {
+        // The barrage's title stamping down after the hit (pitch: 1..3, the 2nd to 4th
+        // character): taut drum slams that climb, the last one landing with a crash.
+        const k = 0.6 + p * 0.15
+        const d = fx(0.25, { pan: (p - 2) * 0.25 })
+        this.osc(d, t, { f: 150 + p * 18, f2: 60, glide: 0.09, vol: 0.5 * k, dur: 0.22, d: 0.08, drive: 1.6 })
+        this.noise(d, t, { color: 'pink', filter: 'bandpass', f: 1200 + p * 250, q: 1.4, vol: 0.32 * k, dur: 0.035, d: 0.012 })
+        this.noise(d, t, { color: 'brown', f: 1600, f2: 250, vol: 0.4 * k, dur: 0.1, d: 0.04 })
+        if (p >= 3) {
+          this.osc(d, t, { f: 72, f2: 38, glide: 0.2, vol: 0.6, dur: 0.4, d: 0.15, drive: 1.2 })
+          this.cymbal(d, t, 0.12, 1.2)
         }
         break
       }
