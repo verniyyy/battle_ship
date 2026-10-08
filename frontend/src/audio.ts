@@ -1,7 +1,7 @@
 // Procedural sound: almost every effect, the music and the sea ambience are
 // synthesised with Web Audio, so the game is voiced with next to no assets. The
-// exceptions are a few recorded clips (frontend/public/se) for the all-fleet
-// barrage, cued on the audio clock against its cut-in (see cue()).
+// exception is our all-fleet barrage, voiced by recorded clips (frontend/public/se)
+// cued on the audio clock against its cut-in (see cue()).
 //
 // The graph is mixed like a small game soundtrack rather than a set of beeps:
 //
@@ -13,11 +13,12 @@
 //
 // Effects are layered (transient, body, tail), slightly randomised so repeats
 // don't sound mechanical, placed in stereo by where they happen on the board,
-// and big moments duck the music so they land. The few payoffs of the all-fleet
-// barrage go out on a bus of their own (hero) that skips the glue compressor and
-// ducks the other effects, so they stand out of a wall of hits instead of joining it. Gunfire and detonations are the
-// exception to the node graph: they are modelled sample by sample (blast.ts),
-// echoes and tail included, so they barely use the shared hall or the sea echo.
+// and big moments duck the music so they land. The barrage's payoffs go out on a
+// bus of their own (hero) that skips the glue compressor and ducks the other
+// effects, so they stand out of a wall of hits instead of joining it. Gunfire and
+// detonations are the exception to the node graph: they are modelled sample by
+// sample (blast.ts), echoes and tail included, so they barely use the shared hall
+// or the sea echo.
 
 import { blast, blastLength, type BlastOpts } from './blast'
 
@@ -57,8 +58,6 @@ export type Sfx =
   | 'alert'
   | 'menace'
   | 'ultcharge'
-  | 'ultrise'
-  | 'ultstamp'
   | 'ultboom'
   | 'order'
   | 'bosun'
@@ -82,11 +81,34 @@ export type Track = 'home' | 'battle' | 'boss' | 'gacha' | 'win' | 'lose'
 export type Ambience = 'clear' | 'fog' | 'storm' | 'night'
 export type Channel = 'bgm' | 'se'
 
-// Recorded clips for the all-fleet barrage (frontend/public/se/ult), trimmed and peak
-// normalised: the air the cut-in comes in on, the charge that snaps off on the whiteout,
-// the hit and the quake under it, the breath before the guns, the salvo and its roll,
-// and the sub and the echo the finale settles on.
-const CLIPS = ['open', 'charge', 'release', 'quake', 'inhale', 'salvo', 'salvo2', 'roll', 'rumble', 'echo'] as const
+// Recorded clips for our all-fleet barrage (frontend/public/se/ult), trimmed and peak
+// normalised, which voice it from end to end: the air the cut-in comes in on, the cards
+// sweeping in, the charge (a bright riser over a low one) that snaps off on the whiteout,
+// the hit and the quake under it, the title's slams, the breath before the guns, the
+// salvo, each ship's gun and the roll, then the finale's hit, blast and the sea going
+// up, its sub and echo, and the tally's thud.
+const CLIPS = [
+  'open',
+  'card',
+  'charge',
+  'lowcharge',
+  'release',
+  'quake',
+  'stamp',
+  'inhale',
+  'salvo',
+  'salvo2',
+  'gun1',
+  'gun2',
+  'gun3',
+  'roll',
+  'finale',
+  'blast',
+  'eruption',
+  'rumble',
+  'echo',
+  'tally',
+] as const
 export type Clip = (typeof CLIPS)[number]
 
 export interface CueOpts {
@@ -96,6 +118,8 @@ export interface CueOpts {
   endAt?: number
   vol?: number
   pan?: number
+  /** Playback rate: above 1 plays it higher and shorter. */
+  rate?: number
   /** Hall send; the clips carry their own room, so little is needed. */
   send?: number
   /** Swell: start at this fraction of vol and rise to it by the clip's end (a riser that builds). */
@@ -140,10 +164,6 @@ const OUTPUT_LEVEL = 0.6
 // Gunfire and impacts sit this far under the rest of the SE: at the same level as the
 // interface sounds, a salvo drowned the music and was reported as too loud.
 const COMBAT_LEVEL = 0.5
-// Played on the hero bus: past the glue compressor and the effects' duck (spotlight()).
-// Only our own: the enemy's barrage keeps its place in the mix.
-const HERO = new Set<Sfx>(['ultboom'])
-const heroic = (name: Sfx, o: PlayOpts) => HERO.has(name) && !o.far
 const COMBAT = new Set<Sfx>(['cannon', 'shell', 'boom', 'bigboom', 'crit', 'splash', 'miss', 'founder', 'torpedo', 'airstrike', 'dive', 'shellshock'])
 
 /** Slider position (0..1) to gain: squared so the slider moves evenly in loudness, not amplitude. */
@@ -1065,10 +1085,12 @@ class AudioEngine {
     for (const [name, o = {}] of list) {
       const buf = this.clips.get(name)
       if (!buf) continue
+      const rate = o.rate ?? 1
+      const len = buf.duration / rate
       let at = o.at ?? 0
-      let offset = 0
+      let offset = 0 // into the clip, in seconds of playback
       if (o.endAt !== undefined) {
-        at = o.endAt - buf.duration
+        at = o.endAt - len
         if (at < 0) {
           offset = -at
           at = 0
@@ -1078,14 +1100,15 @@ class AudioEngine {
       const out = this.out(o.hero ? this.heroBus! : this.sfxBus!, { pan: o.pan, send: o.send ?? 0.06, vol })
       if (o.from !== undefined) {
         out.gain.setValueAtTime(vol * o.from, t0 + at)
-        out.gain.exponentialRampToValueAtTime(vol, t0 + at + buf.duration - offset)
+        out.gain.exponentialRampToValueAtTime(vol, t0 + at + len - offset)
       }
       const src = ctx.createBufferSource()
       src.buffer = buf
+      src.playbackRate.value = rate
       src.connect(out)
-      src.start(t0 + at, offset)
+      src.start(t0 + at, offset * rate)
       this.group.push(src)
-      this.groupEnd = t0 + at + buf.duration - offset
+      this.groupEnd = t0 + at + len - offset
       this.release()
       voices.push({ src, out, at: t0 + at })
     }
@@ -1202,10 +1225,10 @@ class AudioEngine {
     rev.channelCountMode = 'explicit'
     rev.connect(merge, 0, 2)
 
-    const live = { ctx: this.ctx, sfxBus: this.sfxBus, uiBus: this.uiBus, heroBus: this.heroBus, reverbIn: this.reverbIn, echoIn: this.echoIn, copies: this.copies }
+    const live = { ctx: this.ctx, sfxBus: this.sfxBus, uiBus: this.uiBus, reverbIn: this.reverbIn, echoIn: this.echoIn, copies: this.copies }
     const moves: Take['moves'] = []
     this.ctx = off as unknown as AudioContext
-    this.sfxBus = this.uiBus = this.heroBus = dry
+    this.sfxBus = this.uiBus = dry
     this.reverbIn = rev
     this.echoIn = seaEcho(off, dry)
     this.moves = moves
@@ -1259,7 +1282,7 @@ class AudioEngine {
     src.connect(split)
     split.connect(pair, 0, 0)
     split.connect(pair, 1, 1)
-    pair.connect(this.out(heroic(name, opt) ? this.heroBus! : this.sfxBus!, { pan: opt.pan, panTo: opt.panTo, panT: opt.dur, vol: level }))
+    pair.connect(this.out(this.sfxBus!, { pan: opt.pan, panTo: opt.panTo, panT: opt.dur, vol: level }))
     const rev = ctx.createGain()
     rev.gain.value = level
     split.connect(rev, 2).connect(this.reverbIn!)
@@ -1273,9 +1296,8 @@ class AudioEngine {
     const p = opt.pitch ?? 0
     const pan = opt.pan ?? 0
     const far = !!opt.far
-    const bus = heroic(name, opt) ? this.heroBus! : this.sfxBus!
     const fx = (send: number, extra: { pan?: number; panTo?: number; panT?: number; echo?: number; lp?: number; vol?: number } = {}) =>
-      this.out(bus, { pan, send, ...extra, vol: level * (extra.vol ?? 1) })
+      this.out(this.sfxBus!, { pan, send, ...extra, vol: level * (extra.vol ?? 1) })
     const ui = (send = 0.08) => this.out(this.uiBus!, { pan, send, vol: level })
 
     switch (name) {
@@ -1517,39 +1539,6 @@ class AudioEngine {
         }
         break
       }
-      case 'ultrise': {
-        // Under our barrage's cut-in, with the recorded charge on top: the low end and the
-        // music it lacks, a widening swell over a tightening timpani roll that lands on
-        // the whiteout as a brass stab and a spray of bells. The recorded hit carries the weight.
-        const len = clamp(opt.dur ?? 1.05, 0.3, 2)
-        const d = fx(0.4)
-        for (const shift of [0, 7, 12])
-          this.osc(d, t, { f: midi(33 + shift), f2: midi(64 + shift), glide: len, type: 'sawtooth', voices: 4, spread: 28, width: 0.9, vol: 0.03, a: len * 0.95, dur: len, r: 0.02, lp: 300, lp2: 4500, lpT: len })
-        this.noise(d, t, { color: 'brown', f: 160, vol: 0.18, a: len * 0.95, dur: len, r: 0.02, trem: 0.5, tremRate: 9 })
-        // The roll stays low until the last stretch, so the build keeps climbing into the hit.
-        for (let i = 0; i < 16; i++) this.timpani(d, t + len * (1 - Math.pow(1 - i / 16, 1.5)) * 0.94, 33, 0.02 + 0.18 * Math.pow(i / 16, 2))
-        const hit = t + len
-        this.brass(d, hit, [45, 52, 57, 61, 64, 69], 1.1, 0.05, 4800)
-        this.timpani(d, hit, 33, 0.45)
-        this.cymbal(d, hit, 0.14, 1.6)
-        const sides = [-0.6, 0.6].map((p) => this.out(this.sfxBus!, { pan: p, send: 0.55, vol: level }))
-        ;[81, 85, 88, 93, 97, 100].forEach((n, i) => this.bell(sides[i % 2], hit + 0.04 + i * 0.045, n, 0.05, 0.6))
-        break
-      }
-      case 'ultstamp': {
-        // The barrage's title stamping down after the hit (pitch: 1..3, the 2nd to 4th
-        // character): taut drum slams that climb, the last one landing with a crash.
-        const k = 0.6 + p * 0.15
-        const d = fx(0.25, { pan: (p - 2) * 0.25 })
-        this.osc(d, t, { f: 150 + p * 18, f2: 60, glide: 0.09, vol: 0.5 * k, dur: 0.22, d: 0.08, drive: 1.6 })
-        this.noise(d, t, { color: 'pink', filter: 'bandpass', f: 1200 + p * 250, q: 1.4, vol: 0.32 * k, dur: 0.035, d: 0.012 })
-        this.noise(d, t, { color: 'brown', f: 1600, f2: 250, vol: 0.4 * k, dur: 0.1, d: 0.04 })
-        if (p >= 3) {
-          this.osc(d, t, { f: 72, f2: 38, glide: 0.2, vol: 0.6, dur: 0.4, d: 0.15, drive: 1.2 })
-          this.cymbal(d, t, 0.12, 1.2)
-        }
-        break
-      }
       case 'ultboom': {
         // The barrage's last shells land together: the sea itself goes up, a chain of
         // detonations rolls out to both sides, and the fanfare (or the dirge) rises over it.
@@ -1566,7 +1555,7 @@ class AudioEngine {
           this.brass(d, fan + 0.48, [62, 69, 74, 78], 1.8, 0.055, 5000)
           this.timpani(d, fan + 0.48, 38, 0.6)
           this.cymbal(d, fan + 0.48, 0.25, 2.4)
-          const sides = [-0.7, 0.7].map((p) => this.out(bus, { pan: p, send: 0.6, vol: level }))
+          const sides = [-0.7, 0.7].map((p) => this.out(this.sfxBus!, { pan: p, send: 0.6, vol: level }))
           ;[86, 90, 93, 98, 102, 105, 110].forEach((n, i) => this.bell(sides[i % 2], fan + 0.5 + i * 0.06, n, 0.045, 0.7))
         }
         break

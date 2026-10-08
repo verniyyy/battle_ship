@@ -123,7 +123,8 @@ test('our barrage cues its recorded clips on the cut-in and the salvo', async ({
   const find = (dur: number) => clips.find((c) => Math.abs(c.dur - dur) < 0.02)!
   const open = find(0.57)
   const charge = find(1.34)
-  const release = clips[clips.indexOf(charge) + 1]
+  // The hit is the first clip after the charge that does not start with it.
+  const release = clips.slice(clips.indexOf(charge)).find((c) => c.when > charge.when + 0.5)!
   expect(open && charge && release).toBeTruthy()
   expect(charge.when).toBeCloseTo(open.when, 2)
   expect(charge.when + charge.dur - charge.offset - open.when).toBeCloseTo(1.05, 2)

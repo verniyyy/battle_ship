@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Scene } from '../App'
 import { api, ApiError, duels } from '../api'
-import { audio, type Cue, type PlayOpts, type Sfx } from '../audio'
+import { audio, type Clip, type Cue, type CueOpts, type PlayOpts, type Sfx } from '../audio'
 import { Board, CellOverlay } from '../components/Board'
 import { CutinLayer, DamageTally, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, tallyTier, type Cutin, type Float, type Tally } from '../components/battle'
 import { Backdrop, ShipToken, SoundToggle } from '../components/ui'
@@ -126,6 +126,9 @@ function predictSpecial(g: GameView, ship: ShipView | null, mode: ActionType | n
 }
 
 const SPEED_KEY = 'battleSpeed'
+// Our ships' guns in the barrage: one heavy take each, in turn.
+const GUNS: Clip[] = ['gun1', 'gun2', 'gun3']
+
 function loadSpeed() {
   try {
     const v = Number(localStorage.getItem(SPEED_KEY))
@@ -268,7 +271,6 @@ export function Battle({
       ['bigboom', {}],
       ['evade', {}],
       ['founder', {}],
-      ['ultboom', {}],
       ['ultboom', { far: true }],
     ])
     audio.loadClips()
@@ -545,9 +547,10 @@ export function Battle({
         ['salvo2', { at: 0.7 * k + 0.06, pan: 0.35, vol: 1, hero: true }],
         ['roll', { at: 0.7 * k + 0.12, vol: 0.5, send: 0.12 }],
       ])
+    } else {
+      audio.play('lock', { pan: panOf(aim) })
+      window.setTimeout(() => mounted.current && audio.play('lock', { pan: panOf(aim) }), ms(200))
     }
-    audio.play('lock', { pan: panOf(aim) })
-    window.setTimeout(() => mounted.current && audio.play('lock', { pan: panOf(aim) }), ms(200))
     fx.ring(center.x, center.y, mine ? '#ffe36b' : '#ff5a6a', 260, 0.6)
     await wait(700)
     if (!mounted.current) return
@@ -563,10 +566,12 @@ export function Battle({
         const p = cellPt(s.pos!)
         fx.ring(p.x, p.y, '#fff6c0', 150, 0.35)
         fx.sparkle(p.x, p.y, '#ffd36b', 16, 130)
-        audio.play('cannon', { pan: panOf(s.pos), size: 2, far: !mine })
+        // Ours: each ship's own take of a heavy gun, behind the salvo.
+        if (mine) audio.cue([[GUNS[i % GUNS.length], { pan: panOf(s.pos), vol: 0.6 }]])
+        else audio.play('cannon', { pan: panOf(s.pos), size: 2, far: true })
       }, ms(i * 70)),
     )
-    if (!guns.length) for (let i = 0; i < 3; i++) window.setTimeout(() => mounted.current && audio.play('cannon', { pan: i - 1, size: 2, far: !mine }), ms(i * 70))
+    if (!guns.length && !mine) for (let i = 0; i < 3; i++) window.setTimeout(() => mounted.current && audio.play('cannon', { pan: i - 1, size: 2, far: !mine }), ms(i * 70))
 
     // 3. The shells walk out from the aim: the centre lands first and hardest.
     const source = (i: number, to: { x: number; y: number }) => (guns.length ? cellPt(guns[i % guns.length].pos!) : skyPoint(to))
@@ -605,11 +610,19 @@ export function Battle({
     const label = !total ? (mine ? '敵影なし……' : '被害なし！') : mine ? ['命中！', 'GREAT!!', 'EXCELLENT!!!', 'ANNIHILATION!!!!'][tier] : ['被弾', '被害拡大！', '被害甚大！！', '壊滅的打撃……'][tier]
     setUlt({ enemy: !mine, aim, blast: cells })
     setTally(null)
-    // Ours clears the board's ringing out of the way for the finale, which lands with the
-    // sea's sub under it and a last echo rolling off the horizon to settle on.
-    if (mine) audio.spotlight(0.3, 0.3, 0.9)
-    audio.play('ultboom', { pan: panOf(aim), far: !mine })
-    if (mine) audio.cue([['rumble', { hero: true }], ['echo', { at: 0.7, vol: 0.6, send: 0.1, hero: true }]])
+    // Ours clears the board's ringing out of the way for the finale: a hit, the blast and
+    // the sea going up, its sub under them and a last echo rolling off the horizon.
+    if (mine) {
+      audio.spotlight(0.3, 0.3, 0.9)
+      audio.focus(0.15, 0.03)
+      audio.cue([
+        ['finale', { pan: panOf(aim) * 0.5, vol: 1.8, hero: true }],
+        ['blast', { vol: 1.6, send: 0.1, hero: true }],
+        ['eruption', { at: 0.05, vol: 2.2, hero: true }],
+        ['rumble', { vol: 1.2, hero: true }],
+        ['echo', { at: 0.9, vol: 0.6, send: 0.1, hero: true }],
+      ])
+    } else audio.play('ultboom', { pan: panOf(aim), far: true })
     fx.flash('#fff', 900, 0.95)
     fx.explosion(center.x, center.y, 3, mine ? '#ffd24a' : '#ff3050', 0.2)
     fx.rays(center.x, center.y, mine ? '#fff2a8' : '#ff8090', 24, 1)
@@ -631,9 +644,11 @@ export function Battle({
     await wait(550)
     if (!mounted.current) return
     setUlt({ enemy: !mine, aim, blast: cells, total: { dmg: total, label } })
-    audio.play('stamp')
-    // The fight takes back over: the music comes up as the tally reads.
-    if (mine) audio.unfocus(1.8)
+    if (mine) {
+      audio.cue([['tally', { vol: 0.9 }]])
+      // The fight takes back over: the music comes up as the tally reads.
+      audio.unfocus(1.8)
+    } else audio.play('stamp')
     fx.shake(12, 300)
     await wait(1700)
     if (mounted.current) setUlt(null)
@@ -705,7 +720,8 @@ export function Battle({
       // Beats still to come when the cut-in is tapped through are dropped with it.
       let over = false
       const at = (n: number, f: () => void) => window.setTimeout(() => mounted.current && !over && f(), ms(n))
-      const lock = (i: number) => audio.play('lock', { pan: (i / Math.max(crew.length - 1, 1)) * 1.2 - 0.6 })
+      const side = (i: number) => (i / Math.max(crew.length - 1, 1)) * 1.2 - 0.6
+      const lock = (i: number) => audio.play('lock', { pan: side(i) })
       let cue: Cue | undefined
       let started = false
       const begin = () => {
@@ -713,19 +729,24 @@ export function Battle({
         started = true
         if (mine) {
           // Pull in, charge, release, on the cut-in's beats (battle.css, scaled by k): the music
-          // drops away as the air rushes in, each ship locks on as its card lands, the charge
+          // drops away as the air rushes in, each card sweeps in on its own rush, the charge
           // snaps off into the whiteout's hit and quake, and the title stamps down after it.
           audio.focus(0.2)
+          const cards = crew.map((_, i): [Clip, CueOpts] => ['card', { at: (0.1 + i * 0.16) * k, pan: side(i), vol: 0.06, rate: 1 + i * 0.04 }])
+          // The first character lands inside the hit; the other three get a slam each, climbing.
+          const stamps = [1, 2, 3].map((i): [Clip, CueOpts] => ['stamp', { at: (1.16 + i * 0.1) * k, pan: (i - 2) * 0.25, vol: 0.4 + i * 0.12, rate: 0.94 + i * 0.06 }])
           cue = audio.cue([
             ['open', { vol: 2 }],
+            ...cards,
             ['charge', { endAt: 1.05 * k, vol: 0.5, from: 0.12 }],
+            ['lowcharge', { endAt: 1.05 * k, vol: 0.3, from: 0.03 }],
             ['release', { at: 1.05 * k, vol: 1.4, hero: true }],
             ['quake', { at: 1.05 * k, vol: 0.9, send: 0.1, hero: true }],
+            ...stamps,
           ])
-          audio.play('ultrise', { dur: 1.05 * k })
-          crew.forEach((_, i) => at(250 + i * 160, () => lock(i)))
-          // The first character lands inside the hit; the other three get a slam each.
-          for (let i = 1; i < 4; i++) at(1160 + i * 100, () => audio.play('ultstamp', { pitch: i }))
+          // Once the title is down the music comes back up a little, so the hold before the
+          // lock-on is a breath, not dead air.
+          at(1600, () => audio.focus(0.35, 0.8))
         } else {
           audio.play('ultcharge', { dur: ms(1050) / 1000, far: true })
           crew.forEach((_, i) => at(100 + i * 160, () => lock(i)))
