@@ -98,6 +98,41 @@ test('the all-fleet barrage previews 13 cells and plays out as a finishing move'
   await expect(page.locator('.battle-log li').first()).toContainText('全艦斉射')
 })
 
+// The barrage's recorded clips are placed on the audio clock from the cut-in's first
+// frame (battle.css beats at speed 1): the charge is cut so it snaps off on the
+// whiteout at 1.05s, where the hit lands, and the breath before the guns ends as they fire.
+test('our barrage cues its recorded clips on the cut-in and the salvo', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { clips: { when: number; offset: number; dur: number }[] }
+    w.clips = []
+    const start = AudioBufferSourceNode.prototype.start
+    AudioBufferSourceNode.prototype.start = function (when = 0, offset = 0, ...rest: number[]) {
+      // Modelled and baked sounds run at 24kHz; the clips are decoded at the context's rate.
+      if (this.buffer && !this.loop && this.buffer.sampleRate !== 24000) w.clips.push({ when, offset, dur: this.buffer.duration })
+      return start.call(this, when, offset, ...rest)
+    }
+  })
+  await doctor(page, 'player')
+  await deploy(page)
+  await page.locator('.cmd-btn.ultimate').click()
+  await cell(page, 2, 2).click()
+  await page.locator('.cmd-btn.go').click()
+  await expect(page.locator('.ult-total')).toBeVisible({ timeout: 15_000 })
+
+  const clips = await page.evaluate(() => (window as unknown as { clips: { when: number; offset: number; dur: number }[] }).clips)
+  const find = (dur: number) => clips.find((c) => Math.abs(c.dur - dur) < 0.02)!
+  const open = find(0.57)
+  const charge = find(1.34)
+  const release = clips[clips.indexOf(charge) + 1]
+  expect(open && charge && release).toBeTruthy()
+  expect(charge.when).toBeCloseTo(open.when, 2)
+  expect(charge.when + charge.dur - charge.offset - open.when).toBeCloseTo(1.05, 2)
+  expect(release.when - open.when).toBeCloseTo(1.05, 2)
+  const inhale = find(1.06)
+  const salvo = clips[clips.indexOf(inhale) + 1]
+  expect(inhale.when + inhale.dur - inhale.offset).toBeCloseTo(salvo.when, 2)
+})
+
 test("the enemy's all-fleet barrage gets the red treatment", async ({ page }) => {
   await doctor(page, 'cpu')
   await deploy(page)

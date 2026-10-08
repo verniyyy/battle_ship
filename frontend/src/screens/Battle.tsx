@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Scene } from '../App'
 import { api, ApiError, duels } from '../api'
-import { audio, type PlayOpts, type Sfx } from '../audio'
+import { audio, type Cue, type PlayOpts, type Sfx } from '../audio'
 import { Board, CellOverlay } from '../components/Board'
 import { CutinLayer, DamageTally, flyPlane, flyShell, FloatText, GaugeBar, runTorpedo, ShipPlate, tallyTier, type Cutin, type Float, type Tally } from '../components/battle'
 import { Backdrop, ShipToken, SoundToggle } from '../components/ui'
@@ -271,6 +271,7 @@ export function Battle({
       ['ultboom', {}],
       ['ultboom', { far: true }],
     ])
+    audio.loadClips()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [speed])
 
@@ -312,6 +313,7 @@ export function Battle({
     }
     return () => {
       mounted.current = false
+      audio.unfocus(0.5)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -531,8 +533,19 @@ export function Battle({
     const hot = mine ? '#ffb347' : '#ff5a4e'
     const byCell = (p: Pos) => shots.find((s) => samePos(s.target, p))
 
-    // 1. Lock on.
+    // 1. Lock on. Ours draws a breath that cuts off as the guns go, and the salvo
+    // rolls out over the board with the music let back in a little under it.
     setUlt({ enemy: !mine, aim })
+    if (mine) {
+      const k = 1 / speedRef.current
+      audio.focus(0.35, 0.6)
+      audio.cue([
+        ['inhale', { endAt: 0.7 * k, vol: 0.5 }],
+        ['salvo', { at: 0.7 * k, pan: -0.35, vol: 1.3, hero: true }],
+        ['salvo2', { at: 0.7 * k + 0.06, pan: 0.35, vol: 1, hero: true }],
+        ['roll', { at: 0.7 * k + 0.12, vol: 0.5, send: 0.12 }],
+      ])
+    }
     audio.play('lock', { pan: panOf(aim) })
     window.setTimeout(() => mounted.current && audio.play('lock', { pan: panOf(aim) }), ms(200))
     fx.ring(center.x, center.y, mine ? '#ffe36b' : '#ff5a6a', 260, 0.6)
@@ -592,7 +605,11 @@ export function Battle({
     const label = !total ? (mine ? '敵影なし……' : '被害なし！') : mine ? ['命中！', 'GREAT!!', 'EXCELLENT!!!', 'ANNIHILATION!!!!'][tier] : ['被弾', '被害拡大！', '被害甚大！！', '壊滅的打撃……'][tier]
     setUlt({ enemy: !mine, aim, blast: cells })
     setTally(null)
+    // Ours clears the board's ringing out of the way for the finale, which lands with the
+    // sea's sub under it and a last echo rolling off the horizon to settle on.
+    if (mine) audio.spotlight(0.3, 0.3, 0.9)
     audio.play('ultboom', { pan: panOf(aim), far: !mine })
+    if (mine) audio.cue([['rumble', { hero: true }], ['echo', { at: 0.7, vol: 0.6, send: 0.1, hero: true }]])
     fx.flash('#fff', 900, 0.95)
     fx.explosion(center.x, center.y, 3, mine ? '#ffd24a' : '#ff3050', 0.2)
     fx.rays(center.x, center.y, mine ? '#fff2a8' : '#ff8090', 24, 1)
@@ -615,6 +632,8 @@ export function Battle({
     if (!mounted.current) return
     setUlt({ enemy: !mine, aim, blast: cells, total: { dmg: total, label } })
     audio.play('stamp')
+    // The fight takes back over: the music comes up as the tally reads.
+    if (mine) audio.unfocus(1.8)
     fx.shake(12, 300)
     await wait(1700)
     if (mounted.current) setUlt(null)
@@ -682,12 +701,49 @@ export function Battle({
       const crew = (mine ? now.playerShips : now.enemyShips)
         .filter((s) => s.hp > 0)
         .map((s) => ({ look: (mine ? looks.player : looks.enemy)[s.id], line: mine ? card(s.key ?? '')?.attack : undefined }))
-      audio.play('ultcharge', { dur: ms(1050) / 1000, far: !mine })
-      fx.flash(mine ? '#fff6c0' : '#ff3050', 500, 0.6)
-      crew.forEach((_, i) => window.setTimeout(() => mounted.current && audio.play('lock', { pan: (i / Math.max(crew.length - 1, 1)) * 1.2 - 0.6 }), ms(100 + i * 160)))
-      for (let i = 0; i < 4; i++) window.setTimeout(() => mounted.current && audio.play('stamp'), ms(1100 + i * 100))
-      window.setTimeout(() => mounted.current && fx.shake(22, 500), ms(1050))
-      await show({ kind: 'ultimate', crew, enemy: !mine, speed: speedRef.current }, 2700)
+      const k = 1 / speedRef.current
+      // Beats still to come when the cut-in is tapped through are dropped with it.
+      let over = false
+      const at = (n: number, f: () => void) => window.setTimeout(() => mounted.current && !over && f(), ms(n))
+      const lock = (i: number) => audio.play('lock', { pan: (i / Math.max(crew.length - 1, 1)) * 1.2 - 0.6 })
+      let cue: Cue | undefined
+      let started = false
+      const begin = () => {
+        if (started || !mounted.current) return
+        started = true
+        if (mine) {
+          // Pull in, charge, release, on the cut-in's beats (battle.css, scaled by k): the music
+          // drops away as the air rushes in, each ship locks on as its card lands, the charge
+          // snaps off into the whiteout's hit and quake, and the title stamps down after it.
+          audio.focus(0.2)
+          cue = audio.cue([
+            ['open', { vol: 2 }],
+            ['charge', { endAt: 1.05 * k, vol: 0.5, from: 0.12 }],
+            ['release', { at: 1.05 * k, vol: 1.4, hero: true }],
+            ['quake', { at: 1.05 * k, vol: 0.9, send: 0.1, hero: true }],
+          ])
+          audio.play('ultrise', { dur: 1.05 * k })
+          crew.forEach((_, i) => at(250 + i * 160, () => lock(i)))
+          // The first character lands inside the hit; the other three get a slam each.
+          for (let i = 1; i < 4; i++) at(1160 + i * 100, () => audio.play('ultstamp', { pitch: i }))
+        } else {
+          audio.play('ultcharge', { dur: ms(1050) / 1000, far: true })
+          crew.forEach((_, i) => at(100 + i * 160, () => lock(i)))
+          for (let i = 0; i < 4; i++) at(1100 + i * 100, () => audio.play('stamp'))
+        }
+        fx.flash(mine ? '#fff6c0' : '#ff3050', 500, 0.6)
+        at(1050, () => fx.shake(22, 500))
+      }
+      // Started by the cut-in's first animation frame; the timer covers a browser that never reports it.
+      const fallback = window.setTimeout(begin, 150)
+      const onStart = () => {
+        window.clearTimeout(fallback)
+        begin()
+      }
+      await show({ kind: 'ultimate', crew, enemy: !mine, speed: speedRef.current, onStart }, 2700)
+      // Tapped through: what was still to come would land out of step with the picture.
+      over = true
+      cue?.cut()
     } else if (r.special) {
       audio.play(mine ? 'charge' : 'menace')
       fx.flash(mine ? '#fff6c0' : '#ff3050', 380, 0.7)
