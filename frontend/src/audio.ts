@@ -82,12 +82,12 @@ export type Ambience = 'clear' | 'fog' | 'storm' | 'night'
 export type Channel = 'bgm' | 'se'
 
 // Recorded clips for our all-fleet barrage (frontend/public/se/ult), trimmed and peak
-// normalised, which voice it from end to end: the air the cut-in comes in on, the cards
-// sweeping in, the charge (a bright riser over a low one) that snaps off on the whiteout,
-// the hit and the quake under it, the title's slams, the breath before the guns, the
-// salvo, each ship's gun and the roll, then the finale's hit and blast, the thunder of
-// the fleet's shells rolling on, its sub and echo, and the tally's thud. All of it is
-// gunfire and explosions: no energy-weapon sounds, which read as beams, not shells.
+// normalised, which voice it with the radar's synthesised lock-on beeps: the air the
+// cut-in comes in on, the cards sweeping in, the charge (a bright riser over a low one)
+// that snaps off on the whiteout, the hit and the quake under it, the title's slams
+// (one of which also lands the tally), the breath before the guns, the salvo, each
+// ship's gun and the roll, then the finale's hit and blast, the thunder of the fleet's
+// shells rolling on, its sub and echo. No energy-weapon sounds: they read as beams.
 const CLIPS = [
   'open',
   'card',
@@ -108,7 +108,6 @@ const CLIPS = [
   'thunder',
   'rumble',
   'echo',
-  'tally',
 ] as const
 export type Clip = (typeof CLIPS)[number]
 

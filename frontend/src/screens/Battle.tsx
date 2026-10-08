@@ -547,10 +547,9 @@ export function Battle({
         ['salvo2', { at: 0.7 * k + 0.06, pan: 0.35, vol: 1, hero: true }],
         ['roll', { at: 0.7 * k + 0.12, vol: 0.5, send: 0.12 }],
       ])
-    } else {
-      audio.play('lock', { pan: panOf(aim) })
-      window.setTimeout(() => mounted.current && audio.play('lock', { pan: panOf(aim) }), ms(200))
     }
+    audio.play('lock', { pan: panOf(aim) })
+    window.setTimeout(() => mounted.current && audio.play('lock', { pan: panOf(aim) }), ms(200))
     fx.ring(center.x, center.y, mine ? '#ffe36b' : '#ff5a6a', 260, 0.6)
     await wait(700)
     if (!mounted.current) return
@@ -646,7 +645,7 @@ export function Battle({
     if (!mounted.current) return
     setUlt({ enemy: !mine, aim, blast: cells, total: { dmg: total, label } })
     if (mine) {
-      audio.cue([['tally', { vol: 0.9 }]])
+      audio.cue([['stamp', { vol: 0.9, rate: 0.88 }]])
       // The fight takes back over: the music comes up as the tally reads.
       audio.unfocus(1.8)
     } else audio.play('stamp')
@@ -730,7 +729,7 @@ export function Battle({
         started = true
         if (mine) {
           // Pull in, charge, release, on the cut-in's beats (battle.css, scaled by k): the music
-          // drops away as the air rushes in, each card sweeps in on its own rush, the charge
+          // drops away as the air rushes in, each card sweeps in and locks on, the charge
           // snaps off into the whiteout's hit and quake, and the title stamps down after it.
           audio.focus(0.2)
           const cards = crew.map((_, i): [Clip, CueOpts] => ['card', { at: (0.1 + i * 0.16) * k, pan: side(i), vol: 0.06, rate: 1 + i * 0.04 }])
@@ -745,6 +744,8 @@ export function Battle({
             ['quake', { at: 1.05 * k, vol: 0.9, send: 0.1, hero: true }],
             ...stamps,
           ])
+          // Each ship's radar locks on as its card lands.
+          crew.forEach((_, i) => at(250 + i * 160, () => lock(i)))
           // Once the title is down the music comes back up a little, so the hold before the
           // lock-on is a breath, not dead air.
           at(1600, () => audio.focus(0.35, 0.8))
