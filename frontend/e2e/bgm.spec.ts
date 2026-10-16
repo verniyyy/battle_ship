@@ -12,9 +12,9 @@ for (const { name, boss, roll, file } of [
     await page.addInitScript((r) => (Math.random = () => r), roll)
     // Note every media element the game plays, and every decode it asks for.
     await page.addInitScript(() => {
-      const w = window as unknown as { media: Set<HTMLMediaElement>; decodes: number }
+      const w = window as unknown as { media: Set<HTMLMediaElement>; decoded: number }
       w.media = new Set()
-      w.decodes = 0
+      w.decoded = 0
       const play = HTMLMediaElement.prototype.play
       HTMLMediaElement.prototype.play = function () {
         w.media.add(this)
@@ -22,7 +22,7 @@ for (const { name, boss, roll, file } of [
       }
       const decode = BaseAudioContext.prototype.decodeAudioData
       BaseAudioContext.prototype.decodeAudioData = function (...args: Parameters<typeof decode>) {
-        w.decodes++
+        w.decoded = Math.max(w.decoded, args[0].byteLength)
         return decode.apply(this, args)
       }
     })
@@ -53,6 +53,7 @@ for (const { name, boss, roll, file } of [
       )
       .toEqual([`/bgm/${file}.mp3 true`])
     // Streamed, never decoded: a decoded track holds well over 100MB, enough for a phone to drop the tab.
-    expect(await page.evaluate(() => (window as unknown as { decodes: number }).decodes)).toBe(0)
+    // Only the barrage's short sound clips (tens of kB each) are decoded.
+    expect(await page.evaluate(() => (window as unknown as { decoded: number }).decoded)).toBeLessThan(100_000)
   })
 }

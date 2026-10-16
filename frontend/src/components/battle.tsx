@@ -106,7 +106,7 @@ export type Cutin =
   | { kind: 'intro'; text: string; sub?: string; boss?: boolean }
   | { kind: 'attack'; look: Look; line: string; title: string; skill?: SkillKind }
   | { kind: 'enemy'; look: Look; title: string }
-  | { kind: 'ultimate'; crew: { look: Look; line?: string }[]; enemy?: boolean; speed: number }
+  | { kind: 'ultimate'; crew: { look: Look; line?: string }[]; enemy?: boolean; speed: number; onStart?: () => void }
   | { kind: 'notice'; side: 'player' | 'cpu'; text: string }
   | { kind: 'banner'; text: string; sub?: string; tone: 'gold' | 'red' | 'blue' | 'rainbow' }
   | { kind: 'turn'; turn: number; left?: number }
@@ -162,7 +162,13 @@ export function CutinLayer({ cutin, onSkip }: { cutin: Cutin; onSkip?: () => voi
       // the screen whites out and the title stamps down a character at a time.
       const k = 1 / cutin.speed
       return (
-        <div className={`cutin ultimate ${cutin.enemy ? 'enemy-side' : ''}`} onClick={onSkip} style={{ ['--k' as string]: k }}>
+        <div
+          className={`cutin ultimate ${cutin.enemy ? 'enemy-side' : ''}`}
+          onClick={onSkip}
+          // The sky's fade-in is the clock every other beat is timed from: sound cued on it lands with the picture.
+          onAnimationStart={(e) => e.animationName === 'ult-sky-in' && cutin.onStart?.()}
+          style={{ ['--k' as string]: k }}
+        >
           <div className="ult-sky" />
           <div className="ult-rays" />
           <div className="speedlines fast" />

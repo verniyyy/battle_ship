@@ -1,5 +1,7 @@
-// Procedural sound: every effect, the music and the sea ambience are
-// synthesised with Web Audio, so the game is fully voiced without any asset.
+// Procedural sound: almost every effect, the music and the sea ambience are
+// synthesised with Web Audio, so the game is voiced with next to no assets. The
+// exception is our all-fleet barrage, voiced by recorded clips (frontend/public/se)
+// cued on the audio clock against its cut-in (see cue()).
 //
 // The graph is mixed like a small game soundtrack rather than a set of beeps:
 //
@@ -11,9 +13,12 @@
 //
 // Effects are layered (transient, body, tail), slightly randomised so repeats
 // don't sound mechanical, placed in stereo by where they happen on the board,
-// and big moments duck the music so they land. Gunfire and detonations are the
-// exception to the node graph: they are modelled sample by sample (blast.ts),
-// echoes and tail included, so they barely use the shared hall or the sea echo.
+// and big moments duck the music so they land. The barrage's payoffs go out on a
+// bus of their own (hero) that skips the glue compressor and ducks the other
+// effects, so they stand out of a wall of hits instead of joining it. Gunfire and
+// detonations are the exception to the node graph: they are modelled sample by
+// sample (blast.ts), echoes and tail included, so they barely use the shared hall
+// or the sea echo.
 
 import { blast, blastLength, type BlastOpts } from './blast'
 
@@ -53,6 +58,7 @@ export type Sfx =
   | 'alert'
   | 'menace'
   | 'ultcharge'
+  | 'ultstamp'
   | 'ultboom'
   | 'order'
   | 'bosun'
@@ -75,6 +81,58 @@ export type Sfx =
 export type Track = 'home' | 'battle' | 'boss' | 'gacha' | 'win' | 'lose'
 export type Ambience = 'clear' | 'fog' | 'storm' | 'night'
 export type Channel = 'bgm' | 'se'
+
+// Recorded clips for our all-fleet barrage (frontend/public/se/ult), trimmed and peak
+// normalised, which voice it with the synthesised radar beeps and title drums: the
+// air the cut-in comes in on, the cards sweeping in, the charge (a bright riser over a
+// low one) that snaps off on the whiteout, the hit and the quake under it, the title's
+// slams (one of which also lands the tally), the breath before the guns, the salvo,
+// each ship's gun and the roll, then the finale's hit and blast, the thunder of the
+// fleet's shells rolling on, its sub and echo. No energy-weapon sounds: they read as beams.
+const CLIPS = [
+  'open',
+  'card',
+  'charge',
+  'lowcharge',
+  'release',
+  'quake',
+  'stamp',
+  'inhale',
+  'salvo',
+  'salvo2',
+  'gun1',
+  'gun2',
+  'gun3',
+  'roll',
+  'finale',
+  'blast',
+  'thunder',
+  'rumble',
+  'echo',
+] as const
+export type Clip = (typeof CLIPS)[number]
+
+export interface CueOpts {
+  /** Start, in seconds from the cue. */
+  at?: number
+  /** Place the clip so that its end lands here instead (its head is skipped if it would start early). */
+  endAt?: number
+  vol?: number
+  pan?: number
+  /** Playback rate: above 1 plays it higher and shorter. */
+  rate?: number
+  /** Hall send; the clips carry their own room, so little is needed. */
+  send?: number
+  /** Swell: start at this fraction of vol and rise to it by the clip's end (a riser that builds). */
+  from?: number
+  /** On the hero bus: past the glue compressor and untouched by spotlight(). */
+  hero?: boolean
+}
+
+/** Clips cued together; cut() stops the ones still to come (a skipped cut-in). */
+export interface Cue {
+  cut(): void
+}
 
 export interface PlayOpts {
   /** Musical or intensity step for effects that climb (combo, coin, star…). */
@@ -362,6 +420,8 @@ class AudioEngine {
   private master?: GainNode
   private muffle?: BiquadFilterNode
   private sfxBus?: GainNode
+  private sfxDuck?: GainNode
+  private heroBus?: GainNode
   private uiBus?: GainNode
   private musicBus?: GainNode
   private duckGain?: GainNode
@@ -405,6 +465,15 @@ class AudioEngine {
   private ambNodes: AudioNode[] = []
   private ambOut?: GainNode
   private ambTimer?: number
+
+  private clips = new Map<Clip, AudioBuffer>()
+  private clipsWanted = false
+  private clipsLoaded = false
+  /** Where the music rests while a big moment holds it down (1 = not held); ducks return here. */
+  private floor = 1
+  /** When the latest duck starts letting the music back. */
+  private duckHold = 0
+  private unfocusTimer?: number
 
   /** Must be called from a user gesture to allow playback. */
   unlock() {
@@ -481,7 +550,12 @@ class AudioEngine {
     this.reverbIn.connect(reverbHp).connect(reverb).connect(reverbOut).connect(this.master)
 
     this.sfxBus = ctx.createGain()
-    this.sfxBus.connect(this.master)
+    this.sfxDuck = ctx.createGain()
+    this.sfxBus.connect(this.sfxDuck).connect(this.master)
+    // Straight into the limiter: the glue would squeeze the payoff down to the level of
+    // the hits around it. Its own level sits it no louder than the rest when alone.
+    this.heroBus = ctx.createGain()
+    this.heroBus.connect(limiter)
     this.uiBus = ctx.createGain()
     this.uiBus.connect(this.master)
     this.duckGain = ctx.createGain()
@@ -497,6 +571,24 @@ class AudioEngine {
     this.noiseBufs = { white: this.noiseBuffer('white'), pink: this.noiseBuffer('pink'), brown: this.noiseBuffer('brown') }
     // Set up front so a battle doesn't open in silence.
     for (const url of Object.values(FILES).flat()) this.loadRecording(url)
+    if (this.clipsWanted) this.loadClips()
+  }
+
+  /**
+   * Decodes the recorded clips ahead of the battle that may cue them (about 4MB of PCM,
+   * kept for the session), so a cue never waits on the network.
+   */
+  loadClips() {
+    this.clipsWanted = true
+    const ctx = this.ctx
+    if (!ctx || this.clipsLoaded) return
+    this.clipsLoaded = true
+    for (const name of CLIPS)
+      fetch(`/se/ult/${name}.mp3`)
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.statusText))))
+        .then((b) => ctx.decodeAudioData(b))
+        .then((buf) => this.clips.set(name, buf))
+        .catch(() => {}) // missing clips just leave the synthesised layers on their own
   }
 
   /** The context can be suspended after the first gesture (tab switch, device change); wake it on the next one. */
@@ -537,6 +629,7 @@ class AudioEngine {
     set(this.volOut.gain, this.muted ? 0 : OUTPUT_LEVEL * top)
     set(this.musicBus!.gain, MUSIC_LEVEL * rel(bgm))
     set(this.sfxBus!.gain, SFX_LEVEL * rel(se))
+    set(this.heroBus!.gain, SFX_LEVEL * MASTER_LEVEL * rel(se))
     set(this.uiBus!.gain, SFX_LEVEL * rel(se))
     set(this.ambBus!.gain, AMBIENCE_LEVEL * rel(se))
   }
@@ -912,7 +1005,7 @@ class AudioEngine {
     window.setTimeout(() => nodes.forEach((n) => n.disconnect()), Math.max(ms, 500))
   }
 
-  /** Pulls the music down so a big moment lands, then lets it back. */
+  /** Pulls the music down so a big moment lands, then lets it back (to where focus() holds it). */
   private duck(depth: number, hold: number, back: number) {
     if (this.moves) {
       this.moves.push([depth, hold, back])
@@ -920,11 +1013,115 @@ class AudioEngine {
     }
     const g = this.duckGain!.gain
     const t = this.ctx!.currentTime
+    const to = Math.min(depth, this.floor)
     g.cancelScheduledValues(t)
     g.setValueAtTime(g.value, t)
-    g.linearRampToValueAtTime(depth, t + 0.03)
+    g.linearRampToValueAtTime(to, t + 0.03)
+    g.setValueAtTime(to, t + hold)
+    g.linearRampToValueAtTime(this.floor, t + hold + back)
+    this.duckHold = t + hold
+  }
+
+  /**
+   * Holds the music down at `depth` through a long set piece (the all-fleet barrage),
+   * across the ducks of the sounds inside it, until unfocus().
+   */
+  focus(depth: number, glide = 0.08) {
+    if (!this.ctx || !this.duckGain) return
+    clearTimeout(this.unfocusTimer)
+    this.floor = depth
+    const g = this.duckGain.gain
+    const t = this.ctx.currentTime
+    // A duck already deeper than the new floor rides out its hold first.
+    const from = Math.max(t, this.duckHold)
+    g.cancelScheduledValues(from)
+    g.setValueAtTime(from > t ? Math.min(g.value, depth) : g.value, from)
+    g.linearRampToValueAtTime(depth, from + glide)
+  }
+
+  /** Lets the music back up over `back` seconds, once any duck in progress has held. */
+  unfocus(back = 2) {
+    if (!this.ctx || !this.duckGain) return
+    clearTimeout(this.unfocusTimer)
+    this.floor = 1
+    const wait = this.duckHold - this.ctx.currentTime
+    const rise = () => {
+      const g = this.duckGain!.gain
+      const t = this.ctx!.currentTime
+      g.cancelScheduledValues(t)
+      g.setValueAtTime(g.value, t)
+      g.linearRampToValueAtTime(1, t + back)
+    }
+    if (wait > 0) this.unfocusTimer = window.setTimeout(rise, wait * 1000)
+    else rise()
+  }
+
+  /**
+   * Pulls every effect but the hero bus down to `depth` for `hold` seconds and lets it
+   * back over `back`: the ringing tails make room for the one moment that matters.
+   */
+  spotlight(depth: number, hold: number, back: number) {
+    if (!this.ctx || !this.sfxDuck) return
+    const g = this.sfxDuck.gain
+    const t = this.ctx.currentTime
+    g.cancelScheduledValues(t)
+    g.setValueAtTime(g.value, t)
+    g.linearRampToValueAtTime(depth, t + 0.02)
     g.setValueAtTime(depth, t + hold)
     g.linearRampToValueAtTime(1, t + hold + back)
+  }
+
+  /**
+   * Plays recorded clips on the audio clock, each placed relative to this call, so a
+   * set piece stays locked to the animation it was started with. Missing (not yet
+   * decoded) clips are left out.
+   */
+  cue(list: [Clip, CueOpts?][]): Cue {
+    const none = { cut() {} }
+    if (this.muted || this.volume.se === 0 || !this.ctx) return none
+    this.resume()
+    const ctx = this.ctx
+    const t0 = ctx.currentTime + 0.02
+    const voices: { src: AudioBufferSourceNode; out: GainNode; at: number }[] = []
+    for (const [name, o = {}] of list) {
+      const buf = this.clips.get(name)
+      if (!buf) continue
+      const rate = o.rate ?? 1
+      const len = buf.duration / rate
+      let at = o.at ?? 0
+      let offset = 0 // into the clip, in seconds of playback
+      if (o.endAt !== undefined) {
+        at = o.endAt - len
+        if (at < 0) {
+          offset = -at
+          at = 0
+        }
+      }
+      const vol = o.vol ?? 1
+      const out = this.out(o.hero ? this.heroBus! : this.sfxBus!, { pan: o.pan, send: o.send ?? 0.06, vol })
+      if (o.from !== undefined) {
+        out.gain.setValueAtTime(vol * o.from, t0 + at)
+        out.gain.exponentialRampToValueAtTime(vol, t0 + at + len - offset)
+      }
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      src.playbackRate.value = rate
+      src.connect(out)
+      src.start(t0 + at, offset * rate)
+      this.group.push(src)
+      this.groupEnd = t0 + at + len - offset
+      this.release()
+      voices.push({ src, out, at: t0 + at })
+    }
+    return {
+      cut: () => {
+        const t = ctx.currentTime
+        const pending = voices.filter((v) => v.at > t)
+        if (!pending.length) return // played out in full: let the tails ring
+        for (const v of pending) v.src.stop()
+        for (const v of voices) if (v.at <= t) v.out.gain.setTargetAtTime(0, t, 0.04)
+      },
+    }
   }
 
   /** Shell-shock: the whole mix goes muffled and slowly clears. */
@@ -1340,6 +1537,20 @@ class AudioEngine {
         if (!far) {
           const sides = [-0.6, 0.6].map((p) => this.out(this.sfxBus!, { pan: p, send: 0.55, vol: level }))
           ;[81, 85, 88, 93, 97, 100].forEach((n, i) => this.bell(sides[i % 2], hit + 0.05 + i * 0.05, n, 0.05, 0.6))
+        }
+        break
+      }
+      case 'ultstamp': {
+        // The barrage's title stamping down after the hit (pitch: 1..3, the 2nd to 4th
+        // character): taut drum slams that climb, the last one landing with a crash.
+        const k = 0.6 + p * 0.15
+        const d = fx(0.25, { pan: (p - 2) * 0.25 })
+        this.osc(d, t, { f: 150 + p * 18, f2: 60, glide: 0.09, vol: 0.5 * k, dur: 0.22, d: 0.08, drive: 1.6 })
+        this.noise(d, t, { color: 'pink', filter: 'bandpass', f: 1200 + p * 250, q: 1.4, vol: 0.32 * k, dur: 0.035, d: 0.012 })
+        this.noise(d, t, { color: 'brown', f: 1600, f2: 250, vol: 0.4 * k, dur: 0.1, d: 0.04 })
+        if (p >= 3) {
+          this.osc(d, t, { f: 72, f2: 38, glide: 0.2, vol: 0.6, dur: 0.4, d: 0.15, drive: 1.2 })
+          this.cymbal(d, t, 0.12, 1.2)
         }
         break
       }
